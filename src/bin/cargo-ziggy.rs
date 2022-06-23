@@ -29,7 +29,8 @@ pub fn cli() -> Command<'static> {
                 Command::new("run")
                     .about("Run a specific input or a directory of inputs to analyze backtrace"),
             )
-            .subcommand(Command::new("build").about("Build the fuzzer and the runner binaries")),
+            .subcommand(Command::new("build").about("Build the fuzzer and the runner binaries"))
+            .subcommand(Command::new("clean").about("Clean the target directories")),
     )
 }
 
@@ -55,6 +56,21 @@ fn main() {
             Some(("build", _)) => {
                 build_command();
             }
+            Some(("clean", _)) => {
+                let _ = process::Command::new("rm")
+                    .args(&[
+                        "-r",
+                        "-f",
+                        "./libfuzzer_target",
+                        "./afl_target",
+                        "./hfuzz_target",
+                        "./target",
+                    ])
+                    .spawn()
+                    .expect("Error removing target directories")
+                    .wait()
+                    .unwrap();
+            }
             _ => unreachable!(),
         },
         _ => unreachable!(),
@@ -67,7 +83,20 @@ fn fuzz_command() {
     // TODO loop over fuzzer config objects
     // TODO make this process work on an arbitrary target
 
+    let _ = process::Command::new("mkdir")
+        .arg("./libfuzzer_workspace")
+        .stderr(process::Stdio::piped())
+        .spawn()
+        .expect("Error creating libfuzzer_workspace directory")
+        .wait()
+        .unwrap();
+
     let libfuzzer_process = process::Command::new("./libfuzzer_target/debug/ziggy-example")
+        .args(&[
+            "libfuzzer_workspace",
+            "--",
+            "-artifact_prefix=./libfuzzer_workspace/",
+        ])
         .stderr(process::Stdio::piped())
         .spawn()
         .expect("error starting libfuzzer fuzzer");
