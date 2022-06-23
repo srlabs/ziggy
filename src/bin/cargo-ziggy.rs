@@ -1,12 +1,14 @@
-#[cfg(not(feature = "clap"))]
+#[cfg(not(feature = "cli"))]
 fn main() {}
 
-#[cfg(feature = "clap")]
+#[cfg(feature = "cli")]
 use clap::Command;
-#[cfg(feature = "clap")]
-use std::process;
+#[cfg(feature = "cli")]
+use console::style;
+#[cfg(feature = "cli")]
+use std::{process, thread, time};
 
-#[cfg(feature = "clap")]
+#[cfg(feature = "cli")]
 pub fn cli() -> Command<'static> {
     Command::new("cargo-ziggy").bin_name("cargo").subcommand(
         clap::command!("ziggy")
@@ -31,7 +33,7 @@ pub fn cli() -> Command<'static> {
     )
 }
 
-#[cfg(feature = "clap")]
+#[cfg(feature = "cli")]
 fn main() {
     let matches = cli().get_matches();
 
@@ -41,6 +43,7 @@ fn main() {
                 todo!();
             }
             Some(("fuzz", _)) => {
+                build_command();
                 fuzz_command();
             }
             Some(("init", _)) => {
@@ -58,54 +61,81 @@ fn main() {
     }
 }
 
-#[cfg(feature = "clap")]
+#[cfg(feature = "cli")]
 fn fuzz_command() {
 
-    println!("\n -- Running libfuzzer fuzzer");
-    let _run = process::Command::new("./libfuzzer_target/debug/ziggy-example")
+    // TODO loop over fuzzer config objects
+    // TODO make this process work on an arbitrary target
+
+    let libfuzzer_process = process::Command::new("./libfuzzer_target/debug/ziggy-example")
+        .stderr(process::Stdio::piped())
         .spawn()
-        .expect("error starting libfuzzer fuzzer")
+        .expect("error starting libfuzzer fuzzer");
+    println!("{} libfuzzer", style("launched").green());
+
+    let _ = process::Command::new("mkdir")
+        .arg("./afl_workspace")
+        .stderr(process::Stdio::piped())
+        .spawn()
+        .expect("Error creating afl_workspace directory")
         .wait()
         .unwrap();
 
-    let _ = process::Command::new("mkdir").arg("./tmp").spawn().expect("Error creating tmp directory").wait().unwrap();
-
-    println!("\n -- Running afl fuzzer");
-    let run = process::Command::new("cargo")
-        .args(&["afl", "fuzz", "-itmp", "-otmp", "./afl_target/debug/ziggy-example"])
+    let afl_process = process::Command::new("cargo")
+        .args(&[
+            "afl",
+            "fuzz",
+            "-iafl_workspace",
+            "-oafl_workspace",
+            "./afl_target/debug/ziggy-example",
+        ])
         .env("AFL_BENCH_UNTIL_CRASH", "true")
+        .stdout(process::Stdio::piped())
         .spawn()
-        .expect("error starting libfuzzer fuzzer")
-        .wait()
-        .unwrap();
+        .expect("error starting libfuzzer fuzzer");
+    println!("{} afl", style("launched").green());
 
-    assert!(
-        run.success(),
-        "error building libfuzzer fuzzer: Exited with {:?}",
-        run.code()
-    );
-
-    println!("\n -- Running afl fuzzer");
-    let run = process::Command::new("cargo")
+    let hfuzz_process = process::Command::new("cargo")
         .args(&["hfuzz", "run", "ziggy-example"])
         .env("RUSTFLAGS", "-Znew-llvm-pass-manager=no")
-        .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
+        .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz --offline")
         .env("HFUZZ_RUN_ARGS", "--exit_upon_crash")
+        .stdout(process::Stdio::piped())
+        .stderr(process::Stdio::piped())
         .spawn()
-        .expect("error starting libfuzzer fuzzer")
-        .wait()
-        .unwrap();
+        .expect("error starting libfuzzer fuzzer");
+    println!("{} honggfuzz", style("launched").green());
 
-    assert!(
-        run.success(),
-        "error building libfuzzer fuzzer: Exited with {:?}",
-        run.code()
+    let mut processes = vec![libfuzzer_process, afl_process, hfuzz_process];
+
+    println!(
+        "{} for the fuzzers to find a crash",
+        style("waiting").yellow()
     );
+
+    loop {
+        let thirty_fps = time::Duration::from_millis(33);
+        thread::sleep(thirty_fps);
+
+        // TODO do something with the stdio streams and display info
+
+        if processes
+            .iter_mut()
+            .all(|process| process.try_wait().unwrap_or(None).is_some())
+        {
+            break;
+        }
+    }
+
+    println!("{} all fuzzers are done", style("finished").cyan());
 }
 
-#[cfg(feature = "clap")]
+#[cfg(feature = "cli")]
 fn build_command() {
-    println!("\n -- Compiling libfuzzer fuzzer");
+
+    // TODO loop over fuzzer config objects
+    // TODO make this process work on an arbitrary target
+
     let run = process::Command::new("cargo")
         .args(&["rustc", "--features=ziggy/libfuzzer-sys", "--target-dir=libfuzzer_target"])
         .env("RUSTFLAGS", " -Cpasses=sancov -Cllvm-args=-sanitizer-coverage-level=3 -Cllvm-args=-sanitizer-coverage-inline-8bit-counters -Zsanitizer=address -Znew-llvm-pass-manager=no")
@@ -119,10 +149,15 @@ fn build_command() {
         "error building libfuzzer fuzzer: Exited with {:?}",
         run.code()
     );
+    println!("{} libfuzzer and its target", style("built").blue());
 
-    println!("\n -- Compiling afl fuzzer");
     let run = process::Command::new("cargo")
-        .args(&["afl", "build", "--features=ziggy/afl", "--target-dir=afl_target"])
+        .args(&[
+            "afl",
+            "build",
+            "--features=ziggy/afl",
+            "--target-dir=afl_target",
+        ])
         .spawn()
         .expect("error starting afl build")
         .wait()
@@ -133,8 +168,8 @@ fn build_command() {
         "error building afl fuzzer: Exited with {:?}",
         run.code()
     );
+    println!("{} afl and its target", style("built").blue());
 
-    println!("\n -- Compiling honggfuzz fuzzer");
     let run = process::Command::new("cargo")
         .args(&["hfuzz", "build"])
         .env("RUSTFLAGS", "-Znew-llvm-pass-manager=no")
@@ -149,4 +184,5 @@ fn build_command() {
         "error building honggfuzz fuzzer: Exited with {:?}",
         run.code()
     );
+    println!("{} honggfuzz and its target", style("built").blue());
 }
