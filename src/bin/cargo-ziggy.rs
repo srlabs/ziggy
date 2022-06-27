@@ -6,7 +6,7 @@ use clap::Command;
 #[cfg(feature = "cli")]
 use console::style;
 #[cfg(feature = "cli")]
-use std::{process, thread, time};
+use std::{fs::File, process, thread, time};
 
 #[cfg(feature = "cli")]
 pub fn cli() -> Command<'static> {
@@ -79,7 +79,6 @@ fn main() {
 
 #[cfg(feature = "cli")]
 fn fuzz_command() {
-
     // TODO loop over fuzzer config objects
     // TODO make this process work on an arbitrary target
 
@@ -91,13 +90,14 @@ fn fuzz_command() {
         .wait()
         .unwrap();
 
-    let libfuzzer_process = process::Command::new("./libfuzzer_target/debug/ziggy-example")
+    let libfuzzer_handle = process::Command::new("./libfuzzer_target/debug/ziggy-example")
         .args(&[
             "libfuzzer_workspace",
             "--",
             "-artifact_prefix=./libfuzzer_workspace/",
         ])
-        .stderr(process::Stdio::piped())
+        .stdout(File::create("libfuzzer.log").unwrap())
+        .stderr(File::create("libfuzzer.log").unwrap())
         .spawn()
         .expect("error starting libfuzzer fuzzer");
     println!("{} libfuzzer", style("launched").green());
@@ -110,7 +110,7 @@ fn fuzz_command() {
         .wait()
         .unwrap();
 
-    let afl_process = process::Command::new("cargo")
+    let afl_handle = process::Command::new("cargo")
         .args(&[
             "afl",
             "fuzz",
@@ -119,34 +119,33 @@ fn fuzz_command() {
             "./afl_target/debug/ziggy-example",
         ])
         .env("AFL_BENCH_UNTIL_CRASH", "true")
-        .stdout(process::Stdio::piped())
+        .stdout(File::create("afl.log").unwrap())
+        .stderr(File::create("afl.log").unwrap())
         .spawn()
-        .expect("error starting libfuzzer fuzzer");
+        .expect("error starting afl fuzzer");
     println!("{} afl", style("launched").green());
 
-    let hfuzz_process = process::Command::new("cargo")
+    let hfuzz_handle = process::Command::new("cargo")
         .args(&["hfuzz", "run", "ziggy-example"])
         .env("RUSTFLAGS", "-Znew-llvm-pass-manager=no")
         .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz --offline")
         .env("HFUZZ_RUN_ARGS", "--exit_upon_crash")
-        .stdout(process::Stdio::piped())
-        .stderr(process::Stdio::piped())
+        .stderr(File::create("hfuzz.log").unwrap())
+        .stdout(File::create("hfuzz.log").unwrap())
         .spawn()
         .expect("error starting libfuzzer fuzzer");
     println!("{} honggfuzz", style("launched").green());
-
-    let mut processes = vec![libfuzzer_process, afl_process, hfuzz_process];
 
     println!(
         "{} for the fuzzers to find a crash",
         style("waiting").yellow()
     );
 
+    let mut processes = vec![libfuzzer_handle, afl_handle, hfuzz_handle];
+
     loop {
         let thirty_fps = time::Duration::from_millis(33);
         thread::sleep(thirty_fps);
-
-        // TODO do something with the stdio streams and display info
 
         if processes
             .iter_mut()
@@ -161,7 +160,6 @@ fn fuzz_command() {
 
 #[cfg(feature = "cli")]
 fn build_command() {
-
     // TODO loop over fuzzer config objects
     // TODO make this process work on an arbitrary target
 
