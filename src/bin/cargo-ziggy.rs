@@ -4,9 +4,14 @@ fn main() {}
 #[cfg(feature = "cli")]
 use clap::Command;
 #[cfg(feature = "cli")]
-use console::style;
+use console::{style, Term};
 #[cfg(feature = "cli")]
-use std::{fs::File, process, thread, time};
+use std::{
+    fs::File,
+    io::{BufRead, BufReader},
+    net::UdpSocket,
+    process, thread, time,
+};
 
 #[cfg(feature = "cli")]
 pub fn cli() -> Command<'static> {
@@ -22,7 +27,13 @@ pub fn cli() -> Command<'static> {
                     .about("Generate code coverage information using the existing corpus"),
             )
             .subcommand(
-                Command::new("fuzz").about("Fuzz targets using different fuzzers in parallel").arg(clap::Arg::new("target").required(true).help("Target to fuzz")),
+                Command::new("fuzz")
+                    .about("Fuzz targets using different fuzzers in parallel")
+                    .arg(
+                        clap::Arg::new("target")
+                            .required(true)
+                            .help("Target to fuzz"),
+                    ),
             )
             .subcommand(Command::new("init").about("Create a new fuzzing target"))
             .subcommand(
@@ -117,6 +128,7 @@ fn fuzz_command(args: &clap::ArgMatches) {
             &format!("./afl_target/debug/{target}"),
         ])
         .env("AFL_BENCH_UNTIL_CRASH", "true")
+        .env("AFL_STATSD", "true")
         .stdout(File::create("afl.log").unwrap())
         .stderr(File::create("afl.log").unwrap())
         .spawn()
@@ -134,16 +146,73 @@ fn fuzz_command(args: &clap::ArgMatches) {
         .expect("error starting libfuzzer fuzzer");
     println!("{} honggfuzz", style("launched").green());
 
-    println!(
-        "{} for the fuzzers to find a crash",
-        style("waiting").yellow()
-    );
-
     let mut processes = vec![libfuzzer_handle, afl_handle, hfuzz_handle];
+
+    let term = Term::stdout();
+    term.write_line(&style("afl++ stats").yellow().to_string())
+        .unwrap();
+    term.write_line("...").unwrap();
+    term.write_line("...").unwrap();
+
+    // Variables for stats printing
+    let mut corpus_count = String::new();
+    let mut edges_found = String::new();
+    let mut total_edges = String::new();
+
+    // We connect to the afl statsd socket
+    let socket = UdpSocket::bind(("127.0.0.1", 8125)).unwrap();
+    socket.set_nonblocking(true).unwrap();
+    let mut buf = [0; 1024];
 
     loop {
         let thirty_fps = time::Duration::from_millis(33);
         thread::sleep(thirty_fps);
+
+        // We retrieve the total_edged value from the fuzzer_stats file
+        if total_edges == "" {
+            if let Ok(file) = File::open("./afl_workspace/mainaflfuzzer/fuzzer_stats") {
+                total_edges = String::from(
+                    BufReader::new(file)
+                        .lines()
+                        .nth(31)
+                        .unwrap_or(Ok(String::new()))
+                        .unwrap_or_default()
+                        .trim_start_matches("total_edges       : "),
+                );
+            }
+        }
+
+        // If we have new stats from afl's statsd socket, we update our values
+        if let Ok((amt, _)) = socket.recv_from(&mut buf) {
+            let mut v: Vec<u8> = Vec::new();
+            v.extend_from_slice(&buf[0..amt]);
+
+            for msg in String::from_utf8(v).unwrap().split_terminator("\n") {
+                if msg.contains("corpus_count") {
+                    corpus_count = String::from(msg[21..].trim_end_matches("|g"));
+                } else if msg.contains("edges_found") {
+                    edges_found = String::from(msg[20..].trim_end_matches("|g"));
+                }
+            }
+
+            // We print the new values
+            term.move_cursor_up(2).unwrap();
+            term.write_line(&format!(
+                "{} {}",
+                style("corpus count :").dim(),
+                &corpus_count
+            ))
+            .unwrap();
+            let edges_percentage = 100f64 * edges_found.parse::<f64>().unwrap_or_default()
+                / total_edges.parse::<f64>().unwrap_or(1f64);
+            term.write_line(&format!(
+                "{} {} ({:.2}%)",
+                style(" edges found :").dim(),
+                &edges_found,
+                &edges_percentage
+            ))
+            .unwrap();
+        }
 
         if processes
             .iter_mut()
@@ -153,7 +222,11 @@ fn fuzz_command(args: &clap::ArgMatches) {
         }
     }
 
-    println!("{} all fuzzers are done", style("finished").cyan());
+    term.write_line(&format!(
+        "{} all fuzzers are done",
+        style("finished").cyan()
+    ))
+    .unwrap();
 }
 
 #[cfg(feature = "cli")]
