@@ -22,7 +22,7 @@ pub fn cli() -> Command<'static> {
                     .about("Generate code coverage information using the existing corpus"),
             )
             .subcommand(
-                Command::new("fuzz").about("Fuzz targets using different fuzzers in parallel"),
+                Command::new("fuzz").about("Fuzz targets using different fuzzers in parallel").arg(clap::Arg::new("target").required(true).help("Target to fuzz")),
             )
             .subcommand(Command::new("init").about("Create a new fuzzing target"))
             .subcommand(
@@ -43,9 +43,9 @@ fn main() {
             Some(("cover", _)) => {
                 todo!();
             }
-            Some(("fuzz", _)) => {
+            Some(("fuzz", args)) => {
                 build_command();
-                fuzz_command();
+                fuzz_command(args);
             }
             Some(("init", _)) => {
                 todo!();
@@ -59,8 +59,7 @@ fn main() {
             Some(("clean", _)) => {
                 let _ = process::Command::new("rm")
                     .args(&[
-                        "-r",
-                        "-f",
+                        "-rf",
                         "./libfuzzer_target",
                         "./afl_target",
                         "./hfuzz_target",
@@ -78,9 +77,10 @@ fn main() {
 }
 
 #[cfg(feature = "cli")]
-fn fuzz_command() {
+fn fuzz_command(args: &clap::ArgMatches) {
     // TODO loop over fuzzer config objects
-    // TODO make this process work on an arbitrary target
+
+    let target = args.value_of("target").expect("Could not parse target");
 
     let _ = process::Command::new("mkdir")
         .arg("./shared_corpus")
@@ -90,15 +90,7 @@ fn fuzz_command() {
         .wait()
         .unwrap();
 
-    let _ = process::Command::new("mkdir")
-        .arg("./libfuzzer_workspace")
-        .stderr(process::Stdio::piped())
-        .spawn()
-        .expect("Error creating libfuzzer_workspace directory")
-        .wait()
-        .unwrap();
-
-    let libfuzzer_handle = process::Command::new("./libfuzzer_target/debug/ziggy-example")
+    let libfuzzer_handle = process::Command::new(format!("./libfuzzer_target/debug/{target}"))
         .args(&["shared_corpus", "--", "-artifact_prefix=./shared_corpus/"])
         .stdout(File::create("libfuzzer.log").unwrap())
         .stderr(File::create("libfuzzer.log").unwrap())
@@ -122,7 +114,7 @@ fn fuzz_command() {
             "-iafl_workspace",
             "-oafl_workspace",
             "-Fshared_corpus",
-            "./afl_target/debug/ziggy-example",
+            &format!("./afl_target/debug/{target}"),
         ])
         .env("AFL_BENCH_UNTIL_CRASH", "true")
         .stdout(File::create("afl.log").unwrap())
@@ -132,7 +124,7 @@ fn fuzz_command() {
     println!("{} afl", style("launched").green());
 
     let hfuzz_handle = process::Command::new("cargo")
-        .args(&["hfuzz", "run", "ziggy-example"])
+        .args(&["hfuzz", "run", target])
         .env("RUSTFLAGS", "-Znew-llvm-pass-manager=no")
         .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz --offline")
         .env("HFUZZ_RUN_ARGS", "--exit_upon_crash -ishared_corpus")
@@ -167,7 +159,6 @@ fn fuzz_command() {
 #[cfg(feature = "cli")]
 fn build_command() {
     // TODO loop over fuzzer config objects
-    // TODO make this process work on an arbitrary target
 
     let run = process::Command::new("cargo")
         .args(&["rustc", "--features=ziggy/libfuzzer-sys", "--target-dir=libfuzzer_target"])
