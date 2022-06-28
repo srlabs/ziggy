@@ -83,6 +83,14 @@ fn fuzz_command() {
     // TODO make this process work on an arbitrary target
 
     let _ = process::Command::new("mkdir")
+        .arg("./shared_corpus")
+        .stderr(process::Stdio::piped())
+        .spawn()
+        .expect("Error creating shared_corpus directory")
+        .wait()
+        .unwrap();
+
+    let _ = process::Command::new("mkdir")
         .arg("./libfuzzer_workspace")
         .stderr(process::Stdio::piped())
         .spawn()
@@ -91,11 +99,7 @@ fn fuzz_command() {
         .unwrap();
 
     let libfuzzer_handle = process::Command::new("./libfuzzer_target/debug/ziggy-example")
-        .args(&[
-            "libfuzzer_workspace",
-            "--",
-            "-artifact_prefix=./libfuzzer_workspace/",
-        ])
+        .args(&["shared_corpus", "--", "-artifact_prefix=./shared_corpus/"])
         .stdout(File::create("libfuzzer.log").unwrap())
         .stderr(File::create("libfuzzer.log").unwrap())
         .spawn()
@@ -114,8 +118,10 @@ fn fuzz_command() {
         .args(&[
             "afl",
             "fuzz",
+            "-Mmainaflfuzzer",
             "-iafl_workspace",
             "-oafl_workspace",
+            "-Fshared_corpus",
             "./afl_target/debug/ziggy-example",
         ])
         .env("AFL_BENCH_UNTIL_CRASH", "true")
@@ -129,7 +135,7 @@ fn fuzz_command() {
         .args(&["hfuzz", "run", "ziggy-example"])
         .env("RUSTFLAGS", "-Znew-llvm-pass-manager=no")
         .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz --offline")
-        .env("HFUZZ_RUN_ARGS", "--exit_upon_crash")
+        .env("HFUZZ_RUN_ARGS", "--exit_upon_crash -ishared_corpus")
         .stderr(File::create("hfuzz.log").unwrap())
         .stdout(File::create("hfuzz.log").unwrap())
         .spawn()
