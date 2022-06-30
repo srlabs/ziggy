@@ -150,10 +150,10 @@ fn launch_fuzzers(
     // TODO loop over fuzzer config objects
 
     let _ = process::Command::new("mkdir")
-        .arg("./shared_corpus")
+        .arg(shared_corpus)
         .stderr(process::Stdio::piped())
         .spawn()
-        .expect("Error creating shared_corpus directory")
+        .expect(&format!("Error creating {shared_corpus} directory"))
         .wait()
         .unwrap();
 
