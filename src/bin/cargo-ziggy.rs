@@ -17,7 +17,7 @@ use std::{
 // Half an hour, like in clusterfuzz
 // See https://github.com/google/clusterfuzz/blob/52f28f83a0422e9a7026a215732876859e4b267b/src/clusterfuzz/_internal/bot/fuzzers/afl/launcher.py#L54-L56
 #[cfg(feature = "cli")]
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const DEFAULT_TIMEOUT: &str = "1800";
 
 #[cfg(feature = "cli")]
 const DEFAULT_CORPUS: &str = "./shared_corpus/";
@@ -47,27 +47,24 @@ pub fn cli() -> Command<'static> {
                         clap::Arg::new("corpus")
                             .short('c')
                             .long("corpus")
-                            .takes_value(true)
                             .value_name("DIR")
+                            .default_value(DEFAULT_CORPUS)
                             .help("Shared corpus directory"),
                     )
                     .arg(
                         clap::Arg::new("min")
                             .short('m')
                             .long("minimization-timeout")
-                            .takes_value(true)
                             .value_name("SECS")
-                            .value_parser(clap::value_parser!(usize))
+                            .default_value(DEFAULT_TIMEOUT)
                             .help("Timeout before shared corpus minimization"),
                     )
                     .arg(
                         clap::Arg::new("threads")
                             .short('t')
                             .long("threads-multiplier")
-                            .takes_value(true)
                             .value_name("NUM")
-                            .value_parser(clap::value_parser!(usize))
-                            // .default_value("1")
+                            .default_value("1")
                             .help(
                                 "Number of threads per fuzzer (total CPU usage will be 3xNUM CPUs)",
                             ),
@@ -232,7 +229,7 @@ fn fuzz_command(args: &clap::ArgMatches) {
                     .expect("could not parse minimization timeout"),
             )
         })
-        .unwrap_or(DEFAULT_TIMEOUT);
+        .expect("could not parse minimization timeout");
     let threads_mult = args.value_of("threads").unwrap_or("1");
 
     let mut processes = launch_fuzzers(target, corpus, threads_mult, minimization_timeout);
