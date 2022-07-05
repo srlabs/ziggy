@@ -141,84 +141,133 @@ fn main() {
 fn launch_fuzzers(
     target: &str,
     shared_corpus: &str,
-    threads_mult: &str,
+    threads_mult: usize,
     minimization_timeout: Duration,
 ) -> Vec<process::Child> {
     // TODO loop over fuzzer config objects
+
+    let mut fuzzer_handles = vec![];
 
     let _ = process::Command::new("mkdir")
         .arg(shared_corpus)
         .stderr(process::Stdio::piped())
         .spawn()
-        .expect(&format!("Error creating {shared_corpus} directory"))
+        .expect("error creating shared corpus directory")
         .wait()
         .unwrap();
 
-    let libfuzzer_handle = process::Command::new(format!("./libfuzzer_target/debug/{target}"))
-        .args(&[
-            shared_corpus,
-            "--",
-            &format!("-artifact_prefix=./{shared_corpus}/"),
-            &format!("-jobs={threads_mult}"),
-        ])
-        .stdout(File::create("libfuzzer.log").unwrap())
-        .stderr(File::create("libfuzzer.log").unwrap())
-        .spawn()
-        .expect("error starting libfuzzer fuzzer");
-    println!("{} libfuzzer", style("launched").green());
+    fuzzer_handles.push(
+        process::Command::new(format!("./libfuzzer_target/debug/{target}"))
+            .args(&[
+                shared_corpus,
+                "--",
+                &format!("-artifact_prefix=./{shared_corpus}/"),
+                &format!("-jobs={threads_mult}"),
+            ])
+            .stdout(File::create("libfuzzer.log").unwrap())
+            .stderr(File::create("libfuzzer.log").unwrap())
+            .spawn()
+            .expect("error starting libfuzzer fuzzer"),
+    );
+
+    println!("{} libfuzzer          ", style("launched").green());
 
     let _ = process::Command::new("mkdir")
         .arg("./afl_workspace")
         .stderr(process::Stdio::piped())
         .spawn()
-        .expect("Error creating afl_workspace directory")
+        .expect("error creating afl_workspace directory")
         .wait()
         .unwrap();
 
-    // TODO make it so that you don't have to `cargo install afl`
-    // TODO launch threads_mult processes, one being main and the rest secondary
-    let afl_handle = process::Command::new("cargo")
-        .args(&[
-            "afl",
-            "fuzz",
-            "-Mmainaflfuzzer",
-            &format!("-i{shared_corpus}"),
-            "-oafl_workspace",
-            &format!("-F{shared_corpus}"),
-            &format!("-V{}", minimization_timeout.as_secs()),
-            &format!("./afl_target/debug/{target}"),
-        ])
-        .env("AFL_BENCH_UNTIL_CRASH", "true")
-        .env("AFL_STATSD", "true")
-        .env("AFL_AUTORESUME", "1")
-        .stdout(File::create("afl.log").unwrap())
-        .stderr(File::create("afl.log").unwrap())
-        .spawn()
-        .expect("error starting afl fuzzer");
-    println!("{} afl", style("launched").green());
+    // https://aflplus.plus/docs/fuzzing_in_depth/#c-using-multiple-cores
+    let afl_modes = vec!["fast", "explore", "coe", "lin", "quad", "exploit", "rare"];
+    // TODO install afl if it's not already present
+    for thread_num in 0..threads_mult {
+        // We set the fuzzer name, and if it's the main or a secondary fuzzer
+        let fuzzer_name = match thread_num {
+            0 => String::from("-Mmainaflfuzzer"),
+            n => format!("-Ssecondaryfuzzer{}", n),
+        };
+        let use_shared_corpus = match thread_num {
+            0 => format!("-F{shared_corpus}"),
+            _ => String::new(),
+        };
+        // A quarter of secondary fuzzers have the MOpt mutator enabled
+        let mopt_mutator = match thread_num % 4 {
+            1 => "-L0",
+            _ => "",
+        };
+        // Power schedule
+        let power_schedule = afl_modes.get(thread_num % afl_modes.len()).unwrap();
+        // Old queue cycling
+        let old_queue_cycling = match thread_num % 10 {
+            9 => "-Z",
+            _ => "",
+        };
+        // Banner to differentiate the statsd output
+        let banner = match thread_num {
+            0 => "-Tmain_fuzzer",
+            _ => "",
+        };
 
-    // TODO make it so that you don't have to `cargo install honggfuzz`
-    let hfuzz_handle = process::Command::new("cargo")
-        .args(&["hfuzz", "run", target])
-        .env("RUSTFLAGS", "-Znew-llvm-pass-manager=no")
-        .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
-        .env(
-            "HFUZZ_RUN_ARGS",
-            format!("--exit_upon_crash -i{} -n{}", shared_corpus, threads_mult),
+        fuzzer_handles.push(
+            process::Command::new("cargo")
+                .args(
+                    [
+                        "afl",
+                        "fuzz",
+                        &fuzzer_name,
+                        &format!("-i{shared_corpus}"),
+                        &format!("-p{power_schedule}"),
+                        "-oafl_workspace",
+                        banner,
+                        &use_shared_corpus,
+                        &format!("-V{}", minimization_timeout.as_secs()),
+                        old_queue_cycling,
+                        mopt_mutator,
+                        &format!("./afl_target/debug/{target}"),
+                    ]
+                    .iter()
+                    .filter(|a| a != &&""),
+                )
+                .env("AFL_BENCH_UNTIL_CRASH", "1")
+                .env("AFL_STATSD", "1")
+                .env("AFL_STATSD_TAGS_FLAVOR", "dogstatsd")
+                .env("AFL_AUTORESUME", "1")
+                .env("AFL_TESTCACHE_SIZE", "100")
+                .env("AFL_CMPLOG_ONLY_NEW", "1")
+                .env("AFL_FAST_CAL", "1")
+                .stdout(File::create(&format!("afl_{thread_num}.log")).unwrap())
+                .stderr(File::create(&format!("afl_{thread_num}.log")).unwrap())
+                .spawn()
+                .expect("error starting afl fuzzer"),
         )
-        .stderr(File::create("hfuzz.log").unwrap())
-        .stdout(File::create("hfuzz.log").unwrap())
-        .spawn()
-        .expect("error starting libfuzzer fuzzer");
-    println!("{} honggfuzz", style("launched").green());
+    }
+    println!("{} afl           ", style("launched").green());
 
-    vec![libfuzzer_handle, afl_handle, hfuzz_handle]
+    // TODO install honggfuzz if it's not already present
+    fuzzer_handles.push(
+        process::Command::new("cargo")
+            .args(&["hfuzz", "run", target])
+            .env("RUSTFLAGS", "-Znew-llvm-pass-manager=no")
+            .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
+            .env(
+                "HFUZZ_RUN_ARGS",
+                format!("--exit_upon_crash -i{} -n{}", shared_corpus, threads_mult),
+            )
+            .stderr(File::create("hfuzz.log").unwrap())
+            .stdout(File::create("hfuzz.log").unwrap())
+            .spawn()
+            .expect("error starting libfuzzer fuzzer"),
+    );
+    println!("{} honggfuzz              ", style("launched").green());
+
+    fuzzer_handles
 }
 
 #[cfg(feature = "cli")]
 fn fuzz_command(args: &clap::ArgMatches) {
-    use std::os::unix::prelude::ExitStatusExt;
-
     let target = args.value_of("target").expect("Could not parse target");
     let corpus = args.value_of("corpus").unwrap_or(DEFAULT_CORPUS);
     let minimization_timeout = args
@@ -230,7 +279,11 @@ fn fuzz_command(args: &clap::ArgMatches) {
             )
         })
         .expect("could not parse minimization timeout");
-    let threads_mult = args.value_of("threads").unwrap_or("1");
+    let threads_mult = args
+        .value_of("threads")
+        .unwrap_or("1")
+        .parse::<usize>()
+        .expect("could not parse threads multipier");
 
     let mut processes = launch_fuzzers(target, corpus, threads_mult, minimization_timeout);
 
@@ -248,7 +301,7 @@ fn fuzz_command(args: &clap::ArgMatches) {
     // We connect to the afl statsd socket
     let socket = UdpSocket::bind(("127.0.0.1", 8125)).unwrap();
     socket.set_nonblocking(true).unwrap();
-    let mut buf = [0; 1024];
+    let mut buf = [0; 4096];
 
     let mut last_merge = Instant::now();
 
@@ -257,7 +310,7 @@ fn fuzz_command(args: &clap::ArgMatches) {
         thread::sleep(thirty_fps);
 
         // We retrieve the total_edged value from the fuzzer_stats file
-        if total_edges == "" {
+        if total_edges.is_empty() {
             if let Ok(file) = File::open("./afl_workspace/mainaflfuzzer/fuzzer_stats") {
                 total_edges = String::from(
                     BufReader::new(file)
@@ -275,11 +328,13 @@ fn fuzz_command(args: &clap::ArgMatches) {
             let mut v: Vec<u8> = Vec::new();
             v.extend_from_slice(&buf[0..amt]);
 
-            for msg in String::from_utf8(v).unwrap().split_terminator("\n") {
-                if msg.contains("corpus_count") {
-                    corpus_count = String::from(msg[21..].trim_end_matches("|g"));
+            for msg in String::from_utf8(v).unwrap().split_terminator('\n') {
+                if !msg.contains("main_fuzzer") {
+                    break;
+                } else if msg.contains("corpus_count") {
+                    corpus_count = String::from(msg[21..].split('|').next().unwrap_or_default());
                 } else if msg.contains("edges_found") {
-                    edges_found = String::from(msg[20..].trim_end_matches("|g"));
+                    edges_found = String::from(msg[20..].split('|').next().unwrap_or_default());
                 }
             }
 
@@ -314,8 +369,7 @@ fn fuzz_command(args: &clap::ArgMatches) {
             term.move_cursor_up(3).unwrap();
 
             for mut process in processes {
-                process.kill().unwrap_or_default();
-                process.wait().unwrap_or(process::ExitStatus::from_raw(0));
+                process.kill().unwrap();
             }
 
             term.write_line("now running minimization            ")
