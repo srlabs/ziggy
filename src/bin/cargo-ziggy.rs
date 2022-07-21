@@ -7,6 +7,7 @@ use clap::Command;
 use console::{style, Term};
 #[cfg(feature = "cli")]
 use std::{
+    env,
     fs::{self, File},
     io::{BufRead, BufReader},
     net::UdpSocket,
@@ -79,7 +80,8 @@ pub fn cli() -> Command<'static> {
                             .required(true)
                             .help("Target to use"),
                     )
-                    .arg(clap::Arg::new("corpus").help("Corpus directory to minimize")),
+                    .arg(clap::Arg::new("input-corpus").help("Corpus directory to minimize"))
+                    .arg(clap::Arg::new("output-corpus").help("Output directory")),
             )
             .subcommand(
                 Command::new("run")
@@ -114,8 +116,9 @@ fn main() {
             }
             Some(("minimize", args)) => {
                 let target = args.value_of("target").expect("Could not parse target");
-                let corpus = args.value_of("corpus").unwrap_or(DEFAULT_CORPUS);
-                minimize_corpus(target, corpus);
+                let input_corpus = args.value_of("input-corpus").unwrap_or(DEFAULT_CORPUS);
+                let output_corpus = args.value_of("output-corpus").unwrap_or("minimized_corpus");
+                minimize_corpus(target, input_corpus, output_corpus);
             }
             Some(("clean", _)) => {
                 let _ = process::Command::new("rm")
@@ -378,12 +381,41 @@ fn fuzz_command(args: &clap::ArgMatches) {
                 .unwrap();
             term.write_line("     please hold on                 ")
                 .unwrap();
-            let old_corpus_size = fs::read_dir(corpus).unwrap().count();
+
+            process::Command::new("mv")
+                .args(&[corpus, "./main_corpus"])
+                .output()
+                .expect("could not move shared_corpus to main_corpus directory");
+
+            use glob::glob;
+
+            for input in glob("./afl_workspace/**/queue/*").expect("failed to read glob pattern") {
+                if let Ok(path) = input {
+                    if path.is_file() {
+                        fs::copy(
+                            path.to_str().unwrap(),
+                            format!(
+                                "./main_corpus/{}",
+                                path.file_name().unwrap().to_str().unwrap()
+                            ),
+                        )
+                        .unwrap();
+                    }
+                }
+            }
+
+            let old_corpus_size = fs::read_dir("./main_corpus").unwrap().count();
 
             // TODO Can we run minimization + coverage report at the same time?
-            minimize_corpus(target, corpus);
+            minimize_corpus(target, "./main_corpus", corpus);
 
             let new_corpus_size = fs::read_dir(corpus).unwrap().count();
+
+            process::Command::new("rm")
+                .args(&["-r", "./main_corpus"])
+                .output()
+                .expect("could not remove main_corpus");
+
             term.move_cursor_up(3).unwrap();
             println!(
                 "{} the corpus : {} -> {} files             ",
@@ -410,7 +442,26 @@ fn fuzz_command(args: &clap::ArgMatches) {
 }
 
 #[cfg(feature = "cli")]
-fn minimize_corpus(target: &str, corpus: &str) {
+fn minimize_corpus(target: &str, input_corpus: &str, output_corpus: &str) {
+    // AFL++ minimization
+    process::Command::new("cargo")
+        .args(&[
+            "afl",
+            "cmin",
+            &format!("-i{input_corpus}"),
+            &format!("-o{output_corpus}"),
+            "--",
+            &format!("./afl_target/debug/{target}"),
+        ])
+        .stderr(File::create("minimization.log").unwrap())
+        .stdout(File::create("minimization.log").unwrap())
+        .spawn()
+        .expect("error launching corpus minimization")
+        .wait()
+        .expect("error waiting for corpus minimization");
+
+    /*
+    // HONGGFUZZ minimization
     process::Command::new("cargo")
         .args(&["hfuzz", "run", target])
         .env("RUSTFLAGS", "-Znew-llvm-pass-manager=no")
@@ -422,6 +473,7 @@ fn minimize_corpus(target: &str, corpus: &str) {
         .expect("error launching corpus minimization")
         .wait()
         .expect("error waiting for corpus minimization");
+    */
 }
 
 #[cfg(feature = "cli")]
