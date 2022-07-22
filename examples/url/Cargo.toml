@@ -1,8 +1,10 @@
 [package]
-name = "ziggy-example"
+name = "url-fuzz"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# This git revision has an easy to find crash
 url = { git = "https://github.com/servo/rust-url", rev = "bfa167b4e0253642b6766a7aa74a99df60a94048" }
-ziggy = { path = "../" }
+# url = "2.2.2"
+ziggy = { path = "../../" }

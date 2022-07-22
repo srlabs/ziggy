@@ -85,7 +85,13 @@ pub fn cli() -> Command<'static> {
             )
             .subcommand(
                 Command::new("run")
-                    .about("Run a specific input or a directory of inputs to analyze backtrace"),
+                    .about("Run a specific input or a directory of inputs to analyze backtrace")
+                    .arg(
+                        clap::Arg::new("target")
+                            .required(true)
+                            .help("Target to use"),
+                    )
+                    .arg(clap::Arg::new("inputs").help("Input directory or file to run")),
             )
             .subcommand(Command::new("build").about("Build the fuzzer and the runner binaries"))
             .subcommand(Command::new("clean").about("Clean the target directories")),
@@ -108,8 +114,10 @@ fn main() {
             Some(("init", _)) => {
                 todo!();
             }
-            Some(("run", _)) => {
-                todo!();
+            Some(("run", args)) => {
+                let target = args.value_of("target").expect("Could not parse target");
+                let inputs = args.value_of("inputs").unwrap_or(DEFAULT_CORPUS);
+                run_inputs(target, inputs);
             }
             Some(("build", _)) => {
                 build_command();
@@ -439,6 +447,16 @@ fn fuzz_command(args: &clap::ArgMatches) {
         style("finished").cyan()
     ))
     .unwrap();
+}
+
+#[cfg(feature = "cli")]
+fn run_inputs(target: &str, inputs: &str) {
+    process::Command::new(format!("./libfuzzer_target/debug/{target}"))
+        .arg(inputs)
+        .spawn()
+        .expect("error starting libfuzzer runner")
+        .wait()
+        .expect("error during libfuzzer run");
 }
 
 #[cfg(feature = "cli")]

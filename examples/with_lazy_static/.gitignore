@@ -1,0 +1,6 @@
+*_target
+*_workspace
+*.log
+shared_corpus
+main_corpus
+crash-*

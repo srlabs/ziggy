@@ -24,13 +24,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "ziggy"
-version = "0.1.0"
-
-[[package]]
-name = "ziggy-example"
+name = "url-fuzz"
 version = "0.1.0"
 dependencies = [
  "url",
  "ziggy",
 ]
+
+[[package]]
+name = "ziggy"
+version = "0.1.0"

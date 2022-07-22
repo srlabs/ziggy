@@ -3,3 +3,4 @@
 *.log
 shared_corpus
 main_corpus
+crash-*
