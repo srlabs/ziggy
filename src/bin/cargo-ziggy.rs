@@ -94,7 +94,6 @@ pub fn cli() -> Command<'static> {
                     .arg(clap::Arg::new("inputs").help("Input directory or file to run")),
             )
             .subcommand(Command::new("build").about("Build the fuzzer and the runner binaries"))
-            .subcommand(Command::new("clean").about("Clean the target directories")),
     )
 }
 
@@ -128,22 +127,6 @@ fn main() {
                 let output_corpus = args.value_of("output-corpus").unwrap_or("./output/minimized_corpus");
                 minimize_corpus(target, input_corpus, output_corpus);
             }
-            /*
-            Some(("clean", _)) => {
-                let _ = process::Command::new("rm")
-                    .args(&[
-                        "-rf",
-                        "./libfuzzer_target",
-                        "./afl_target",
-                        "./hfuzz_target",
-                        "./target",
-                    ])
-                    .spawn()
-                    .expect("Error removing target directories")
-                    .wait()
-                    .unwrap();
-            }
-            */
             _ => unreachable!(),
         },
         _ => unreachable!(),
