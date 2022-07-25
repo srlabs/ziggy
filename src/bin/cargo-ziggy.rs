@@ -453,6 +453,7 @@ fn fuzz_command(args: &clap::ArgMatches) {
 fn run_inputs(target: &str, inputs: &str) {
     process::Command::new(format!("./libfuzzer_target/debug/{target}"))
         .arg(inputs)
+        .env("RUST_BACKTRACE", "full")
         .spawn()
         .expect("error starting libfuzzer runner")
         .wait()
