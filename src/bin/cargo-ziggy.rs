@@ -172,7 +172,7 @@ fn launch_fuzzers(
             .args(&[
                 shared_corpus,
                 "--",
-                &format!("-artifact_prefix=./{shared_corpus}/"),
+                &format!("-artifact_prefix={shared_corpus}/"),
                 &format!("-jobs={threads_mult}"),
             ])
             .stdout(File::create("libfuzzer.log").unwrap())
