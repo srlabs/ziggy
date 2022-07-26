@@ -376,7 +376,7 @@ fn fuzz_command(args: &clap::ArgMatches) {
             term.move_cursor_up(3).unwrap();
 
             for mut process in processes {
-                process.kill().unwrap();
+                process.kill().unwrap_or_default();
             }
 
             term.write_line("now running minimization            ")
@@ -497,7 +497,7 @@ fn build_command() {
 
     let run = process::Command::new("cargo")
         .args(&["rustc", "--features=ziggy/libfuzzer-sys", "--target-dir=target/libfuzzer"])
-        .env("RUSTFLAGS", " -Cpasses=sancov -Cllvm-args=-sanitizer-coverage-level=3 -Cllvm-args=-sanitizer-coverage-inline-8bit-counters -Zsanitizer=address -Znew-llvm-pass-manager=no")
+        .env("RUSTFLAGS", "-Cpasses=sancov-module -Zsanitizer=address -Cllvm-args=-sanitizer-coverage-level=4 -Cllvm-args=-sanitizer-coverage-inline-8bit-counters -Cllvm-args=-sanitizer-coverage-pc-table") 
         .spawn()
         .expect("error starting libfuzzer build")
         .wait()
