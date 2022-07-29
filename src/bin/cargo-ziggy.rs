@@ -143,7 +143,7 @@ fn launch_fuzzers(
     shared_corpus: &str,
     threads_mult: usize,
     minimization_timeout: Duration,
-) -> Result<Vec<process::Child>, Box<dyn Error>> {
+) -> Result<(Vec<process::Child>, u16), Box<dyn Error>> {
     // TODO loop over fuzzer config objects
 
     let mut fuzzer_handles = vec![];
@@ -191,6 +191,12 @@ fn launch_fuzzers(
 
     // https://aflplus.plus/docs/fuzzing_in_depth/#c-using-multiple-cores
     let afl_modes = vec!["fast", "explore", "coe", "lin", "quad", "exploit", "rare"];
+
+    let mut statsd_port = 8125;
+    while UdpSocket::bind(("127.0.0.1", statsd_port)).is_err() {
+        statsd_port += 1;
+    }
+
     // TODO install afl if it's not already present
     for thread_num in 0..threads_mult {
         // We set the fuzzer name, and if it's the main or a secondary fuzzer
@@ -245,6 +251,7 @@ fn launch_fuzzers(
                 .env("AFL_BENCH_UNTIL_CRASH", "1")
                 .env("AFL_STATSD", "1")
                 .env("AFL_STATSD_TAGS_FLAVOR", "dogstatsd")
+                .env("AFL_STATSD_PORT", format!("{statsd_port}"))
                 .env("AFL_AUTORESUME", "1")
                 .env("AFL_TESTCACHE_SIZE", "100")
                 .env("AFL_CMPLOG_ONLY_NEW", "1")
@@ -274,7 +281,7 @@ fn launch_fuzzers(
     );
     println!("{} honggfuzz              ", style("launched").green());
 
-    Ok(fuzzer_handles)
+    Ok((fuzzer_handles, statsd_port))
 }
 
 #[cfg(feature = "cli")]
@@ -297,7 +304,7 @@ fn fuzz_command(args: &clap::ArgMatches) -> Result<(), Box<dyn Error>> {
         .parse::<usize>()
         .map_err(|_| "could not parse threads multipier")?;
 
-    let mut processes = launch_fuzzers(target, corpus, threads_mult, minimization_timeout)?;
+    let (mut processes, statsd_port) = launch_fuzzers(target, corpus, threads_mult, minimization_timeout)?;
 
     let term = Term::stdout();
     term.write_line(&style("afl++ stats").yellow().to_string())?;
@@ -310,7 +317,7 @@ fn fuzz_command(args: &clap::ArgMatches) -> Result<(), Box<dyn Error>> {
     let mut total_edges = String::new();
 
     // We connect to the afl statsd socket
-    let socket = UdpSocket::bind(("127.0.0.1", 8125))?;
+    let socket = UdpSocket::bind(("127.0.0.1", statsd_port))?;
     socket.set_nonblocking(true)?;
     let mut buf = [0; 4096];
 
@@ -431,7 +438,7 @@ fn fuzz_command(args: &clap::ArgMatches) -> Result<(), Box<dyn Error>> {
             );
 
             last_merge = Instant::now();
-            processes = launch_fuzzers(target, corpus, threads_mult, minimization_timeout)?;
+            (processes, _) = launch_fuzzers(target, corpus, threads_mult, minimization_timeout)?;
 
             term.write_line(&style("afl++ stats").yellow().to_string())?;
             term.write_line("...")?;
