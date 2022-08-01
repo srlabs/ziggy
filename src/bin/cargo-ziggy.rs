@@ -304,7 +304,8 @@ fn fuzz_command(args: &clap::ArgMatches) -> Result<(), Box<dyn Error>> {
         .parse::<usize>()
         .map_err(|_| "could not parse threads multipier")?;
 
-    let (mut processes, statsd_port) = launch_fuzzers(target, corpus, threads_mult, minimization_timeout)?;
+    let (mut processes, statsd_port) =
+        launch_fuzzers(target, corpus, threads_mult, minimization_timeout)?;
 
     let term = Term::stdout();
     term.write_line(&style("afl++ stats").yellow().to_string())?;
@@ -382,15 +383,12 @@ fn fuzz_command(args: &clap::ArgMatches) -> Result<(), Box<dyn Error>> {
 
         // Every DEFAULT_TIMEOUT, we kill the fuzzers and minimize the shared corpus, before launching the fuzzers again
         if last_merge.elapsed() > minimization_timeout {
-            term.move_cursor_up(3)?;
-
             for mut process in processes {
-                process.kill().unwrap_or_default();
+                process.kill().ok();
+                process.wait().ok();
             }
 
-            term.write_line("now running minimization            ")?;
-            term.write_line("          ....                      ")?;
-            term.write_line("     please hold on                 ")?;
+            term.write_line("running minimization            ")?;
 
             process::Command::new("mv")
                 .args(&[corpus, "./output/main_corpus"])
@@ -417,25 +415,37 @@ fn fuzz_command(args: &clap::ArgMatches) -> Result<(), Box<dyn Error>> {
                 }
             }
 
-            let old_corpus_size = fs::read_dir("./output/main_corpus")?.count();
+            let old_corpus_size = fs::read_dir("./output/main_corpus")
+                .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
 
             // TODO Can we run minimization + coverage report at the same time?
-            minimize_corpus(target, "./output/main_corpus", corpus)?;
+            match minimize_corpus(target, "./output/main_corpus", corpus) {
+                Ok(_) => {
+                    let new_corpus_size = fs::read_dir(corpus)
+                        .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
 
-            let new_corpus_size = fs::read_dir(corpus)?.count();
+                    process::Command::new("rm")
+                        .args(&["-r", "./output/main_corpus"])
+                        .output()
+                        .map_err(|_| "could not remove main_corpus")?;
 
-            process::Command::new("rm")
-                .args(&["-r", "./output/main_corpus"])
-                .output()
-                .map_err(|_| "could not remove main_corpus")?;
+                    term.move_cursor_up(1)?;
+                    term.write_line(&format!(
+                        "{} the corpus : {} -> {} files             ",
+                        style("minimized").red(),
+                        old_corpus_size,
+                        new_corpus_size
+                    ))?;
+                }
+                Err(_) => {
+                    term.write_line("error running minimization... probably a memory error")?;
 
-            term.move_cursor_up(3)?;
-            println!(
-                "{} the corpus : {} -> {} files             ",
-                style("minimized").red(),
-                old_corpus_size,
-                new_corpus_size
-            );
+                    process::Command::new("mv")
+                        .args(&["./output/main_corpus", corpus])
+                        .output()
+                        .map_err(|_| "could not move main_corpus to shared_corpus directory")?;
+                }
+            }
 
             last_merge = Instant::now();
             (processes, _) = launch_fuzzers(target, corpus, threads_mult, minimization_timeout)?;
