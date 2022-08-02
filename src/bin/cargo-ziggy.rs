@@ -19,7 +19,11 @@ use std::{
 // Half an hour, like in clusterfuzz
 // See https://github.com/google/clusterfuzz/blob/52f28f83a0422e9a7026a215732876859e4b267b/src/clusterfuzz/_internal/bot/fuzzers/afl/launcher.py#L54-L56
 #[cfg(feature = "cli")]
-const DEFAULT_TIMEOUT: &str = "1800";
+const DEFAULT_MINIMIZATION_TIMEOUT: &str = "1800";
+
+// We give the fuzzers a few seconds to stop
+#[cfg(feature = "cli")]
+const SECONDS_SHAVED_OFF_FUZZER_RUN_TIME: u64 = 8;
 
 #[cfg(feature = "cli")]
 const DEFAULT_CORPUS: &str = "./output/shared_corpus/";
@@ -58,18 +62,25 @@ pub fn cli() -> Command<'static> {
                             .short('m')
                             .long("minimization-timeout")
                             .value_name("SECS")
-                            .default_value(DEFAULT_TIMEOUT)
+                            .default_value(DEFAULT_MINIMIZATION_TIMEOUT)
                             .help("Timeout before shared corpus minimization"),
                     )
                     .arg(
                         clap::Arg::new("threads")
-                            .short('t')
-                            .long("threads-multiplier")
+                            .short('n')
+                            .long("threads")
                             .value_name("NUM")
                             .default_value("1")
                             .help(
                                 "Number of threads per fuzzer (total CPU usage will be 3xNUM CPUs)",
                             ),
+                    )
+                    .arg(
+                        clap::Arg::new("timeout")
+                            .short('t')
+                            .long("timeout")
+                            .value_name("SECS")
+                            .help("Timeout for a single run"),
                     ),
             )
             .subcommand(Command::new("init").about("Create a new fuzzing target"))
@@ -143,6 +154,7 @@ fn launch_fuzzers(
     shared_corpus: &str,
     threads_mult: usize,
     minimization_timeout: Duration,
+    timeout: Option<&str>,
 ) -> Result<(Vec<process::Child>, u16), Box<dyn Error>> {
     // TODO loop over fuzzer config objects
 
@@ -160,21 +172,35 @@ fn launch_fuzzers(
         .spawn()?
         .wait()?;
 
+    let timeout_option = match timeout {
+        Some(t) => format!("-timeout={t}"),
+        None => String::new(),
+    };
+
     fuzzer_handles.push(
         process::Command::new(fs::canonicalize(format!(
             "./target/libfuzzer/debug/{target}"
         ))?)
-        .args(&[
-            fs::canonicalize(shared_corpus)?
-                .to_str()
-                .ok_or("could not parse shared corpus path")?,
-            "--",
-            &format!(
-                "-artifact_prefix={}/",
-                fs::canonicalize(shared_corpus)?.display()
-            ),
-            &format!("-jobs={threads_mult}"),
-        ])
+        .args(
+            [
+                fs::canonicalize(shared_corpus)?
+                    .to_str()
+                    .ok_or("could not parse shared corpus path")?,
+                "--",
+                &format!(
+                    "-artifact_prefix={}/",
+                    fs::canonicalize(shared_corpus)?.display()
+                ),
+                &format!("-jobs={threads_mult}"),
+                &format!(
+                    "-max_total_time={}",
+                    minimization_timeout.as_secs() - SECONDS_SHAVED_OFF_FUZZER_RUN_TIME
+                ),
+                &timeout_option,
+            ]
+            .iter()
+            .filter(|a| a != &&""),
+        )
         .current_dir("./output/libfuzzer")
         .stdout(File::create("./output/libfuzzer.log")?)
         .stderr(File::create("./output/libfuzzer.log")?)
@@ -228,6 +254,11 @@ fn launch_fuzzers(
             _ => "",
         };
 
+        let timeout_option = match timeout {
+            Some(t) => format!("-t{t}"),
+            None => String::new(),
+        };
+
         fuzzer_handles.push(
             process::Command::new("cargo")
                 .args(
@@ -240,9 +271,13 @@ fn launch_fuzzers(
                         "-ooutput/afl",
                         banner,
                         &use_shared_corpus,
-                        &format!("-V{}", minimization_timeout.as_secs()),
+                        &format!(
+                            "-V{}",
+                            minimization_timeout.as_secs() - SECONDS_SHAVED_OFF_FUZZER_RUN_TIME
+                        ),
                         old_queue_cycling,
                         mopt_mutator,
+                        &timeout_option,
                         &format!("./target/afl/debug/{target}"),
                     ]
                     .iter()
@@ -273,7 +308,7 @@ fn launch_fuzzers(
             .env("HFUZZ_WORKSPACE", "./output/honggfuzz")
             .env(
                 "HFUZZ_RUN_ARGS",
-                format!("--exit_upon_crash -i{shared_corpus} -n{threads_mult}"),
+                format!("--run_time={} --exit_upon_crash -i{shared_corpus} -n{threads_mult} {timeout_option}", minimization_timeout.as_secs() - SECONDS_SHAVED_OFF_FUZZER_RUN_TIME),
             )
             .stderr(File::create("./output/honggfuzz.log")?)
             .stdout(File::create("./output/honggfuzz.log")?)
@@ -304,8 +339,11 @@ fn fuzz_command(args: &clap::ArgMatches) -> Result<(), Box<dyn Error>> {
         .parse::<usize>()
         .map_err(|_| "could not parse threads multipier")?;
 
+    // Timeout can be undefined, so we keep a Result here
+    let timeout = args.value_of("timeout");
+
     let (mut processes, statsd_port) =
-        launch_fuzzers(target, corpus, threads_mult, minimization_timeout)?;
+        launch_fuzzers(target, corpus, threads_mult, minimization_timeout, timeout)?;
 
     let term = Term::stdout();
     term.write_line(&style("afl++ stats").yellow().to_string())?;
@@ -381,7 +419,7 @@ fn fuzz_command(args: &clap::ArgMatches) -> Result<(), Box<dyn Error>> {
             break;
         }
 
-        // Every DEFAULT_TIMEOUT, we kill the fuzzers and minimize the shared corpus, before launching the fuzzers again
+        // Every DEFAULT_MINIMIZATION_TIMEOUT, we kill the fuzzers and minimize the shared corpus, before launching the fuzzers again
         if last_merge.elapsed() > minimization_timeout {
             for mut process in processes {
                 process.kill().ok();
@@ -448,7 +486,8 @@ fn fuzz_command(args: &clap::ArgMatches) -> Result<(), Box<dyn Error>> {
             }
 
             last_merge = Instant::now();
-            (processes, _) = launch_fuzzers(target, corpus, threads_mult, minimization_timeout)?;
+            (processes, _) =
+                launch_fuzzers(target, corpus, threads_mult, minimization_timeout, timeout)?;
 
             term.write_line(&style("afl++ stats").yellow().to_string())?;
             term.write_line("...")?;
