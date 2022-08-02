@@ -555,9 +555,15 @@ fn minimize_corpus(
 fn build_command() -> Result<(), Box<dyn Error>> {
     // TODO loop over fuzzer config objects
 
+    let libfuzzer_rustflags = env::var("LIBFUZZER_RUSTFLAGS").unwrap_or_else(|_| String::from("-Cpasses=sancov-module -Zsanitizer=address -Cllvm-args=-sanitizer-coverage-level=4 -Cllvm-args=-sanitizer-coverage-inline-8bit-counters -Cllvm-args=-sanitizer-coverage-pc-table"));
+
     let run = process::Command::new("cargo")
-        .args(&["rustc", "--features=ziggy/libfuzzer-sys", "--target-dir=target/libfuzzer"])
-        .env("RUSTFLAGS", "-Cpasses=sancov-module -Zsanitizer=address -Cllvm-args=-sanitizer-coverage-level=4 -Cllvm-args=-sanitizer-coverage-inline-8bit-counters -Cllvm-args=-sanitizer-coverage-pc-table") 
+        .args(&[
+            "rustc",
+            "--features=ziggy/libfuzzer-sys",
+            "--target-dir=target/libfuzzer",
+        ])
+        .env("RUSTFLAGS", libfuzzer_rustflags)
         .spawn()?
         .wait()?;
 
