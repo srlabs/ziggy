@@ -81,6 +81,13 @@ pub fn cli() -> Command<'static> {
                             .long("timeout")
                             .value_name("SECS")
                             .help("Timeout for a single run"),
+                    )
+                    .arg(
+                        clap::Arg::new("dictionary")
+                            .short('x')
+                            .long("dict")
+                            .value_name("FILE")
+                            .help("Dictionary file (format:http://llvm.org/docs/LibFuzzer.html#dictionaries)"),
                     ),
             )
             .subcommand(Command::new("init").about("Create a new fuzzing target"))
@@ -155,6 +162,7 @@ fn launch_fuzzers(
     threads_mult: usize,
     minimization_timeout: Duration,
     timeout: Option<&str>,
+    dictionary: Option<&str>,
 ) -> Result<(Vec<process::Child>, u16), Box<dyn Error>> {
     // TODO loop over fuzzer config objects
 
@@ -174,6 +182,11 @@ fn launch_fuzzers(
 
     let timeout_option = match timeout {
         Some(t) => format!("-timeout={t}"),
+        None => String::new(),
+    };
+
+    let dictionary_option = match dictionary {
+        Some(d) => format!("-dict{}", d),
         None => String::new(),
     };
 
@@ -197,6 +210,7 @@ fn launch_fuzzers(
                     minimization_timeout.as_secs() - SECONDS_SHAVED_OFF_FUZZER_RUN_TIME
                 ),
                 &timeout_option,
+                &dictionary_option,
             ]
             .iter()
             .filter(|a| a != &&""),
@@ -259,6 +273,11 @@ fn launch_fuzzers(
             None => String::new(),
         };
 
+        let dictionary_option = match dictionary {
+            Some(d) => format!("-x{}", d),
+            None => String::new(),
+        };
+
         fuzzer_handles.push(
             process::Command::new("cargo")
                 .args(
@@ -278,6 +297,7 @@ fn launch_fuzzers(
                         old_queue_cycling,
                         mopt_mutator,
                         &timeout_option,
+                        &dictionary_option,
                         &format!("./target/afl/debug/{target}"),
                     ]
                     .iter()
@@ -299,6 +319,11 @@ fn launch_fuzzers(
     }
     println!("{} afl           ", style("launched").green());
 
+    let dictionary_option = match dictionary {
+        Some(d) => format!("-w{}", d),
+        None => String::new(),
+    };
+
     // TODO install honggfuzz if it's not already present
     fuzzer_handles.push(
         process::Command::new("cargo")
@@ -309,7 +334,7 @@ fn launch_fuzzers(
             .env("HFUZZ_WORKSPACE", "./output/honggfuzz")
             .env(
                 "HFUZZ_RUN_ARGS",
-                format!("--run_time={} --exit_upon_crash -i{shared_corpus} -n{threads_mult} {timeout_option}", minimization_timeout.as_secs() - SECONDS_SHAVED_OFF_FUZZER_RUN_TIME),
+                format!("--run_time={} --exit_upon_crash -i{shared_corpus} -n{threads_mult} {timeout_option} {dictionary_option}", minimization_timeout.as_secs() - SECONDS_SHAVED_OFF_FUZZER_RUN_TIME),
             )
             .stderr(File::create("./output/honggfuzz.log")?)
             .stdout(File::create("./output/honggfuzz.log")?)
@@ -343,8 +368,17 @@ fn fuzz_command(args: &clap::ArgMatches) -> Result<(), Box<dyn Error>> {
     // Timeout can be undefined, so we keep a Result here
     let timeout = args.value_of("timeout");
 
-    let (mut processes, statsd_port) =
-        launch_fuzzers(target, corpus, threads_mult, minimization_timeout, timeout)?;
+    // Dictionary can be undefined, so we keep a Result here
+    let dictionary = args.value_of("dictionary");
+
+    let (mut processes, statsd_port) = launch_fuzzers(
+        target,
+        corpus,
+        threads_mult,
+        minimization_timeout,
+        timeout,
+        dictionary,
+    )?;
 
     let term = Term::stdout();
     term.write_line(&style("afl++ stats").yellow().to_string())?;
@@ -487,8 +521,14 @@ fn fuzz_command(args: &clap::ArgMatches) -> Result<(), Box<dyn Error>> {
             }
 
             last_merge = Instant::now();
-            (processes, _) =
-                launch_fuzzers(target, corpus, threads_mult, minimization_timeout, timeout)?;
+            (processes, _) = launch_fuzzers(
+                target,
+                corpus,
+                threads_mult,
+                minimization_timeout,
+                timeout,
+                dictionary,
+            )?;
 
             term.write_line(&style("afl++ stats").yellow().to_string())?;
             term.write_line("...")?;
