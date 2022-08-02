@@ -15,4 +15,5 @@ afl = { version = "0.12.4", optional = true }
 honggfuzz = { version = "0.5.54", optional = true }
 
 [features]
+default = ["cli"]
 cli = ["clap", "console", "glob"]
