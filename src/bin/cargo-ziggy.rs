@@ -237,6 +237,9 @@ fn launch_fuzzers(
         statsd_port += 1;
     }
 
+    // The cargo executable
+    let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
+
     // TODO install afl if it's not already present
     for thread_num in 0..threads_mult {
         // We set the fuzzer name, and if it's the main or a secondary fuzzer
@@ -279,7 +282,7 @@ fn launch_fuzzers(
         };
 
         fuzzer_handles.push(
-            process::Command::new("cargo")
+            process::Command::new(cargo.clone())
                 .args(
                     [
                         "afl",
@@ -326,7 +329,7 @@ fn launch_fuzzers(
 
     // TODO install honggfuzz if it's not already present
     fuzzer_handles.push(
-        process::Command::new("cargo")
+        process::Command::new(cargo)
             .args(&["hfuzz", "run", target])
             .env("RUSTFLAGS", "-Znew-llvm-pass-manager=no")
             .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
@@ -561,8 +564,10 @@ fn minimize_corpus(
     input_corpus: &str,
     output_corpus: &str,
 ) -> Result<(), Box<dyn Error>> {
+    // The cargo executable
+    let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
     // AFL++ minimization
-    process::Command::new("cargo")
+    process::Command::new(cargo)
         .args(&[
             "afl",
             "cmin",
@@ -579,7 +584,7 @@ fn minimize_corpus(
 
     /*
     // HONGGFUZZ minimization
-    process::Command::new("cargo")
+    process::Command::new(cargo)
         .args(&["hfuzz", "run", target])
         .env("RUSTFLAGS", "-Znew-llvm-pass-manager=no")
         .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
@@ -597,9 +602,12 @@ fn minimize_corpus(
 fn build_command() -> Result<(), Box<dyn Error>> {
     // TODO loop over fuzzer config objects
 
+    // The cargo executable
+    let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
+
     let libfuzzer_rustflags = env::var("LIBFUZZER_RUSTFLAGS").unwrap_or_else(|_| String::from("-Cpasses=sancov-module -Zsanitizer=address -Cllvm-args=-sanitizer-coverage-level=4 -Cllvm-args=-sanitizer-coverage-inline-8bit-counters -Cllvm-args=-sanitizer-coverage-pc-table"));
 
-    let run = process::Command::new("cargo")
+    let run = process::Command::new(cargo.clone())
         .args(&[
             "rustc",
             "--features=ziggy/libfuzzer-sys",
@@ -618,7 +626,7 @@ fn build_command() -> Result<(), Box<dyn Error>> {
 
     println!("{} libfuzzer and its target", style("built").blue());
 
-    let run = process::Command::new("cargo")
+    let run = process::Command::new(cargo.clone())
         .args(&[
             "afl",
             "build",
@@ -637,7 +645,7 @@ fn build_command() -> Result<(), Box<dyn Error>> {
 
     println!("{} afl and its target", style("built").blue());
 
-    let run = process::Command::new("cargo")
+    let run = process::Command::new(cargo)
         .args(&["hfuzz", "build"])
         .env("RUSTFLAGS", "-Znew-llvm-pass-manager=no")
         .env("CARGO_TARGET_DIR", "./target/honggfuzz")
