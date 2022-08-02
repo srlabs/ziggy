@@ -291,6 +291,7 @@ fn launch_fuzzers(
                 .env("AFL_TESTCACHE_SIZE", "100")
                 .env("AFL_CMPLOG_ONLY_NEW", "1")
                 .env("AFL_FAST_CAL", "1")
+                .env("AFL_MAP_SIZE", "10000000")
                 .stdout(File::create(&format!("output/afl_{thread_num}.log"))?)
                 .stderr(File::create(&format!("output/afl_{thread_num}.log"))?)
                 .spawn()?,
@@ -530,6 +531,7 @@ fn minimize_corpus(
             "--",
             &format!("./target/afl/debug/{target}"),
         ])
+        .env("AFL_MAP_SIZE", "10000000")
         .stderr(File::create("./output/minimization.log")?)
         .stdout(File::create("./output/minimization.log")?)
         .spawn()?
