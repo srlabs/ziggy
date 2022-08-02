@@ -66,13 +66,13 @@ pub fn cli() -> Command<'static> {
                             .help("Timeout before shared corpus minimization"),
                     )
                     .arg(
-                        clap::Arg::new("threads")
-                            .short('n')
-                            .long("threads")
+                        clap::Arg::new("jobs")
+                            .short('j')
+                            .long("jobs")
                             .value_name("NUM")
                             .default_value("1")
                             .help(
-                                "Number of threads per fuzzer (total CPU usage will be 3xNUM CPUs)",
+                                "Number of jobs per fuzzer (total CPU usage will be 3xNUM CPUs)",
                             ),
                     )
                     .arg(
@@ -159,7 +159,7 @@ fn main() {
 fn launch_fuzzers(
     target: &str,
     shared_corpus: &str,
-    threads_mult: usize,
+    jobs_mult: usize,
     minimization_timeout: Duration,
     timeout: Option<&str>,
     dictionary: Option<&str>,
@@ -204,7 +204,7 @@ fn launch_fuzzers(
                     "-artifact_prefix={}/",
                     fs::canonicalize(shared_corpus)?.display()
                 ),
-                &format!("-jobs={threads_mult}"),
+                &format!("-jobs={jobs_mult}"),
                 &format!(
                     "-max_total_time={}",
                     minimization_timeout.as_secs() - SECONDS_SHAVED_OFF_FUZZER_RUN_TIME
@@ -241,32 +241,32 @@ fn launch_fuzzers(
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
     // TODO install afl if it's not already present
-    for thread_num in 0..threads_mult {
+    for job_num in 0..jobs_mult{
         // We set the fuzzer name, and if it's the main or a secondary fuzzer
-        let fuzzer_name = match thread_num {
+        let fuzzer_name = match job_num {
             0 => String::from("-Mmainaflfuzzer"),
             n => format!("-Ssecondaryfuzzer{}", n),
         };
-        let use_shared_corpus = match thread_num {
+        let use_shared_corpus = match job_num {
             0 => format!("-F{shared_corpus}"),
             _ => String::new(),
         };
         // A quarter of secondary fuzzers have the MOpt mutator enabled
-        let mopt_mutator = match thread_num % 4 {
+        let mopt_mutator = match job_num % 4 {
             1 => "-L0",
             _ => "",
         };
         // Power schedule
         let power_schedule = afl_modes
-            .get(thread_num % afl_modes.len())
+            .get(job_num % afl_modes.len())
             .unwrap_or(&"fast");
         // Old queue cycling
-        let old_queue_cycling = match thread_num % 10 {
+        let old_queue_cycling = match job_num % 10 {
             9 => "-Z",
             _ => "",
         };
         // Banner to differentiate the statsd output
-        let banner = match thread_num {
+        let banner = match job_num {
             0 => "-Tmain_fuzzer",
             _ => "",
         };
@@ -315,8 +315,8 @@ fn launch_fuzzers(
                 .env("AFL_CMPLOG_ONLY_NEW", "1")
                 .env("AFL_FAST_CAL", "1")
                 .env("AFL_MAP_SIZE", "10000000")
-                .stdout(File::create(&format!("output/afl_{thread_num}.log"))?)
-                .stderr(File::create(&format!("output/afl_{thread_num}.log"))?)
+                .stdout(File::create(&format!("output/afl_{job_num}.log"))?)
+                .stderr(File::create(&format!("output/afl_{job_num}.log"))?)
                 .spawn()?,
         )
     }
@@ -337,7 +337,7 @@ fn launch_fuzzers(
             .env("HFUZZ_WORKSPACE", "./output/honggfuzz")
             .env(
                 "HFUZZ_RUN_ARGS",
-                format!("--run_time={} --exit_upon_crash -i{shared_corpus} -n{threads_mult} {timeout_option} {dictionary_option}", minimization_timeout.as_secs() - SECONDS_SHAVED_OFF_FUZZER_RUN_TIME),
+                format!("--run_time={} --exit_upon_crash -i{shared_corpus} -n{jobs_mult} {timeout_option} {dictionary_option}", minimization_timeout.as_secs() - SECONDS_SHAVED_OFF_FUZZER_RUN_TIME),
             )
             .stderr(File::create("./output/honggfuzz.log")?)
             .stdout(File::create("./output/honggfuzz.log")?)
@@ -362,11 +362,11 @@ fn fuzz_command(args: &clap::ArgMatches) -> Result<(), Box<dyn Error>> {
             .map_err(|_| "could not parse minimization timeout")?,
     );
 
-    let threads_mult = args
-        .value_of("threads")
+    let jobs_mult = args
+        .value_of("jobs")
         .unwrap_or("1")
         .parse::<usize>()
-        .map_err(|_| "could not parse threads multipier")?;
+        .map_err(|_| "could not parse jobs multipier")?;
 
     // Timeout can be undefined, so we keep a Result here
     let timeout = args.value_of("timeout");
@@ -377,7 +377,7 @@ fn fuzz_command(args: &clap::ArgMatches) -> Result<(), Box<dyn Error>> {
     let (mut processes, statsd_port) = launch_fuzzers(
         target,
         corpus,
-        threads_mult,
+        jobs_mult,
         minimization_timeout,
         timeout,
         dictionary,
@@ -527,7 +527,7 @@ fn fuzz_command(args: &clap::ArgMatches) -> Result<(), Box<dyn Error>> {
             (processes, _) = launch_fuzzers(
                 target,
                 corpus,
-                threads_mult,
+                jobs_mult,
                 minimization_timeout,
                 timeout,
                 dictionary,
