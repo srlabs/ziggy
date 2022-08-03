@@ -21,9 +21,9 @@ use std::{
 #[cfg(feature = "cli")]
 const DEFAULT_MINIMIZATION_TIMEOUT: &str = "1800";
 
-// We give the fuzzers a few seconds to stop
+// We want to make sure we don't mistake a minimization kill for a found crash
 #[cfg(feature = "cli")]
-const SECONDS_SHAVED_OFF_FUZZER_RUN_TIME: u64 = 8;
+const SECONDS_TO_WAIT_AFTER_KILL: u64 = 5;
 
 #[cfg(feature = "cli")]
 const DEFAULT_CORPUS: &str = "./output/shared_corpus/";
@@ -207,7 +207,7 @@ fn launch_fuzzers(
                 &format!("-jobs={jobs_mult}"),
                 &format!(
                     "-max_total_time={}",
-                    minimization_timeout.as_secs() - SECONDS_SHAVED_OFF_FUZZER_RUN_TIME
+                    minimization_timeout.as_secs() + SECONDS_TO_WAIT_AFTER_KILL
                 ),
                 &timeout_option,
                 &dictionary_option,
@@ -296,7 +296,7 @@ fn launch_fuzzers(
                         &use_shared_corpus,
                         &format!(
                             "-V{}",
-                            minimization_timeout.as_secs() - SECONDS_SHAVED_OFF_FUZZER_RUN_TIME
+                            minimization_timeout.as_secs() + SECONDS_TO_WAIT_AFTER_KILL
                         ),
                         old_queue_cycling,
                         mopt_mutator,
@@ -338,7 +338,7 @@ fn launch_fuzzers(
             .env("HFUZZ_WORKSPACE", "./output/honggfuzz")
             .env(
                 "HFUZZ_RUN_ARGS",
-                format!("--run_time={} --exit_upon_crash -i{shared_corpus} -n{jobs_mult} {timeout_option} {dictionary_option}", minimization_timeout.as_secs() - SECONDS_SHAVED_OFF_FUZZER_RUN_TIME),
+                format!("--run_time={} --exit_upon_crash -i{shared_corpus} -n{jobs_mult} {timeout_option} {dictionary_option}", minimization_timeout.as_secs() + SECONDS_TO_WAIT_AFTER_KILL),
             )
             .stderr(File::create("./output/honggfuzz.log")?)
             .stdout(File::create("./output/honggfuzz.log")?)
