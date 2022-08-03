@@ -161,7 +161,7 @@ fn launch_fuzzers(
     shared_corpus: &str,
     jobs_mult: usize,
     minimization_timeout: Duration,
-    timeout: Option<&str>,
+    timeout: Option<u64>,
     dictionary: Option<&str>,
 ) -> Result<(Vec<process::Child>, u16), Box<dyn Error>> {
     // TODO loop over fuzzer config objects
@@ -271,8 +271,9 @@ fn launch_fuzzers(
             _ => "",
         };
 
+        // AFL timeout is in ms so we convert the value
         let timeout_option = match timeout {
-            Some(t) => format!("-t{t}"),
+            Some(t) => format!("-t{}", t * 1000),
             None => String::new(),
         };
 
@@ -368,10 +369,11 @@ fn fuzz_command(args: &clap::ArgMatches) -> Result<(), Box<dyn Error>> {
         .parse::<usize>()
         .map_err(|_| "could not parse jobs multipier")?;
 
-    // Timeout can be undefined, so we keep a Result here
-    let timeout = args.value_of("timeout");
+    // Timeout can be undefined, so we keep an Option here
+    let timeout = args.value_of("timeout")
+            .map(|t| t.parse::<u64>()).transpose()?;
 
-    // Dictionary can be undefined, so we keep a Result here
+    // Dictionary can be undefined, so we keep an Option here
     let dictionary = args.value_of("dictionary");
 
     let (mut processes, statsd_port) = launch_fuzzers(
