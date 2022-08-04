@@ -1,5 +1,9 @@
 # Changes
 
+# 0.1.6 - 2022-08-04
+
+- Add basic code coverage report generation
+
 # 0.1.5 - 2022-08-04
 
 - Fix timeout bug
