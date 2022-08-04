@@ -1,5 +1,9 @@
 # Changes
 
+# 0.1.7 - 2022-08-04
+
+- Fix corpus coverage bug
+
 # 0.1.6 - 2022-08-04
 
 - Add basic code coverage report generation
