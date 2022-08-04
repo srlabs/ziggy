@@ -148,9 +148,9 @@ fn main() {
         Some(("ziggy", subcommand)) => match subcommand.subcommand() {
             Some(("cover", args)) => {
                 let target = args.value_of("target").expect("Could not parse target");
-                let inputs = args.value_of("inputs").unwrap_or(DEFAULT_CORPUS);
+                let corpus = args.value_of("corpus").unwrap_or(DEFAULT_CORPUS);
                 let output = args.value_of("output").unwrap_or(DEFAULT_COVERAGE_DIR);
-                generate_coverage(target, inputs, output)
+                generate_coverage(target, corpus, output)
                     .expect("failure while running coverage generation");
             }
             Some(("fuzz", args)) => {
@@ -629,7 +629,7 @@ fn minimize_corpus(
 }
 
 #[cfg(feature = "cli")]
-fn generate_coverage(target: &str, inputs: &str, output: &str) -> Result<(), Box<dyn Error>> {
+fn generate_coverage(target: &str, corpus: &str, output: &str) -> Result<(), Box<dyn Error>> {
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
@@ -650,7 +650,7 @@ fn generate_coverage(target: &str, inputs: &str, output: &str) -> Result<(), Box
 
     // We run the target against the corpus
     process::Command::new(format!("./target/coverage/debug/{target}"))
-        .arg(inputs)
+        .arg(corpus)
         .spawn()?
         .wait()?;
 
