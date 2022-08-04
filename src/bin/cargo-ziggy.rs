@@ -29,6 +29,9 @@ const SECONDS_TO_WAIT_AFTER_KILL: u64 = 5;
 const DEFAULT_CORPUS: &str = "./output/shared_corpus/";
 
 #[cfg(feature = "cli")]
+const DEFAULT_COVERAGE_DIR: &str = "./output/coverage";
+
+#[cfg(feature = "cli")]
 pub fn cli() -> Command<'static> {
     Command::new("cargo-ziggy").bin_name("cargo").subcommand(
         clap::command!("ziggy")
@@ -39,7 +42,28 @@ pub fn cli() -> Command<'static> {
             .allow_invalid_utf8_for_external_subcommands(true)
             .subcommand(
                 Command::new("cover")
-                    .about("Generate code coverage information using the existing corpus"),
+                    .about("Generate code coverage information using the existing corpus")
+                    .arg(
+                        clap::Arg::new("target")
+                            .required(true)
+                            .help("Target to generate coverage for"),
+                    )
+                    .arg(
+                        clap::Arg::new("corpus")
+                            .short('c')
+                            .long("corpus")
+                            .value_name("DIR")
+                            .default_value(DEFAULT_CORPUS)
+                            .help("Corpus directory to run target on"),
+                    )
+                    .arg(
+                        clap::Arg::new("output")
+                            .short('o')
+                            .long("output")
+                            .value_name("DIR")
+                            .default_value(DEFAULT_COVERAGE_DIR)
+                            .help("Output directory for code coverage report"),
+                    ),
             )
             .subcommand(
                 Command::new("fuzz")
@@ -122,8 +146,12 @@ fn main() {
 
     match matches.subcommand() {
         Some(("ziggy", subcommand)) => match subcommand.subcommand() {
-            Some(("cover", _)) => {
-                todo!();
+            Some(("cover", args)) => {
+                let target = args.value_of("target").expect("Could not parse target");
+                let inputs = args.value_of("inputs").unwrap_or(DEFAULT_CORPUS);
+                let output = args.value_of("output").unwrap_or(DEFAULT_COVERAGE_DIR);
+                generate_coverage(target, inputs, output)
+                    .expect("failure while running coverage generation");
             }
             Some(("fuzz", args)) => {
                 build_command().expect("failure while building");
@@ -241,7 +269,7 @@ fn launch_fuzzers(
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
     // TODO install afl if it's not already present
-    for job_num in 0..jobs_mult{
+    for job_num in 0..jobs_mult {
         // We set the fuzzer name, and if it's the main or a secondary fuzzer
         let fuzzer_name = match job_num {
             0 => String::from("-Mmainaflfuzzer"),
@@ -257,9 +285,7 @@ fn launch_fuzzers(
             _ => "",
         };
         // Power schedule
-        let power_schedule = afl_modes
-            .get(job_num % afl_modes.len())
-            .unwrap_or(&"fast");
+        let power_schedule = afl_modes.get(job_num % afl_modes.len()).unwrap_or(&"fast");
         // Old queue cycling
         let old_queue_cycling = match job_num % 10 {
             9 => "-Z",
@@ -370,8 +396,10 @@ fn fuzz_command(args: &clap::ArgMatches) -> Result<(), Box<dyn Error>> {
         .map_err(|_| "could not parse jobs multipier")?;
 
     // Timeout can be undefined, so we keep an Option here
-    let timeout = args.value_of("timeout")
-            .map(|t| t.parse::<u64>()).transpose()?;
+    let timeout = args
+        .value_of("timeout")
+        .map(|t| t.parse::<u64>())
+        .transpose()?;
 
     // Dictionary can be undefined, so we keep an Option here
     let dictionary = args.value_of("dictionary");
@@ -596,6 +624,53 @@ fn minimize_corpus(
         .spawn()?
         .wait()?;
     */
+
+    Ok(())
+}
+
+#[cfg(feature = "cli")]
+fn generate_coverage(target: &str, inputs: &str, output: &str) -> Result<(), Box<dyn Error>> {
+    // The cargo executable
+    let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
+
+    let libfuzzer_rustflags = env::var("LIBFUZZER_RUSTFLAGS").unwrap_or_else(|_| String::from("-Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort"));
+
+    // We build the libfuzzer runner with the appropriate flags for coverage
+    process::Command::new(cargo)
+        .args(&[
+            "rustc",
+            "--features=ziggy/libfuzzer-sys",
+            "--target-dir=target/coverage",
+        ])
+        .env("RUSTFLAGS", libfuzzer_rustflags)
+        .env("RUSTDOCFLAGS", "-Cpanic=abort")
+        .env("CARGO_INCREMENTAL", "0")
+        .spawn()?
+        .wait()?;
+
+    // We run the target against the corpus
+    process::Command::new(format!("./target/coverage/debug/{target}"))
+        .arg(inputs)
+        .spawn()?
+        .wait()?;
+
+    // We generate the code coverage report
+    process::Command::new("grcov")
+        .args(&[
+            ".",
+            &format!("-b=./target/coverage/debug/{target}"),
+            &format!(
+                "-s={}",
+                env::var("HOME").unwrap_or_else(|_| String::from("."))
+            ),
+            "-t=html",
+            "--llvm",
+            "--branch",
+            "--ignore-not-existing",
+            &format!("-o={output}"),
+        ])
+        .spawn()?
+        .wait()?;
 
     Ok(())
 }
