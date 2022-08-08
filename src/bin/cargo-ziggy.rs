@@ -531,7 +531,15 @@ fn fuzz_command(args: &clap::ArgMatches) -> Result<(), Box<dyn Error>> {
                         .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
 
                     process::Command::new("rm")
-                        .args(&["-r", "./output/main_corpus"])
+                        .args(&[
+                            "-r",
+                            "./output/main_corpus/",
+                            "./output/afl/*/.synced/",
+                            "./output/afl/*/_resume/",
+                            "./output/afl/*/queue/",
+                            "./output/afl/*/fuzzer_stats",
+                            "./output/afl/*/.cur_input",
+                        ])
                         .output()
                         .map_err(|_| "could not remove main_corpus")?;
 
