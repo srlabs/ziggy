@@ -1,5 +1,9 @@
 # Changes
 
+# 0.1.8 - 2022-08-08
+
+- Reset most of AFL's stats after each minimization for better corpus management
+
 # 0.1.7 - 2022-08-04
 
 - Fix corpus coverage bug
