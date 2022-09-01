@@ -1,5 +1,10 @@
 # Changes
 
+# 0.1.9 - 2022-09-01
+
+- Remove useless llvm flag for honggfuzz
+- Add `--no-libfuzzer` flag to skip building/fuzzing with libfuzzer
+
 # 0.1.8 - 2022-08-08
 
 - Reset most of AFL's stats after each minimization for better corpus management
