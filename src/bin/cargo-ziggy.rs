@@ -2,7 +2,7 @@
 fn main() {}
 
 #[cfg(feature = "cli")]
-use clap::Command;
+use clap::{ArgAction, Command};
 #[cfg(feature = "cli")]
 use console::{style, Term};
 #[cfg(feature = "cli")]
@@ -112,6 +112,12 @@ pub fn cli() -> Command<'static> {
                             .long("dict")
                             .value_name("FILE")
                             .help("Dictionary file (format:http://llvm.org/docs/LibFuzzer.html#dictionaries)"),
+                    )
+                    .arg(
+                        clap::Arg::new("no-libfuzzer")
+                            .long("no-libfuzzer")
+                            .action(ArgAction::SetTrue)
+                            .help("Skip running libfuzzer"),
                     ),
             )
             .subcommand(Command::new("init").about("Create a new fuzzing target"))
@@ -136,7 +142,14 @@ pub fn cli() -> Command<'static> {
                     )
                     .arg(clap::Arg::new("inputs").help("Input directory or file to run")),
             )
-            .subcommand(Command::new("build").about("Build the fuzzer and the runner binaries")),
+            .subcommand(Command::new("build")
+                    .arg(
+                        clap::Arg::new("no-libfuzzer")
+                            .long("no-libfuzzer")
+                            .action(ArgAction::SetTrue)
+                            .help("Skip building libfuzzer"),
+                    )
+            .about("Build the fuzzer and the runner binaries")),
     )
 }
 
@@ -154,7 +167,8 @@ fn main() {
                     .expect("failure while running coverage generation");
             }
             Some(("fuzz", args)) => {
-                build_command().expect("failure while building");
+                let no_libfuzzer = args.get_one::<bool>("no-libfuzzer").unwrap_or(&false);
+                build_command(*no_libfuzzer).expect("failure while building");
                 fuzz_command(args).expect("failure while fuzzing");
             }
             Some(("init", _)) => {
@@ -165,8 +179,9 @@ fn main() {
                 let inputs = args.value_of("inputs").unwrap_or(DEFAULT_CORPUS);
                 run_inputs(target, inputs).expect("failure while running input");
             }
-            Some(("build", _)) => {
-                build_command().expect("failure while building");
+            Some(("build", args)) => {
+                let no_libfuzzer = args.get_one::<bool>("no-libfuzzer").unwrap_or(&false);
+                build_command(*no_libfuzzer).expect("failure while building");
             }
             Some(("minimize", args)) => {
                 let target = args.value_of("target").expect("Could not parse target");
@@ -191,10 +206,16 @@ fn launch_fuzzers(
     minimization_timeout: Duration,
     timeout: Option<u64>,
     dictionary: Option<&str>,
+    no_libfuzzer: bool,
 ) -> Result<(Vec<process::Child>, u16), Box<dyn Error>> {
     // TODO loop over fuzzer config objects
 
     let mut fuzzer_handles = vec![];
+
+    let timeout_option = match timeout {
+        Some(t) => format!("-timeout={t}"),
+        None => String::new(),
+    };
 
     let _ = process::Command::new("mkdir")
         .args(&["-p", shared_corpus])
@@ -202,54 +223,51 @@ fn launch_fuzzers(
         .spawn()?
         .wait()?;
 
-    let _ = process::Command::new("mkdir")
-        .args(&["-p", "./output/libfuzzer"])
-        .stderr(process::Stdio::piped())
-        .spawn()?
-        .wait()?;
+    if !no_libfuzzer {
+        let _ = process::Command::new("mkdir")
+            .args(&["-p", "./output/libfuzzer"])
+            .stderr(process::Stdio::piped())
+            .spawn()?
+            .wait()?;
 
-    let timeout_option = match timeout {
-        Some(t) => format!("-timeout={t}"),
-        None => String::new(),
-    };
+        let dictionary_option = match dictionary {
+            Some(d) => format!("-dict{}", d),
+            None => String::new(),
+        };
 
-    let dictionary_option = match dictionary {
-        Some(d) => format!("-dict{}", d),
-        None => String::new(),
-    };
+        fuzzer_handles.push(
+            process::Command::new(fs::canonicalize(format!(
+                "./target/libfuzzer/debug/{target}"
+            ))?)
+            .args(
+                [
+                    fs::canonicalize(shared_corpus)?
+                        .to_str()
+                        .ok_or("could not parse shared corpus path")?,
+                    "--",
+                    &format!(
+                        "-artifact_prefix={}/",
+                        fs::canonicalize(shared_corpus)?.display()
+                    ),
+                    &format!("-jobs={jobs_mult}"),
+                    &format!(
+                        "-max_total_time={}",
+                        minimization_timeout.as_secs() + SECONDS_TO_WAIT_AFTER_KILL
+                    ),
+                    &timeout_option,
+                    &dictionary_option,
+                ]
+                .iter()
+                .filter(|a| a != &&""),
+            )
+            .current_dir("./output/libfuzzer")
+            .stdout(File::create("./output/libfuzzer.log")?)
+            .stderr(File::create("./output/libfuzzer.log")?)
+            .spawn()?,
+        );
 
-    fuzzer_handles.push(
-        process::Command::new(fs::canonicalize(format!(
-            "./target/libfuzzer/debug/{target}"
-        ))?)
-        .args(
-            [
-                fs::canonicalize(shared_corpus)?
-                    .to_str()
-                    .ok_or("could not parse shared corpus path")?,
-                "--",
-                &format!(
-                    "-artifact_prefix={}/",
-                    fs::canonicalize(shared_corpus)?.display()
-                ),
-                &format!("-jobs={jobs_mult}"),
-                &format!(
-                    "-max_total_time={}",
-                    minimization_timeout.as_secs() + SECONDS_TO_WAIT_AFTER_KILL
-                ),
-                &timeout_option,
-                &dictionary_option,
-            ]
-            .iter()
-            .filter(|a| a != &&""),
-        )
-        .current_dir("./output/libfuzzer")
-        .stdout(File::create("./output/libfuzzer.log")?)
-        .stderr(File::create("./output/libfuzzer.log")?)
-        .spawn()?,
-    );
-
-    println!("{} libfuzzer          ", style("launched").green());
+        println!("{} libfuzzer          ", style("launched").green());
+    }
 
     let _ = process::Command::new("mkdir")
         .arg("./output/afl")
@@ -298,7 +316,7 @@ fn launch_fuzzers(
         };
 
         // AFL timeout is in ms so we convert the value
-        let timeout_option = match timeout {
+        let timeout_option_afl = match timeout {
             Some(t) => format!("-t{}", t * 1000),
             None => String::new(),
         };
@@ -326,7 +344,7 @@ fn launch_fuzzers(
                         ),
                         old_queue_cycling,
                         mopt_mutator,
-                        &timeout_option,
+                        &timeout_option_afl,
                         &dictionary_option,
                         &format!("./target/afl/debug/{target}"),
                     ]
@@ -403,6 +421,8 @@ fn fuzz_command(args: &clap::ArgMatches) -> Result<(), Box<dyn Error>> {
     // Dictionary can be undefined, so we keep an Option here
     let dictionary = args.value_of("dictionary");
 
+    let no_libfuzzer = args.get_one::<bool>("no-libfuzzer").unwrap_or(&false);
+
     let (mut processes, statsd_port) = launch_fuzzers(
         target,
         corpus,
@@ -410,6 +430,7 @@ fn fuzz_command(args: &clap::ArgMatches) -> Result<(), Box<dyn Error>> {
         minimization_timeout,
         timeout,
         dictionary,
+        *no_libfuzzer,
     )?;
 
     let term = Term::stdout();
@@ -568,6 +589,7 @@ fn fuzz_command(args: &clap::ArgMatches) -> Result<(), Box<dyn Error>> {
                 minimization_timeout,
                 timeout,
                 dictionary,
+                *no_libfuzzer,
             )?;
 
             term.write_line(&style("afl++ stats").yellow().to_string())?;
@@ -682,32 +704,34 @@ fn generate_coverage(target: &str, corpus: &str, output: &str) -> Result<(), Box
 }
 
 #[cfg(feature = "cli")]
-fn build_command() -> Result<(), Box<dyn Error>> {
+fn build_command(no_libfuzzer: bool) -> Result<(), Box<dyn Error>> {
     // TODO loop over fuzzer config objects
 
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
-    let libfuzzer_rustflags = env::var("LIBFUZZER_RUSTFLAGS").unwrap_or_else(|_| String::from("-Cpasses=sancov-module -Zsanitizer=address -Cllvm-args=-sanitizer-coverage-level=4 -Cllvm-args=-sanitizer-coverage-inline-8bit-counters -Cllvm-args=-sanitizer-coverage-pc-table"));
+    if !no_libfuzzer {
+        let libfuzzer_rustflags = env::var("LIBFUZZER_RUSTFLAGS").unwrap_or_else(|_| String::from("-Cpasses=sancov-module -Zsanitizer=address -Cllvm-args=-sanitizer-coverage-level=4 -Cllvm-args=-sanitizer-coverage-inline-8bit-counters -Cllvm-args=-sanitizer-coverage-pc-table"));
 
-    let run = process::Command::new(cargo.clone())
-        .args(&[
-            "rustc",
-            "--features=ziggy/libfuzzer-sys",
-            "--target-dir=target/libfuzzer",
-        ])
-        .env("RUSTFLAGS", libfuzzer_rustflags)
-        .spawn()?
-        .wait()?;
+        let run = process::Command::new(cargo.clone())
+            .args(&[
+                "rustc",
+                "--features=ziggy/libfuzzer-sys",
+                "--target-dir=target/libfuzzer",
+            ])
+            .env("RUSTFLAGS", libfuzzer_rustflags)
+            .spawn()?
+            .wait()?;
 
-    if !run.success() {
-        return Err(Box::from(format!(
-            "error building libfuzzer fuzzer: Exited with {:?}",
-            run.code()
-        )));
+        if !run.success() {
+            return Err(Box::from(format!(
+                "error building libfuzzer fuzzer: Exited with {:?}",
+                run.code()
+            )));
+        }
+
+        println!("{} libfuzzer and its target", style("built").blue());
     }
-
-    println!("{} libfuzzer and its target", style("built").blue());
 
     let run = process::Command::new(cargo.clone())
         .args(&[
