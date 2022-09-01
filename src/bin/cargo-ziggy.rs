@@ -358,7 +358,6 @@ fn launch_fuzzers(
     fuzzer_handles.push(
         process::Command::new(cargo)
             .args(&["hfuzz", "run", target])
-            .env("RUSTFLAGS", "-Znew-llvm-pass-manager=no")
             .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
             .env("CARGO_TARGET_DIR", "./target/honggfuzz")
             .env("HFUZZ_WORKSPACE", "./output/honggfuzz")
@@ -624,7 +623,6 @@ fn minimize_corpus(
     // HONGGFUZZ minimization
     process::Command::new(cargo)
         .args(&["hfuzz", "run", target])
-        .env("RUSTFLAGS", "-Znew-llvm-pass-manager=no")
         .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
         .env("HFUZZ_RUN_ARGS", format!("-i{} -M -Woutput/honggfuzz", corpus))
         .stderr(File::create("./output/minimization.log")?)
@@ -732,7 +730,6 @@ fn build_command() -> Result<(), Box<dyn Error>> {
 
     let run = process::Command::new(cargo)
         .args(&["hfuzz", "build"])
-        .env("RUSTFLAGS", "-Znew-llvm-pass-manager=no")
         .env("CARGO_TARGET_DIR", "./target/honggfuzz")
         .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
         .spawn()?
