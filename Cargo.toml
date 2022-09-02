@@ -7,7 +7,7 @@ description = "A multi-fuzzer management utility for all of your Rust fuzzing ne
 repository = "https://github.com/srlabs/ziggy/"
 
 [dependencies]
-clap = { version = "3.2.15", features = ["cargo"], optional = true }
+clap = { version = "3.2.15", features = ["cargo", "derive"], optional = true }
 console = { version = "0.15.0", optional = true }
 glob = { version = "0.3.0", optional = true }
 libfuzzer-sys = { version = "0.4.3", optional = true }
