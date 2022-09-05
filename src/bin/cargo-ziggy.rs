@@ -698,7 +698,7 @@ fn generate_coverage(target: &str, corpus: &Path, output: &Path) -> Result<(), B
 
     // We run the target against the corpus
     process::Command::new(format!("./target/coverage/debug/{target}"))
-        .arg(&corpus)
+        .args([&corpus.display().to_string(), "--", "-runs=1"])
         .spawn()?
         .wait()?;
 
