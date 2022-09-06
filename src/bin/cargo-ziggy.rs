@@ -266,14 +266,22 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
     let (mut processes, mut statsd_port) = spawn_new_fuzzers(args)?;
 
     let term = Term::stdout();
-    term.write_line(&style("afl++ stats").yellow().to_string())?;
+    term.write_line(&style("afl++ main process stats").yellow().to_string())?;
+    term.write_line("...")?;
+    term.write_line("...")?;
+    term.write_line("...")?;
+    term.write_line("...")?;
     term.write_line("...")?;
     term.write_line("...")?;
 
     // Variables for stats printing
+    let mut execs_per_sec = String::new();
+    let mut execs_done = String::new();
     let mut corpus_count = String::new();
     let mut edges_found = String::new();
     let mut total_edges = String::new();
+    let mut saved_crashes = String::new();
+    let mut total_crashes = String::new();
 
     // We connect to the afl statsd socket
     let mut socket = UdpSocket::bind(("127.0.0.1", statsd_port))?;
@@ -283,21 +291,19 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
     let mut last_merge = Instant::now();
 
     loop {
-        let thirty_fps = Duration::from_millis(33);
-        thread::sleep(thirty_fps);
+        let sleep_duration = Duration::from_millis(100);
+        thread::sleep(sleep_duration);
 
-        // We retrieve the total_edged value from the fuzzer_stats file
-        if total_edges.is_empty() {
-            if let Ok(file) = File::open("./output/afl/mainaflfuzzer/fuzzer_stats") {
-                total_edges = String::from(
-                    BufReader::new(file)
-                        .lines()
-                        .nth(31)
-                        .unwrap_or(Ok(String::new()))
-                        .unwrap_or_default()
-                        .trim_start_matches("total_edges       : "),
-                );
-            }
+        // We retrieve the total_edges value from the fuzzer_stats file
+        if let Ok(file) = File::open("./output/afl/mainaflfuzzer/fuzzer_stats") {
+            total_edges = String::from(
+                BufReader::new(file)
+                    .lines()
+                    .nth(31)
+                    .unwrap_or(Ok(String::new()))
+                    .unwrap_or_default()
+                    .trim_start_matches("total_edges       : "),
+            );
         }
 
         // If we have new stats from afl's statsd socket, we update our values
@@ -312,31 +318,52 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
                     corpus_count = String::from(msg[21..].split('|').next().unwrap_or_default());
                 } else if msg.contains("edges_found") {
                     edges_found = String::from(msg[20..].split('|').next().unwrap_or_default());
+                } else if msg.contains("saved_crashes") {
+                    saved_crashes = String::from(msg[22..].split('|').next().unwrap_or_default());
+                } else if msg.contains("total_crashes") {
+                    total_crashes = String::from(msg[22..].split('|').next().unwrap_or_default());
+                } else if msg.contains("execs_per_sec") {
+                    execs_per_sec = String::from(msg[22..].split('|').next().unwrap_or_default());
+                } else if msg.contains("execs_done") {
+                    execs_done = String::from(msg[19..].split('|').next().unwrap_or_default());
                 }
             }
 
             // We print the new values
-            term.move_cursor_up(2)?;
+            term.move_cursor_up(6)?;
             term.write_line(&format!(
                 "{} {}",
-                style("corpus count :").dim(),
+                style("execs per sec :").dim(),
+                &execs_per_sec
+            ))?;
+            term.write_line(&format!(
+                "{} {}",
+                style("   execs done :").dim(),
+                &execs_done
+            ))?;
+            term.write_line(&format!(
+                "{} {}",
+                style(" corpus count :").dim(),
                 &corpus_count
             ))?;
             let edges_percentage = 100f64 * edges_found.parse::<f64>().unwrap_or_default()
                 / total_edges.parse::<f64>().unwrap_or(1f64);
             term.write_line(&format!(
                 "{} {} ({:.2}%)",
-                style(" edges found :").dim(),
+                style("  edges found :").dim(),
                 &edges_found,
                 &edges_percentage
             ))?;
-        }
-
-        if processes
-            .iter_mut()
-            .all(|process| process.try_wait().unwrap_or(None).is_some())
-        {
-            break;
+            term.write_line(&format!(
+                "{} {}",
+                style("saved crashes :").dim(),
+                &saved_crashes
+            ))?;
+            term.write_line(&format!(
+                "{} {}",
+                style("total crashes :").dim(),
+                &total_crashes
+            ))?;
         }
 
         // Every DEFAULT_MINIMIZATION_TIMEOUT, we kill the fuzzers and minimize the shared corpus, before launching the fuzzers again
@@ -424,18 +451,15 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
             socket = UdpSocket::bind(("127.0.0.1", statsd_port))?;
             socket.set_nonblocking(true)?;
 
-            term.write_line(&style("afl++ stats").yellow().to_string())?;
+            term.write_line(&style("afl++ main process stats").yellow().to_string())?;
+            term.write_line("...")?;
+            term.write_line("...")?;
+            term.write_line("...")?;
+            term.write_line("...")?;
             term.write_line("...")?;
             term.write_line("...")?;
         }
     }
-
-    term.write_line(&format!(
-        "{} all fuzzers are done",
-        style("finished").cyan()
-    ))?;
-
-    Ok(())
 }
 
 // Spawns new fuzzers
@@ -481,7 +505,8 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
                         "-artifact_prefix={}/",
                         fs::canonicalize(&args.corpus)?.display()
                     ),
-                    &format!("-jobs={}", args.jobs),
+                    &format!("-fork={}", args.jobs),
+                    "-ignore_crashes=1",
                     &format!(
                         "-max_total_time={}",
                         args.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL
@@ -585,7 +610,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
                     .iter()
                     .filter(|a| a != &&""),
                 )
-                .env("AFL_BENCH_UNTIL_CRASH", "1")
+                // .env("AFL_BENCH_UNTIL_CRASH", "1")
                 .env("AFL_STATSD", "1")
                 .env("AFL_STATSD_TAGS_FLAVOR", "dogstatsd")
                 .env("AFL_STATSD_PORT", format!("{statsd_port}"))
@@ -615,7 +640,12 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
             .env("HFUZZ_WORKSPACE", "./output/honggfuzz")
             .env(
                 "HFUZZ_RUN_ARGS",
-                format!("--run_time={} --exit_upon_crash -i{} -n{} {timeout_option} {dictionary_option}", args.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL, &args.corpus.display().to_string(), args.jobs),
+                format!(
+                    "--run_time={} -i{} -n{} {timeout_option} {dictionary_option}",
+                    args.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL,
+                    &args.corpus.display().to_string(),
+                    args.jobs
+                ),
             )
             .stderr(File::create("./output/honggfuzz.log")?)
             .stdout(File::create("./output/honggfuzz.log")?)
