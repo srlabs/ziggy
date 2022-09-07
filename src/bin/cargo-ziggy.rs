@@ -658,8 +658,12 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
 
 #[cfg(feature = "cli")]
 fn run_inputs(target: &str, inputs: &Vec<PathBuf>) -> Result<(), Box<dyn Error>> {
+    let mut args: Vec<String> = inputs.iter().map(|x| x.display().to_string()).collect();
+    args.push("--".to_string());
+    args.push("-runs=1".to_string());
+
     process::Command::new(format!("./target/libfuzzer/debug/{target}"))
-        .args(inputs)
+        .args(args)
         .env("RUST_BACKTRACE", "full")
         .spawn()?
         .wait()?;
