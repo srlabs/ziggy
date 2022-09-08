@@ -10,7 +10,7 @@ use std::{
     env,
     error::Error,
     fs::{self, File},
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, Write},
     net::UdpSocket,
     path::{Path, PathBuf},
     process, thread,
@@ -23,13 +23,13 @@ use std::{
 pub const DEFAULT_MINIMIZATION_TIMEOUT: u32 = 30 * 60;
 
 #[cfg(feature = "cli")]
-pub const DEFAULT_CORPUS: &str = "./output/shared_corpus/";
+pub const DEFAULT_CORPUS: &str = "./output/{target_name}/shared_corpus/";
 
 #[cfg(feature = "cli")]
-pub const DEFAULT_COVERAGE_DIR: &str = "./output/coverage";
+pub const DEFAULT_COVERAGE_DIR: &str = "./output/{target_name}/coverage/";
 
 #[cfg(feature = "cli")]
-pub const DEFAULT_MINIMIZATION_CORPUS: &str = "./output/minimized_corpus";
+pub const DEFAULT_MINIMIZATION_CORPUS: &str = "./output/{target_name}/minimized_corpus/";
 
 // We want to make sure we don't mistake a minimization kill for a found crash
 #[cfg(feature = "cli")]
@@ -265,6 +265,12 @@ fn build_fuzzers(no_libfuzzer: bool) -> Result<(), Box<dyn Error>> {
 fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
     let (mut processes, mut statsd_port) = spawn_new_fuzzers(args)?;
 
+    let parsed_corpus = args
+        .corpus
+        .display()
+        .to_string()
+        .replace("{target_name}", &args.target);
+
     let term = Term::stdout();
     term.write_line(&style("afl++ main process stats").yellow().to_string())?;
     term.write_line("...")?;
@@ -295,7 +301,10 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
         thread::sleep(sleep_duration);
 
         // We retrieve the total_edges value from the fuzzer_stats file
-        if let Ok(file) = File::open("./output/afl/mainaflfuzzer/fuzzer_stats") {
+        if let Ok(file) = File::open(format!(
+            "./output/{}/afl/mainaflfuzzer/fuzzer_stats",
+            args.target
+        )) {
             total_edges = String::from(
                 BufReader::new(file)
                     .lines()
@@ -376,13 +385,16 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
             term.write_line("running minimization            ")?;
 
             process::Command::new("mv")
-                .args(&[&args.corpus.display().to_string(), "./output/main_corpus"])
+                .args(&[
+                    &parsed_corpus,
+                    &format!("./output/{}/main_corpus", args.target),
+                ])
                 .output()
                 .map_err(|_| "could not move shared_corpus to main_corpus directory")?;
 
             use glob::glob;
 
-            for path in glob("./output/afl/**/queue/*")
+            for path in glob(&format!("./output/{}/afl/**/queue/*", args.target))
                 .map_err(|_| "failed to read glob pattern")?
                 .flatten()
             {
@@ -390,7 +402,8 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
                     fs::copy(
                         path.to_str().ok_or("could not parse input path")?,
                         format!(
-                            "./output/main_corpus/{}",
+                            "./output/{}/main_corpus/{}",
+                            args.target,
                             path.file_name()
                                 .ok_or("could not parse input file name")?
                                 .to_str()
@@ -400,28 +413,28 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
                 }
             }
 
-            let old_corpus_size = fs::read_dir("./output/main_corpus")
+            let old_corpus_size = fs::read_dir(format!("./output/{}/main_corpus", args.target))
                 .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
 
             // TODO Can we run minimization + coverage report at the same time?
             match minimize_corpus(
                 &args.target,
-                &PathBuf::from("./output/main_corpus"),
+                &PathBuf::from(format!("./output/{}/main_corpus", args.target)),
                 &args.corpus,
             ) {
                 Ok(_) => {
-                    let new_corpus_size = fs::read_dir(&args.corpus)
+                    let new_corpus_size = fs::read_dir(&parsed_corpus)
                         .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
 
                     process::Command::new("rm")
                         .args(&[
                             "-r",
-                            "./output/main_corpus/",
-                            "./output/afl/*/.synced/",
-                            "./output/afl/*/_resume/",
-                            "./output/afl/*/queue/",
-                            "./output/afl/*/fuzzer_stats",
-                            "./output/afl/*/.cur_input",
+                            &format!("./output/{}/main_corpus/", args.target),
+                            &format!("./output/{}/afl/*/.synced/", args.target),
+                            &format!("./output/{}/afl/*/_resume/", args.target),
+                            &format!("./output/{}/afl/*/queue/", args.target),
+                            &format!("./output/{}/afl/*/fuzzer_stats", args.target),
+                            &format!("./output/{}/afl/*/.cur_input", args.target),
                         ])
                         .output()
                         .map_err(|_| "could not remove main_corpus")?;
@@ -438,7 +451,10 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
                     term.write_line("error running minimization... probably a memory error")?;
 
                     process::Command::new("mv")
-                        .args(&["./output/main_corpus", &args.corpus.display().to_string()])
+                        .args(&[
+                            &format!("./output/{}/main_corpus", args.target),
+                            &parsed_corpus,
+                        ])
                         .output()
                         .map_err(|_| "could not move main_corpus to shared_corpus directory")?;
                 }
@@ -472,15 +488,26 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
         None => String::new(),
     };
 
+    let parsed_corpus = args
+        .corpus
+        .display()
+        .to_string()
+        .replace("{target_name}", &args.target);
+
     let _ = process::Command::new("mkdir")
-        .args(&["-p", &args.corpus.display().to_string()])
+        .args(&["-p", &parsed_corpus])
         .stderr(process::Stdio::piped())
         .spawn()?
         .wait()?;
 
+    // We create an initial corpus file, so that AFL++ starts-up properly
+    let mut initial_corpus = File::create(parsed_corpus.clone() + "/init")?;
+    writeln!(&mut initial_corpus, "00000000")?;
+    drop(initial_corpus);
+
     if !args.no_libfuzzer {
         let _ = process::Command::new("mkdir")
-            .args(&["-p", "./output/libfuzzer"])
+            .args(&["-p", &format!("./output/{}/libfuzzer", args.target)])
             .stderr(process::Stdio::piped())
             .spawn()?
             .wait()?;
@@ -497,13 +524,13 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
             ))?)
             .args(
                 [
-                    fs::canonicalize(&args.corpus)?
+                    fs::canonicalize(&parsed_corpus)?
                         .to_str()
                         .ok_or("could not parse shared corpus path")?,
                     "--",
                     &format!(
                         "-artifact_prefix={}/",
-                        fs::canonicalize(&args.corpus)?.display()
+                        fs::canonicalize(&parsed_corpus)?.display()
                     ),
                     &format!("-fork={}", args.jobs),
                     "-ignore_crashes=1",
@@ -517,9 +544,15 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
                 .iter()
                 .filter(|a| a != &&""),
             )
-            .current_dir("./output/libfuzzer")
-            .stdout(File::create("./output/libfuzzer.log")?)
-            .stderr(File::create("./output/libfuzzer.log")?)
+            .current_dir(format!("./output/{}/libfuzzer", args.target))
+            .stdout(File::create(format!(
+                "./output/{}/libfuzzer.log",
+                args.target
+            ))?)
+            .stderr(File::create(format!(
+                "./output/{}/libfuzzer.log",
+                args.target
+            ))?)
             .spawn()?,
         );
 
@@ -527,7 +560,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
     }
 
     let _ = process::Command::new("mkdir")
-        .arg("./output/afl")
+        .args(["-p", &format!("./output/{}/afl", args.target)])
         .stderr(process::Stdio::piped())
         .spawn()?
         .wait()?;
@@ -551,7 +584,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
             n => format!("-Ssecondaryfuzzer{}", n),
         };
         let use_shared_corpus = match job_num {
-            0 => format!("-F{}", &args.corpus.display().to_string()),
+            0 => format!("-F{}", &parsed_corpus),
             _ => String::new(),
         };
         // A quarter of secondary fuzzers have the MOpt mutator enabled
@@ -592,9 +625,9 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
                         "afl",
                         "fuzz",
                         &fuzzer_name,
-                        &format!("-i{}", &args.corpus.display().to_string()),
+                        &format!("-i{}", &parsed_corpus,),
                         &format!("-p{power_schedule}"),
-                        "-ooutput/afl",
+                        &format!("-ooutput/{}/afl", args.target),
                         banner,
                         &use_shared_corpus,
                         &format!(
@@ -619,8 +652,14 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
                 .env("AFL_CMPLOG_ONLY_NEW", "1")
                 .env("AFL_FAST_CAL", "1")
                 .env("AFL_MAP_SIZE", "10000000")
-                .stdout(File::create(&format!("output/afl_{job_num}.log"))?)
-                .stderr(File::create(&format!("output/afl_{job_num}.log"))?)
+                .stdout(File::create(&format!(
+                    "output/{}/afl_{job_num}.log",
+                    args.target
+                ))?)
+                .stderr(File::create(&format!(
+                    "output/{}/afl_{job_num}.log",
+                    args.target
+                ))?)
                 .spawn()?,
         )
     }
@@ -637,18 +676,27 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
             .args(&["hfuzz", "run", &args.target])
             .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
             .env("CARGO_TARGET_DIR", "./target/honggfuzz")
-            .env("HFUZZ_WORKSPACE", "./output/honggfuzz")
+            .env(
+                "HFUZZ_WORKSPACE",
+                format!("./output/{}/honggfuzz", args.target),
+            )
             .env(
                 "HFUZZ_RUN_ARGS",
                 format!(
                     "--run_time={} -i{} -n{} {timeout_option} {dictionary_option}",
                     args.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL,
-                    &args.corpus.display().to_string(),
+                    &parsed_corpus,
                     args.jobs
                 ),
             )
-            .stderr(File::create("./output/honggfuzz.log")?)
-            .stdout(File::create("./output/honggfuzz.log")?)
+            .stderr(File::create(format!(
+                "./output/{}/honggfuzz.log",
+                args.target
+            ))?)
+            .stdout(File::create(format!(
+                "./output/{}/honggfuzz.log",
+                args.target
+            ))?)
             .spawn()?,
     );
     println!("{} honggfuzz              ", style("launched").green());
@@ -657,7 +705,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
 }
 
 #[cfg(feature = "cli")]
-fn run_inputs(target: &str, inputs: &Vec<PathBuf>) -> Result<(), Box<dyn Error>> {
+fn run_inputs(target: &str, inputs: &[PathBuf]) -> Result<(), Box<dyn Error>> {
     let mut args: Vec<String> = inputs.iter().map(|x| x.display().to_string()).collect();
     args.push("--".to_string());
     args.push("-runs=1".to_string());
@@ -684,14 +732,26 @@ fn minimize_corpus(
         .args(&[
             "afl",
             "cmin",
-            &format!("-i{}", input_corpus.display()),
-            &format!("-o{}", output_corpus.display()),
+            &format!(
+                "-i{}",
+                input_corpus
+                    .display()
+                    .to_string()
+                    .replace("{target_name}", target)
+            ),
+            &format!(
+                "-o{}",
+                output_corpus
+                    .display()
+                    .to_string()
+                    .replace("{target_name}", target)
+            ),
             "--",
             &format!("./target/afl/debug/{target}"),
         ])
         .env("AFL_MAP_SIZE", "10000000")
-        .stderr(File::create("./output/minimization.log")?)
-        .stdout(File::create("./output/minimization.log")?)
+        .stderr(File::create(format!("./output/{target}/minimization.log"))?)
+        .stdout(File::create(format!("./output/{target}/minimization.log"))?)
         .spawn()?
         .wait()?;
 
@@ -700,9 +760,9 @@ fn minimize_corpus(
     process::Command::new(cargo)
         .args(&["hfuzz", "run", target])
         .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
-        .env("HFUZZ_RUN_ARGS", format!("-i{} -M -Woutput/honggfuzz", corpus))
-        .stderr(File::create("./output/minimization.log")?)
-        .stdout(File::create("./output/minimization.log")?)
+        .env("HFUZZ_RUN_ARGS", format!("-i{corpus} -M -Woutput/{target}/honggfuzz"))
+        .stderr(File::create(format!("./output/{target}/minimization.log"))?)
+        .stdout(File::create(format!("./output/{target}/minimization.log"))?)
         .spawn()?
         .wait()?;
     */
@@ -732,7 +792,14 @@ fn generate_coverage(target: &str, corpus: &Path, output: &Path) -> Result<(), B
 
     // We run the target against the corpus
     process::Command::new(format!("./target/coverage/debug/{target}"))
-        .args([&corpus.display().to_string(), "--", "-runs=1"])
+        .args([
+            corpus
+                .display()
+                .to_string()
+                .replace("{target_name}", target),
+            "--".into(),
+            "-runs=1".into(),
+        ])
         .spawn()?
         .wait()?;
 
@@ -749,7 +816,13 @@ fn generate_coverage(target: &str, corpus: &Path, output: &Path) -> Result<(), B
             "--llvm",
             "--branch",
             "--ignore-not-existing",
-            &format!("-o={}", &output.display().to_string()),
+            &format!(
+                "-o={}",
+                output
+                    .display()
+                    .to_string()
+                    .replace("{target_name}", target)
+            ),
         ])
         .spawn()?
         .wait()?;
