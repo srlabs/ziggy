@@ -276,6 +276,8 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
     term.write_line("...")?;
     term.write_line("...")?;
     term.write_line("...")?;
+    term.write_line("waiting for afl++ to finish running")?;
+    term.write_line("the existing corpus once")?;
     term.write_line("...")?;
     term.write_line("...")?;
     term.write_line("...")?;
@@ -286,6 +288,8 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
     let mut corpus_count = String::new();
     let mut edges_found = String::new();
     let mut total_edges = String::new();
+    let mut cycles_wo_finds = String::new();
+    let mut cycle_done = String::new();
     let mut saved_crashes = String::new();
     let mut total_crashes = String::new();
 
@@ -335,42 +339,56 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
                     execs_per_sec = String::from(msg[22..].split('|').next().unwrap_or_default());
                 } else if msg.contains("execs_done") {
                     execs_done = String::from(msg[19..].split('|').next().unwrap_or_default());
+                } else if msg.contains("cycles_wo_finds") {
+                    cycles_wo_finds = String::from(msg[24..].split('|').next().unwrap_or_default());
+                } else if msg.contains("cycle_done") {
+                    cycle_done = String::from(msg[19..].split('|').next().unwrap_or_default());
                 }
             }
 
             // We print the new values
-            term.move_cursor_up(6)?;
+            term.move_cursor_up(8)?;
             term.write_line(&format!(
                 "{} {}",
-                style("execs per sec :").dim(),
+                style("       execs per sec :").dim(),
                 &execs_per_sec
             ))?;
             term.write_line(&format!(
                 "{} {}",
-                style("   execs done :").dim(),
+                style("          execs done :").dim(),
                 &execs_done
             ))?;
             term.write_line(&format!(
                 "{} {}",
-                style(" corpus count :").dim(),
+                style("        corpus count :").dim(),
                 &corpus_count
             ))?;
             let edges_percentage = 100f64 * edges_found.parse::<f64>().unwrap_or_default()
                 / total_edges.parse::<f64>().unwrap_or(1f64);
             term.write_line(&format!(
                 "{} {} ({:.2}%)",
-                style("  edges found :").dim(),
+                style("         edges found :").dim(),
                 &edges_found,
                 &edges_percentage
             ))?;
             term.write_line(&format!(
                 "{} {}",
-                style("saved crashes :").dim(),
+                style("          cycle done :").dim(),
+                &cycle_done
+            ))?;
+            term.write_line(&format!(
+                "{} {}",
+                style("cycles without finds :").dim(),
+                &cycles_wo_finds
+            ))?;
+            term.write_line(&format!(
+                "{} {}",
+                style("       saved crashes :").dim(),
                 &saved_crashes
             ))?;
             term.write_line(&format!(
                 "{} {}",
-                style("total crashes :").dim(),
+                style("       total crashes :").dim(),
                 &total_crashes
             ))?;
         }
@@ -652,6 +670,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
                 .env("AFL_CMPLOG_ONLY_NEW", "1")
                 .env("AFL_FAST_CAL", "1")
                 .env("AFL_MAP_SIZE", "10000000")
+                .env("AFL_FORCE_UI", "1")
                 .stdout(File::create(&format!(
                     "output/{}/afl_{job_num}.log",
                     args.target
