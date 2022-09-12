@@ -186,6 +186,8 @@ fn build_fuzzers(no_libfuzzer: bool) -> Result<(), Box<dyn Error>> {
     // First fuzzer we build: LibFuzzer
     // We do not build it if asked not to
     if !no_libfuzzer {
+        println!("    {} libfuzzer", style("Building").red().bold());
+
         // User-provided flags can replace the default libfuzzer rustflags
         let rustflags = match env::var("LIBFUZZER_RUSTFLAGS") {
             Ok(flags) => flags,
@@ -203,6 +205,7 @@ fn build_fuzzers(no_libfuzzer: bool) -> Result<(), Box<dyn Error>> {
         let run = process::Command::new(cargo.clone())
             .args(&[
                 "rustc",
+                "-q",
                 "--features=ziggy/libfuzzer-sys",
                 "--target-dir=target/libfuzzer",
             ])
@@ -217,14 +220,17 @@ fn build_fuzzers(no_libfuzzer: bool) -> Result<(), Box<dyn Error>> {
             )));
         }
 
-        println!("{} libfuzzer and its target", style("built").blue());
+        println!("    {} libfuzzer", style("Finished").cyan().bold());
     }
+
+    println!("    {} afl", style("Building").red().bold());
 
     // Second fuzzer we build: AFL++
     let run = process::Command::new(cargo.clone())
         .args(&[
             "afl",
             "build",
+            "-q",
             "--features=ziggy/afl",
             "--target-dir=target/afl",
         ])
@@ -238,13 +244,16 @@ fn build_fuzzers(no_libfuzzer: bool) -> Result<(), Box<dyn Error>> {
         )));
     }
 
-    println!("{} afl and its target", style("built").blue());
+    println!("    {} afl", style("Finished").cyan().bold());
+
+    println!("    {} honggfuzz", style("Building").red().bold());
 
     // Third fuzzer we build: Honggfuzz
     let run = process::Command::new(cargo)
-        .args(&["hfuzz", "build"])
+        .args(&["hfuzz", "build", "-q"])
         .env("CARGO_TARGET_DIR", "./target/honggfuzz")
         .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
+        .stdout(process::Stdio::piped())
         .spawn()?
         .wait()?;
 
@@ -255,7 +264,7 @@ fn build_fuzzers(no_libfuzzer: bool) -> Result<(), Box<dyn Error>> {
         )));
     }
 
-    println!("{} honggfuzz and its target", style("built").blue());
+    println!("    {} honggfuzz", style("Finished").cyan().bold());
 
     Ok(())
 }
@@ -272,15 +281,6 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
         .replace("{target_name}", &args.target);
 
     let term = Term::stdout();
-    term.write_line(&style("afl++ main process stats").yellow().to_string())?;
-    term.write_line("...")?;
-    term.write_line("...")?;
-    term.write_line("...")?;
-    term.write_line("waiting for afl++ to finish running")?;
-    term.write_line("the existing corpus once")?;
-    term.write_line("...")?;
-    term.write_line("...")?;
-    term.write_line("...")?;
 
     // Variables for stats printing
     let mut execs_per_sec = String::new();
@@ -347,7 +347,7 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
             }
 
             // We print the new values
-            term.move_cursor_up(8)?;
+            term.move_cursor_up(9)?;
             term.write_line(&format!(
                 "{} {}",
                 style("       execs per sec :").dim(),
@@ -391,6 +391,7 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
                 style("       total crashes :").dim(),
                 &total_crashes
             ))?;
+            term.write_line("")?;
         }
 
         // Every DEFAULT_MINIMIZATION_TIMEOUT, we kill the fuzzers and minimize the shared corpus, before launching the fuzzers again
@@ -400,7 +401,10 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
                 process.wait().ok();
             }
 
-            term.write_line("running minimization            ")?;
+            term.write_line(&format!(
+                "    {}",
+                &style("Running minimization").magenta().bold()
+            ))?;
 
             process::Command::new("mv")
                 .args(&[
@@ -459,8 +463,8 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
 
                     term.move_cursor_up(1)?;
                     term.write_line(&format!(
-                        "{} the corpus : {} -> {} files             ",
-                        style("minimized").red(),
+                        "{} the corpus ({} -> {} files)             ",
+                        style("    Minimized").magenta().bold(),
                         old_corpus_size,
                         new_corpus_size
                     ))?;
@@ -484,14 +488,6 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
 
             socket = UdpSocket::bind(("127.0.0.1", statsd_port))?;
             socket.set_nonblocking(true)?;
-
-            term.write_line(&style("afl++ main process stats").yellow().to_string())?;
-            term.write_line("...")?;
-            term.write_line("...")?;
-            term.write_line("...")?;
-            term.write_line("...")?;
-            term.write_line("...")?;
-            term.write_line("...")?;
         }
     }
 }
@@ -574,7 +570,10 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
             .spawn()?,
         );
 
-        println!("{} libfuzzer          ", style("launched").green());
+        println!(
+            "{} libfuzzer          ",
+            style("    Launched").green().bold()
+        );
     }
 
     let _ = process::Command::new("mkdir")
@@ -661,7 +660,6 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
                     .iter()
                     .filter(|a| a != &&""),
                 )
-                // .env("AFL_BENCH_UNTIL_CRASH", "1")
                 .env("AFL_STATSD", "1")
                 .env("AFL_STATSD_TAGS_FLAVOR", "dogstatsd")
                 .env("AFL_STATSD_PORT", format!("{statsd_port}"))
@@ -682,7 +680,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
                 .spawn()?,
         )
     }
-    println!("{} afl           ", style("launched").green());
+    println!("{} afl           ", style("    Launched").green().bold());
 
     let dictionary_option = match &args.dictionary {
         Some(d) => format!("-w{}", &d.display().to_string()),
@@ -718,7 +716,27 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
             ))?)
             .spawn()?,
     );
-    println!("{} honggfuzz              ", style("launched").green());
+    println!(
+        "{} honggfuzz              ",
+        style("    Launched").green().bold()
+    );
+
+    println!(
+        "\nSee more live info by running {}\n",
+        style(format!("tail -f ./output/{}/afl_0.log", args.target)).bold()
+    );
+    println!(
+        "{}",
+        &style("    AFL++ main process stats")
+            .yellow()
+            .bold()
+            .to_string()
+    );
+    println!("\n");
+    println!("    Waiting for afl++ to");
+    println!("    finish executing the");
+    println!("    existing corpus once");
+    println!("\n\n\n");
 
     Ok((fuzzer_handles, statsd_port))
 }
