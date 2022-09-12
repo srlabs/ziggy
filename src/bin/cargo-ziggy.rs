@@ -205,7 +205,6 @@ fn build_fuzzers(no_libfuzzer: bool) -> Result<(), Box<dyn Error>> {
         let run = process::Command::new(cargo.clone())
             .args(&[
                 "rustc",
-                "-q",
                 "--features=ziggy/libfuzzer-sys",
                 "--target-dir=target/libfuzzer",
             ])
@@ -230,10 +229,10 @@ fn build_fuzzers(no_libfuzzer: bool) -> Result<(), Box<dyn Error>> {
         .args(&[
             "afl",
             "build",
-            "-q",
             "--features=ziggy/afl",
             "--target-dir=target/afl",
         ])
+        .env("AFL_QUIET", "1")
         .spawn()?
         .wait()?;
 
@@ -250,7 +249,7 @@ fn build_fuzzers(no_libfuzzer: bool) -> Result<(), Box<dyn Error>> {
 
     // Third fuzzer we build: Honggfuzz
     let run = process::Command::new(cargo)
-        .args(&["hfuzz", "build", "-q"])
+        .args(&["hfuzz", "build"])
         .env("CARGO_TARGET_DIR", "./target/honggfuzz")
         .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
         .stdout(process::Stdio::piped())
