@@ -24,7 +24,7 @@ Features could also include:
 First, you install `ziggy` by running:
 
 ```
-cargo install ziggy afl honggfuzz
+cargo install ziggy afl honggfuzz grcov
 ```
 
 Here is the output of the tool's help:

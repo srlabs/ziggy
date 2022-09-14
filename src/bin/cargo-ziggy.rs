@@ -121,7 +121,7 @@ pub struct Run {
     target: String,
 
     /// Input directories and/or files to run
-    #[clap(required = true)]
+    #[clap(value_name = "DIR", default_value = DEFAULT_CORPUS)]
     inputs: Vec<PathBuf>,
 }
 
@@ -437,7 +437,6 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
             let old_corpus_size = fs::read_dir(format!("./output/{}/main_corpus", args.target))
                 .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
 
-            // TODO Can we run minimization + coverage report at the same time?
             match minimize_corpus(
                 &args.target,
                 &PathBuf::from(format!("./output/{}/main_corpus", args.target)),
@@ -480,6 +479,8 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
                         .map_err(|_| "could not move main_corpus to shared_corpus directory")?;
                 }
             }
+
+            // TODO Run coverage report here
 
             last_merge = Instant::now();
 
@@ -545,7 +546,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
                         "-artifact_prefix={}/",
                         fs::canonicalize(&parsed_corpus)?.display()
                     ),
-                    &format!("-fork={}", args.jobs),
+                    &format!("-jobs={}", args.jobs),
                     "-ignore_crashes=1",
                     &format!(
                         "-max_total_time={}",
@@ -742,11 +743,39 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
 
 #[cfg(feature = "cli")]
 fn run_inputs(target: &str, inputs: &[PathBuf]) -> Result<(), Box<dyn Error>> {
-    let mut args: Vec<String> = inputs.iter().map(|x| x.display().to_string()).collect();
+    let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
+
+    // We build the runner
+    println!("    {} runner", style("Building").red().bold());
+
+    // We run the compilation command
+    let run = process::Command::new(cargo.clone())
+        .args(&[
+            "rustc",
+            "--features=ziggy/libfuzzer-sys",
+            "--target-dir=target/runner",
+        ])
+        .env("RUSTFLAGS", "")
+        .spawn()?
+        .wait()?;
+
+    if !run.success() {
+        return Err(Box::from(format!(
+            "error building libfuzzer runner: Exited with {:?}",
+            run.code()
+        )));
+    }
+
+    println!("    {} runner", style("Finished").cyan().bold());
+
+    let mut args: Vec<String> = inputs
+        .iter()
+        .map(|x| x.display().to_string().replace("{target_name}", target))
+        .collect();
     args.push("--".to_string());
     args.push("-runs=1".to_string());
 
-    process::Command::new(format!("./target/libfuzzer/debug/{target}"))
+    process::Command::new(format!("./target/runner/debug/{target}"))
         .args(args)
         .env("RUST_BACKTRACE", "full")
         .spawn()?
@@ -808,6 +837,12 @@ fn minimize_corpus(
 
 #[cfg(feature = "cli")]
 fn generate_coverage(target: &str, corpus: &Path, output: &Path) -> Result<(), Box<dyn Error>> {
+    // We remove the previous coverage files
+    process::Command::new("rm")
+        .args(["-rf", "target/coverage/"])
+        .spawn()?
+        .wait()?;
+
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
@@ -852,6 +887,10 @@ fn generate_coverage(target: &str, corpus: &Path, output: &Path) -> Result<(), B
             "--llvm",
             "--branch",
             "--ignore-not-existing",
+            "--ignore=*libfuzzer-sys-*",
+            "--ignore=*arbitrary-*",
+            "--ignore=*/cc-*",
+            "--ignore=*once_cell-*",
             &format!(
                 "-o={}",
                 output
