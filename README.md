@@ -6,22 +6,24 @@
 
 ## Feature set
 
-Features will include:
+Features include:
 
-- 🤹 handling of different fuzzing processes in parallel (libfuzzer, honggfuzz, afl++, libafl)
+- 🤹 handling of different fuzzing processes in parallel (LibFuzzer, honggfuzz, AFL++)
 - 🗃️ one shared corpus for all fuzzers
 - 🤏 regular corpus minimization
 - 📊 insightful monitoring
 - 🎯 easy coverage report generation
+- 😶‍🌫️ Arbitrary trait support
 
-Features could also include:
+Features will also include:
+
+- 🐇 LibAFL integration
 - 📨 notification of new crashes via a simple email hook (limited to 1/day to avoid spamming)
-- 😶‍🌫️ Arbitrary trait support ([like here](https://github.com/rust-fuzz/afl.rs/blob/master/examples/arbitrary.rs))
-- ⬇️ Auto-pull of latest target project version
+- ⬇️ auto-pull of latest target project version
 
 ## Usage example
 
-First, you install `ziggy` by running:
+First, install `ziggy` by running:
 
 ```
 cargo install ziggy afl honggfuzz grcov
