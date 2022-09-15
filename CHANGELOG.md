@@ -1,5 +1,14 @@
 # Changes
 
+# 0.2.0 - 2022-09-15
+
+- Let fuzzers continue after crash is found
+- Add Arbitrary support
+- Create different output directories for different fuzzing targets
+- Improve TUI
+- Use clap's derive syntax for the CLI code
+- Various bug fixes and small improvements
+
 # 0.1.9 - 2022-09-01
 
 - Remove useless llvm flag for honggfuzz

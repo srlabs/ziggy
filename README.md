@@ -31,7 +31,7 @@ Here is the output of the tool's help:
 
 ```
 $ cargo ziggy
-cargo-ziggy 0.1.9
+cargo-ziggy 0.2.0
 A multi-fuzzer management utility for all of your Rust fuzzing needs 🧑‍🎤
 
 USAGE:
