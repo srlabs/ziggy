@@ -201,12 +201,24 @@ fn build_fuzzers(no_libfuzzer: bool) -> Result<(), Box<dyn Error>> {
             .to_string(),
         };
 
+        let rustup_command = process::Command::new("rustup")
+            .args(&["show", "active-toolchain"])
+            .output()?;
+        let rust_target = std::str::from_utf8(&rustup_command.stdout)?
+            .split(' ')
+            .next()
+            .ok_or("Could not get rustup active toolchain")
+            .unwrap_or("nightly-x86_64-unknown-linux-gnu")
+            .strip_prefix("nightly-")
+            .ok_or("You should be using rust nightly if you want to use libfuzzer")?;
+
         // We run the compilation command
         let run = process::Command::new(cargo.clone())
             .args(&[
                 "rustc",
                 "--features=ziggy/libfuzzer-sys",
                 "--target-dir=target/libfuzzer",
+                &format!("--target={rust_target}"),
             ])
             .env("RUSTFLAGS", rustflags)
             .spawn()?
@@ -531,10 +543,21 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
             None => String::new(),
         };
 
+        let rustup_command = process::Command::new("rustup")
+            .args(&["show", "active-toolchain"])
+            .output()?;
+        let rust_target = std::str::from_utf8(&rustup_command.stdout)?
+            .split(' ')
+            .next()
+            .ok_or("Could not get rustup active toolchain")
+            .unwrap_or("nightly-x86_64-unknown-linux-gnu")
+            .strip_prefix("nightly-")
+            .ok_or("You should be using rust nightly if you want to use libfuzzer")?;
+
         fuzzer_handles.push(
             process::Command::new(fs::canonicalize(format!(
-                "./target/libfuzzer/debug/{}",
-                args.target
+                "./target/libfuzzer/{}/debug/{}",
+                rust_target, args.target,
             ))?)
             .args(
                 [
@@ -887,10 +910,6 @@ fn generate_coverage(target: &str, corpus: &Path, output: &Path) -> Result<(), B
             "--llvm",
             "--branch",
             "--ignore-not-existing",
-            "--ignore=*libfuzzer-sys-*",
-            "--ignore=*arbitrary-*",
-            "--ignore=*/cc-*",
-            "--ignore=*once_cell-*",
             &format!(
                 "-o={}",
                 output

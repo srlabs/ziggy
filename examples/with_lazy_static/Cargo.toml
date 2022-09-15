@@ -6,3 +6,6 @@ edition = "2021"
 [dependencies]
 lazy_static = "1.4.0"
 ziggy = { path = "../../", default-features = false }
+
+[patch.crates-io]
+lazy_static = { git = "https://github.com/rust-fuzz/resettable-lazy-static.rs" }

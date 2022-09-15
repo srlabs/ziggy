@@ -8,10 +8,10 @@ pub use libfuzzer_sys::fuzz_target as libfuzzer_fuzz;
 #[macro_export]
 #[cfg(feature = "afl")]
 macro_rules! fuzz {
-    (|$buf:ident: &[u8]| $body:block) => {
+    ( $($x:tt)* ) => {
         #[no_mangle]
         fn main() {
-            $crate::afl_fuzz!(|$buf| $body);
+            $crate::afl_fuzz!($($x)*);
         }
     };
 }
@@ -19,19 +19,19 @@ macro_rules! fuzz {
 #[macro_export]
 #[cfg(feature = "libfuzzer-sys")]
 macro_rules! fuzz {
-    (|$buf:ident: &[u8]| $body:block) => {
-        $crate::libfuzzer_fuzz!(|$buf| $body);
+    ( $($x:tt)* ) => {
+        $crate::libfuzzer_fuzz!($($x)*);
     };
 }
 
 #[macro_export]
 #[cfg(feature = "honggfuzz")]
 macro_rules! fuzz {
-    (|$buf:ident: &[u8]| $body:block) => {
+    ( $($x:tt)* ) => {
         #[no_mangle]
         fn main() {
             loop {
-                $crate::honggfuzz_fuzz!(|$buf| $body);
+                $crate::honggfuzz_fuzz!($($x)*);
             }
         }
     };

@@ -2,9 +2,9 @@
 
 lazy_static::lazy_static! {
     static ref CRASH_STRINGS: Vec<String> = vec![
-        "banana".into(),
-        "mango".into(),
-        "pineapple".into(),
+        "bananaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
+        "mangoaaaaaaaaaaaaaaaaaaaa".into(),
+        "pineappleaaaaaaaaaaaaaaaaaaaa".into(),
     ];
 }
 
