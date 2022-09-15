@@ -1,6 +1,6 @@
 # `ziggy`
 
-`ziggy` is a fuzzer for Rust projects which is built to:
+`ziggy` is a fuzzer manager for Rust projects which is built to:
 
 - launch different fuzzers in parallel with a shared corpus
 - create and monitor continuous fuzzing pipelines
