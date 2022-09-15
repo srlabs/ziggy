@@ -1,12 +1,11 @@
 # `ziggy`
 
-`ziggy` is a tool we are building to:
-- launch different fuzzers in parallel for all of our fuzzing campaigns, with a shared corpus
+`ziggy` is a fuzzer for Rust projects which is built to:
+
+- launch different fuzzers in parallel with a shared corpus
 - create and monitor continuous fuzzing pipelines
 
 ## Feature set
-
-Features include:
 
 - 🤹 handling of different fuzzing processes in parallel (LibFuzzer, honggfuzz, AFL++)
 - 🗃️ one shared corpus for all fuzzers
