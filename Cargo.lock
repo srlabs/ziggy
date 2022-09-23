@@ -9,6 +9,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b77d36300669c8ec6b56c81209f06522ce645222203b0d2d7e0e7a01ade77579"
 dependencies = [
  "clap",
+ "lazy_static",
  "libc",
  "rustc_version",
  "xdg",
@@ -443,7 +444,7 @@ dependencies = [
 
 [[package]]
 name = "ziggy"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "afl",
  "clap",
