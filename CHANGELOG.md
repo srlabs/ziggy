@@ -1,5 +1,10 @@
 # Changes
 
+## 0.2.1 - 2022-09-23
+
+- Add reset_lazy static option support for better AFL++ stability
+- Update dependencies
+
 ## 0.2.0 - 2022-09-15
 
 - Let fuzzers continue after crash is found
