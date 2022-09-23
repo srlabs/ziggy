@@ -1,6 +1,6 @@
 # Changes
 
-# 0.2.0 - 2022-09-15
+## 0.2.0 - 2022-09-15
 
 - Let fuzzers continue after crash is found
 - Add Arbitrary support
@@ -9,32 +9,32 @@
 - Use clap's derive syntax for the CLI code
 - Various bug fixes and small improvements
 
-# 0.1.9 - 2022-09-01
+## 0.1.9 - 2022-09-01
 
 - Remove useless llvm flag for honggfuzz
 - Add `--no-libfuzzer` flag to skip building/fuzzing with libfuzzer
 
-# 0.1.8 - 2022-08-08
+## 0.1.8 - 2022-08-08
 
 - Reset most of AFL's stats after each minimization for better corpus management
 
-# 0.1.7 - 2022-08-04
+## 0.1.7 - 2022-08-04
 
 - Fix corpus coverage bug
 
-# 0.1.6 - 2022-08-04
+## 0.1.6 - 2022-08-04
 
 - Add basic code coverage report generation
 
-# 0.1.5 - 2022-08-04
+## 0.1.5 - 2022-08-04
 
 - Fix timeout bug
 
-# 0.1.4 - 2022-08-03
+## 0.1.4 - 2022-08-03
 
 - Fix AFL++ timeout bug
 
-# 0.1.3 - 2022-08-02
+## 0.1.3 - 2022-08-02
 
 - Rename threads to jobs
 
