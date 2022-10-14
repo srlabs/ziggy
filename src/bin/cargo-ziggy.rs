@@ -521,7 +521,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
         .replace("{target_name}", &args.target);
 
     let _ = process::Command::new("mkdir")
-        .args(&["-p", &parsed_corpus])
+        .args(&["-p", &parsed_corpus, &format!("./output/{}/logs/", args.target)])
         .stderr(process::Stdio::piped())
         .spawn()?
         .wait()?;
@@ -583,11 +583,11 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
             )
             .current_dir(format!("./output/{}/libfuzzer", args.target))
             .stdout(File::create(format!(
-                "./output/{}/libfuzzer.log",
+                "./output/{}/logs/libfuzzer.log",
                 args.target
             ))?)
             .stderr(File::create(format!(
-                "./output/{}/libfuzzer.log",
+                "./output/{}/logs/libfuzzer.log",
                 args.target
             ))?)
             .spawn()?,
@@ -693,11 +693,11 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
                 .env("AFL_MAP_SIZE", "10000000")
                 .env("AFL_FORCE_UI", "1")
                 .stdout(File::create(&format!(
-                    "output/{}/afl_{job_num}.log",
+                    "output/{}/logs/afl_{job_num}.log",
                     args.target
                 ))?)
                 .stderr(File::create(&format!(
-                    "output/{}/afl_{job_num}.log",
+                    "output/{}/logs/afl_{job_num}.log",
                     args.target
                 ))?)
                 .spawn()?,
@@ -730,11 +730,11 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
                 ),
             )
             .stderr(File::create(format!(
-                "./output/{}/honggfuzz.log",
+                "./output/{}/logs/honggfuzz.log",
                 args.target
             ))?)
             .stdout(File::create(format!(
-                "./output/{}/honggfuzz.log",
+                "./output/{}/logs/honggfuzz.log",
                 args.target
             ))?)
             .spawn()?,
@@ -746,7 +746,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
 
     println!(
         "\nSee more live info by running {}\n",
-        style(format!("tail -f ./output/{}/afl_0.log", args.target)).bold()
+        style(format!("tail -f ./output/{}/logs/afl_0.log", args.target)).bold()
     );
     println!(
         "{}",
