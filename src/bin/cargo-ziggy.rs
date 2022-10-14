@@ -202,7 +202,7 @@ fn build_fuzzers(no_libfuzzer: bool) -> Result<(), Box<dyn Error>> {
         };
 
         let rustup_command = process::Command::new("rustup")
-            .args(&["show", "active-toolchain"])
+            .args(["show", "active-toolchain"])
             .output()?;
         let rust_target = std::str::from_utf8(&rustup_command.stdout)?
             .split(' ')
@@ -214,7 +214,7 @@ fn build_fuzzers(no_libfuzzer: bool) -> Result<(), Box<dyn Error>> {
 
         // We run the compilation command
         let run = process::Command::new(cargo.clone())
-            .args(&[
+            .args([
                 "rustc",
                 "--features=ziggy/libfuzzer-sys",
                 "--target-dir=target/libfuzzer",
@@ -238,7 +238,7 @@ fn build_fuzzers(no_libfuzzer: bool) -> Result<(), Box<dyn Error>> {
 
     // Second fuzzer we build: AFL++
     let run = process::Command::new(cargo.clone())
-        .args(&[
+        .args([
             "afl",
             "build",
             "--features=ziggy/afl",
@@ -261,7 +261,7 @@ fn build_fuzzers(no_libfuzzer: bool) -> Result<(), Box<dyn Error>> {
 
     // Third fuzzer we build: Honggfuzz
     let run = process::Command::new(cargo)
-        .args(&["hfuzz", "build"])
+        .args(["hfuzz", "build"])
         .env("CARGO_TARGET_DIR", "./target/honggfuzz")
         .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
         .stdout(process::Stdio::piped())
@@ -418,7 +418,7 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
             ))?;
 
             process::Command::new("mv")
-                .args(&[
+                .args([
                     &parsed_corpus,
                     &format!("./output/{}/main_corpus", args.target),
                 ])
@@ -459,7 +459,7 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
                         .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
 
                     process::Command::new("rm")
-                        .args(&[
+                        .args([
                             "-r",
                             &format!("./output/{}/main_corpus/", args.target),
                             &format!("./output/{}/afl/*/.synced/", args.target),
@@ -483,7 +483,7 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
                     term.write_line("error running minimization... probably a memory error")?;
 
                     process::Command::new("mv")
-                        .args(&[
+                        .args([
                             &format!("./output/{}/main_corpus", args.target),
                             &parsed_corpus,
                         ])
@@ -521,7 +521,11 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
         .replace("{target_name}", &args.target);
 
     let _ = process::Command::new("mkdir")
-        .args(&["-p", &parsed_corpus, &format!("./output/{}/logs/", args.target)])
+        .args([
+            "-p",
+            &parsed_corpus,
+            &format!("./output/{}/logs/", args.target),
+        ])
         .stderr(process::Stdio::piped())
         .spawn()?
         .wait()?;
@@ -533,7 +537,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
 
     if !args.no_libfuzzer {
         let _ = process::Command::new("mkdir")
-            .args(&["-p", &format!("./output/{}/libfuzzer", args.target)])
+            .args(["-p", &format!("./output/{}/libfuzzer", args.target)])
             .stderr(process::Stdio::piped())
             .spawn()?
             .wait()?;
@@ -544,7 +548,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
         };
 
         let rustup_command = process::Command::new("rustup")
-            .args(&["show", "active-toolchain"])
+            .args(["show", "active-toolchain"])
             .output()?;
         let rust_target = std::str::from_utf8(&rustup_command.stdout)?
             .split(' ')
@@ -713,7 +717,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
     // TODO install honggfuzz if it's not already present
     fuzzer_handles.push(
         process::Command::new(cargo)
-            .args(&["hfuzz", "run", &args.target])
+            .args(["hfuzz", "run", &args.target])
             .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
             .env("CARGO_TARGET_DIR", "./target/honggfuzz")
             .env(
@@ -772,8 +776,8 @@ fn run_inputs(target: &str, inputs: &[PathBuf]) -> Result<(), Box<dyn Error>> {
     println!("    {} runner", style("Building").red().bold());
 
     // We run the compilation command
-    let run = process::Command::new(cargo.clone())
-        .args(&[
+    let run = process::Command::new(cargo)
+        .args([
             "rustc",
             "--features=ziggy/libfuzzer-sys",
             "--target-dir=target/runner",
@@ -817,7 +821,7 @@ fn minimize_corpus(
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
     // AFL++ minimization
     process::Command::new(cargo)
-        .args(&[
+        .args([
             "afl",
             "cmin",
             &format!(
@@ -873,7 +877,7 @@ fn generate_coverage(target: &str, corpus: &Path, output: &Path) -> Result<(), B
 
     // We build the libfuzzer runner with the appropriate flags for coverage
     process::Command::new(cargo)
-        .args(&[
+        .args([
             "rustc",
             "--features=ziggy/libfuzzer-sys",
             "--target-dir=target/coverage",
@@ -899,7 +903,7 @@ fn generate_coverage(target: &str, corpus: &Path, output: &Path) -> Result<(), B
 
     // We generate the code coverage report
     process::Command::new("grcov")
-        .args(&[
+        .args([
             ".",
             &format!("-b=./target/coverage/debug/{target}"),
             &format!(
