@@ -2,13 +2,14 @@
 fn main() {}
 
 #[cfg(feature = "cli")]
+use anyhow::{anyhow, Result};
+#[cfg(feature = "cli")]
 use clap::{Args, Parser, Subcommand};
 #[cfg(feature = "cli")]
 use console::{style, Term};
 #[cfg(feature = "cli")]
 use std::{
     env,
-    error::Error,
     fs::{self, File},
     io::{BufRead, BufReader, Write},
     net::UdpSocket,
@@ -59,19 +60,19 @@ pub enum Ziggy {
     Build(Build),
 
     /// Fuzz targets using different fuzzers in parallel
-    #[clap(arg_required_else_help = true)]
+    // #[clap(arg_required_else_help = true)]
     Fuzz(Fuzz),
 
     /// Run a specific input or a directory of inputs to analyze backtrace
-    #[clap(arg_required_else_help = true)]
+    // #[clap(arg_required_else_help = true)]
     Run(Run),
 
     /// Minimize the input corpus using the given fuzzing target
-    #[clap(arg_required_else_help = true)]
+    // #[clap(arg_required_else_help = true)]
     Minimize(Minimize),
 
     /// Generate code coverage information using the existing corpus
-    #[clap(arg_required_else_help = true)]
+    // #[clap(arg_required_else_help = true)]
     Cover(Cover),
 }
 
@@ -88,6 +89,7 @@ pub struct Build {
 #[derive(Args)]
 pub struct Fuzz {
     /// Target to fuzz
+    #[clap(value_name = "TARGET", default_value = "")]
     target: String,
 
     /// Shared corpus directory
@@ -118,6 +120,7 @@ pub struct Fuzz {
 #[derive(Args)]
 pub struct Run {
     /// Target to use
+    #[clap(value_name = "TARGET", default_value = "")]
     target: String,
 
     /// Input directories and/or files to run
@@ -128,6 +131,7 @@ pub struct Run {
 #[derive(Args)]
 pub struct Minimize {
     /// Target to use
+    #[clap(value_name = "TARGET", default_value = "")]
     target: String,
 
     /// Corpus directory to minimize
@@ -142,6 +146,7 @@ pub struct Minimize {
 #[derive(Args)]
 pub struct Cover {
     /// Target to generate coverage for
+    #[clap(value_name = "TARGET", default_value = "")]
     target: String,
     /// Corpus directory to run target on
     #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CORPUS)]
@@ -161,25 +166,85 @@ fn main() {
         Ziggy::Build(args) => {
             build_fuzzers(args.no_libfuzzer).expect("failure while building fuzzers");
         }
-        Ziggy::Fuzz(args) => {
+        Ziggy::Fuzz(mut args) => {
+            args.target = get_target(args.target);
             build_fuzzers(args.no_libfuzzer).expect("failure while building fuzzers");
             run_fuzzers(&args).expect("failure while fuzzing");
         }
-        Ziggy::Run(args) => {
+        Ziggy::Run(mut args) => {
+            args.target = get_target(args.target);
             run_inputs(&args.target, &args.inputs).expect("failure while running input")
         }
-        Ziggy::Minimize(args) => {
+        Ziggy::Minimize(mut args) => {
+            args.target = get_target(args.target);
             minimize_corpus(&args.target, &args.input_corpus, &args.output_corpus)
                 .expect("failure while running minimizer")
         }
-        Ziggy::Cover(args) => generate_coverage(&args.target, &args.corpus, &args.output)
-            .expect("failure while running coverage generation"),
+        Ziggy::Cover(mut args) => {
+            args.target = get_target(args.target);
+            generate_coverage(&args.target, &args.corpus, &args.output)
+                .expect("failure while running coverage generation")
+        }
+    }
+}
+
+#[cfg(feature = "cli")]
+fn get_target(target: String) -> String {
+    // If the target is already set, we're done here
+    if !target.is_empty() {
+        println!("    Using given target {target}\n");
+        return target;
+    }
+
+    fn get_new_target() -> Result<String> {
+        let cargo_toml_string = fs::read_to_string("Cargo.toml")?;
+        let cargo_toml = cargo_toml_string.parse::<toml::Value>()?;
+        if let Some(bin_section) = cargo_toml.get("bin") {
+            let bin_array = bin_section
+                .as_array()
+                .ok_or_else(|| anyhow!("bin section should be an array in Cargo.toml"))?;
+            // If one of the bin targets uses main, we use this target
+            for bin_target in bin_array {
+                if bin_target["path"]
+                    .as_str()
+                    .expect("path should be a string in Cargo.toml")
+                    == "src/main.rs"
+                {
+                    return Ok(bin_target["name"]
+                        .as_str()
+                        .ok_or_else(|| anyhow!("bin name should be a string in Cargo.toml"))?
+                        .to_string());
+                }
+            }
+        }
+        // src/main.rs exists, and either the bin array was empty, or it did not specify the main.rs bin target,
+        // so we use the name of the project as target.
+        if std::path::Path::new("src/main.rs").exists() {
+            return Ok(cargo_toml["package"]["name"]
+                .as_str()
+                .ok_or_else(|| anyhow!("package name should be a string in Cargo.toml"))?
+                .to_string());
+        }
+        Err(anyhow!("please specify a target"))
+    }
+
+    let new_target_result = get_new_target();
+
+    match new_target_result {
+        Ok(new_target) => {
+            println!("    Using target {new_target}\n");
+            new_target
+        }
+        Err(err) => {
+            println!("    Target is not obvious, {err}\n");
+            std::process::exit(0);
+        }
     }
 }
 
 // This method will build our fuzzers
 #[cfg(feature = "cli")]
-fn build_fuzzers(no_libfuzzer: bool) -> Result<(), Box<dyn Error>> {
+fn build_fuzzers(no_libfuzzer: bool) -> Result<()> {
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
@@ -210,7 +275,9 @@ fn build_fuzzers(no_libfuzzer: bool) -> Result<(), Box<dyn Error>> {
             .ok_or("Could not get rustup active toolchain")
             .unwrap_or("nightly-x86_64-unknown-linux-gnu")
             .strip_prefix("nightly-")
-            .ok_or("You should be using rust nightly if you want to use libfuzzer")?;
+            .ok_or_else(|| {
+                anyhow!("You should be using rust nightly if you want to use libfuzzer")
+            })?;
 
         // We run the compilation command
         let run = process::Command::new(cargo.clone())
@@ -225,10 +292,10 @@ fn build_fuzzers(no_libfuzzer: bool) -> Result<(), Box<dyn Error>> {
             .wait()?;
 
         if !run.success() {
-            return Err(Box::from(format!(
+            return Err(anyhow!(
                 "error building libfuzzer fuzzer: Exited with {:?}",
                 run.code()
-            )));
+            ));
         }
 
         println!("    {} libfuzzer", style("Finished").cyan().bold());
@@ -249,10 +316,10 @@ fn build_fuzzers(no_libfuzzer: bool) -> Result<(), Box<dyn Error>> {
         .wait()?;
 
     if !run.success() {
-        return Err(Box::from(format!(
+        return Err(anyhow!(
             "error building afl fuzzer: Exited with {:?}",
             run.code()
-        )));
+        ));
     }
 
     println!("    {} afl", style("Finished").cyan().bold());
@@ -269,10 +336,10 @@ fn build_fuzzers(no_libfuzzer: bool) -> Result<(), Box<dyn Error>> {
         .wait()?;
 
     if !run.success() {
-        return Err(Box::from(format!(
+        return Err(anyhow!(
             "error building honggfuzz fuzzer: Exited with {:?}",
             run.code()
-        )));
+        ));
     }
 
     println!("    {} honggfuzz", style("Finished").cyan().bold());
@@ -282,7 +349,7 @@ fn build_fuzzers(no_libfuzzer: bool) -> Result<(), Box<dyn Error>> {
 
 // Manages the continuous running of fuzzers
 #[cfg(feature = "cli")]
-fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
+fn run_fuzzers(args: &Fuzz) -> Result<()> {
     let (mut processes, mut statsd_port) = spawn_new_fuzzers(args)?;
 
     let parsed_corpus = args
@@ -423,24 +490,25 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
                     &format!("./output/{}/main_corpus", args.target),
                 ])
                 .output()
-                .map_err(|_| "could not move shared_corpus to main_corpus directory")?;
+                .map_err(|_| anyhow!("could not move shared_corpus to main_corpus directory"))?;
 
             use glob::glob;
 
             for path in glob(&format!("./output/{}/afl/**/queue/*", args.target))
-                .map_err(|_| "failed to read glob pattern")?
+                .map_err(|_| anyhow!("failed to read glob pattern"))?
                 .flatten()
             {
                 if path.is_file() {
                     fs::copy(
-                        path.to_str().ok_or("could not parse input path")?,
+                        path.to_str()
+                            .ok_or_else(|| anyhow!("could not parse input path"))?,
                         format!(
                             "./output/{}/main_corpus/{}",
                             args.target,
                             path.file_name()
-                                .ok_or("could not parse input file name")?
+                                .ok_or_else(|| anyhow!("could not parse input file name"))?
                                 .to_str()
-                                .ok_or("could not parse input file name path")?
+                                .ok_or_else(|| anyhow!("could not parse input file name path"))?
                         ),
                     )?;
                 }
@@ -469,7 +537,7 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
                             &format!("./output/{}/afl/*/.cur_input", args.target),
                         ])
                         .output()
-                        .map_err(|_| "could not remove main_corpus")?;
+                        .map_err(|_| anyhow!("could not remove main_corpus"))?;
 
                     term.move_cursor_up(1)?;
                     term.write_line(&format!(
@@ -488,7 +556,9 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
                             &parsed_corpus,
                         ])
                         .output()
-                        .map_err(|_| "could not move main_corpus to shared_corpus directory")?;
+                        .map_err(|_| {
+                            anyhow!("could not move main_corpus to shared_corpus directory")
+                        })?;
                 }
             }
 
@@ -506,7 +576,7 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), Box<dyn Error>> {
 
 // Spawns new fuzzers
 #[cfg(feature = "cli")]
-fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn Error>> {
+fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
     let mut fuzzer_handles = vec![];
 
     let timeout_option = match args.timeout {
@@ -556,7 +626,9 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
             .ok_or("Could not get rustup active toolchain")
             .unwrap_or("nightly-x86_64-unknown-linux-gnu")
             .strip_prefix("nightly-")
-            .ok_or("You should be using rust nightly if you want to use libfuzzer")?;
+            .ok_or_else(|| {
+                anyhow!("You should be using rust nightly if you want to use libfuzzer")
+            })?;
 
         fuzzer_handles.push(
             process::Command::new(fs::canonicalize(format!(
@@ -567,7 +639,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
                 [
                     fs::canonicalize(&parsed_corpus)?
                         .to_str()
-                        .ok_or("could not parse shared corpus path")?,
+                        .ok_or_else(|| anyhow!("could not parse shared corpus path"))?,
                     "--",
                     &format!(
                         "-artifact_prefix={}/",
@@ -769,7 +841,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), Box<dyn 
 }
 
 #[cfg(feature = "cli")]
-fn run_inputs(target: &str, inputs: &[PathBuf]) -> Result<(), Box<dyn Error>> {
+fn run_inputs(target: &str, inputs: &[PathBuf]) -> Result<()> {
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
     // We build the runner
@@ -787,10 +859,10 @@ fn run_inputs(target: &str, inputs: &[PathBuf]) -> Result<(), Box<dyn Error>> {
         .wait()?;
 
     if !run.success() {
-        return Err(Box::from(format!(
+        return Err(anyhow!(
             "error building libfuzzer runner: Exited with {:?}",
             run.code()
-        )));
+        ));
     }
 
     println!("    {} runner", style("Finished").cyan().bold());
@@ -812,11 +884,7 @@ fn run_inputs(target: &str, inputs: &[PathBuf]) -> Result<(), Box<dyn Error>> {
 }
 
 #[cfg(feature = "cli")]
-fn minimize_corpus(
-    target: &str,
-    input_corpus: &Path,
-    output_corpus: &Path,
-) -> Result<(), Box<dyn Error>> {
+fn minimize_corpus(target: &str, input_corpus: &Path, output_corpus: &Path) -> Result<()> {
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
     // AFL++ minimization
@@ -863,7 +931,7 @@ fn minimize_corpus(
 }
 
 #[cfg(feature = "cli")]
-fn generate_coverage(target: &str, corpus: &Path, output: &Path) -> Result<(), Box<dyn Error>> {
+fn generate_coverage(target: &str, corpus: &Path, output: &Path) -> Result<()> {
     // We remove the previous coverage files
     process::Command::new("rm")
         .args(["-rf", "target/coverage/"])
