@@ -10,5 +10,5 @@ cargo install --force --path .
 Then, in the `examples/with_lazy_static` directory, run:
 
 ```
-cargo ziggy fuzz with-lazy-static
+cargo ziggy fuzz
 ```

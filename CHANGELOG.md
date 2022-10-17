@@ -1,5 +1,10 @@
 # Changes
 
+## 0.2.2 - 2022-10-17
+
+- Move logs to a `logs` directory (#4)
+- Automatically select target if possible (#1)
+
 ## 0.2.1 - 2022-09-23
 
 - Add reset_lazy static option support for better AFL++ stability

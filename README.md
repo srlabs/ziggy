@@ -22,7 +22,7 @@ Features will also include:
 
 ## Usage example
 
-First, install `ziggy` by running:
+First, install `ziggy` and its dependencies by running:
 
 ```
 cargo install ziggy afl honggfuzz grcov
@@ -32,7 +32,7 @@ Here is the output of the tool's help:
 
 ```
 $ cargo ziggy
-cargo-ziggy 0.2.1
+cargo-ziggy 0.2.2
 A multi-fuzzer management utility for all of your Rust fuzzing needs 🧑‍🎤
 
 USAGE:
