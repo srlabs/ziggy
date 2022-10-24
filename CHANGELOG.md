@@ -1,5 +1,9 @@
 # Changes
 
+## 0.2.3 - 2022-10-24
+
+- Update dependencies (fixes yanked dependency issue)
+
 ## 0.2.2 - 2022-10-17
 
 - Move logs to a `logs` directory (#4)

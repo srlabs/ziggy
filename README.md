@@ -32,24 +32,22 @@ Here is the output of the tool's help:
 
 ```
 $ cargo ziggy
-cargo-ziggy 0.2.2
 A multi-fuzzer management utility for all of your Rust fuzzing needs 🧑‍🎤
 
-USAGE:
-    cargo ziggy <SUBCOMMAND>
+Usage: cargo ziggy <COMMAND>
 
-OPTIONS:
-    -h, --help       Print help information
-    -V, --version    Print version information
+Commands:
+  init      Create a new fuzzing target
+  build     Build the fuzzer and the runner binaries
+  fuzz      Fuzz targets using different fuzzers in parallel
+  run       Run a specific input or a directory of inputs to analyze backtrace
+  minimize  Minimize the input corpus using the given fuzzing target
+  cover     Generate code coverage information using the existing corpus
+  help      Print this message or the help of the given subcommand(s)
 
-SUBCOMMANDS:
-    build       Build the fuzzer and the runner binaries
-    cover       Generate code coverage information using the existing corpus
-    fuzz        Fuzz targets using different fuzzers in parallel
-    help        Print this message or the help of the given subcommand(s)
-    init        Create a new fuzzing target
-    minimize    Minimize the input corpus using the given fuzzing target
-    run         Run a specific input or a directory of inputs to analyze backtrace
+Options:
+  -h, --help     Print help information
+  -V, --version  Print version information
 ```
 
 For an example fuzz project, see [the url example](./examples/url/).
