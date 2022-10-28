@@ -348,6 +348,35 @@ fn build_fuzzers(no_libfuzzer: bool) -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "cli")]
+fn kill_subprocesses_recursively(pid: &str) {
+    let subprocesses = process::Command::new("pgrep")
+            .arg(&format!("-P{pid}"))
+            .output()
+            .unwrap();
+
+    for subprocess in std::str::from_utf8(&subprocesses.stdout).unwrap().split('\n') {
+        if subprocess.is_empty() { continue }
+
+        kill_subprocesses_recursively(subprocess);
+
+        process::Command::new("kill")
+            .arg(subprocess)
+            .output()
+            .unwrap();
+    }
+}
+
+// Stop all fuzzer processes
+#[cfg(feature = "cli")]
+fn stop_fuzzers(processes: &mut Vec<process::Child>) {
+    for process in processes {
+        kill_subprocesses_recursively(&process.id().to_string());
+        process.kill().unwrap();
+        process.wait().unwrap();
+    }
+}
+
 // Manages the continuous running of fuzzers
 #[cfg(feature = "cli")]
 fn run_fuzzers(args: &Fuzz) -> Result<()> {
@@ -396,6 +425,28 @@ fn run_fuzzers(args: &Fuzz) -> Result<()> {
                     .unwrap_or_default()
                     .trim_start_matches("total_edges       : "),
             );
+        }
+
+        if execs_per_sec.is_empty() {
+            if let Ok(afl_log) =
+                fs::read_to_string(format!("./output/{}/logs/afl_0.log", args.target))
+            {
+                if afl_log.contains("echo core >/proc/sys/kernel/core_pattern") {
+                    stop_fuzzers(&mut processes);
+                    println!("AFL++ needs you to run the following command before it can start fuzzing:\n");
+                    println!("    echo core >/proc/sys/kernel/core_pattern");
+                    println!();
+                    return Ok(());
+                }
+                if afl_log.contains("cd /sys/devices/system/cpu") {
+                    stop_fuzzers(&mut processes);
+                    println!("AFL++ needs you to run the following commands before it can start fuzzing:\n");
+                    println!("    cd /sys/devices/system/cpu");
+                    println!("    echo performance | tee cpu*/cpufreq/scaling_governor");
+                    println!();
+                    return Ok(());
+                }
+            }
         }
 
         // If we have new stats from afl's statsd socket, we update our values
@@ -475,10 +526,7 @@ fn run_fuzzers(args: &Fuzz) -> Result<()> {
 
         // Every DEFAULT_MINIMIZATION_TIMEOUT, we kill the fuzzers and minimize the shared corpus, before launching the fuzzers again
         if last_merge.elapsed() > Duration::from_secs(args.minimization_timeout.into()) {
-            for mut process in processes {
-                process.kill().ok();
-                process.wait().ok();
-            }
+            stop_fuzzers(&mut processes);
 
             term.write_line(&format!(
                 "    {}",
