@@ -18,6 +18,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(feature = "cli")]
+pub const DEFAULT_UNMODIFIED_TARGET: &str = "automatically guessed";
+
 // Half an hour, like in clusterfuzz
 // See https://github.com/google/clusterfuzz/blob/52f28f83a0422e9a7026a215732876859e4b267b/src/clusterfuzz/_internal/bot/fuzzers/afl/launcher.py#L54-L56
 #[cfg(feature = "cli")]
@@ -89,7 +92,7 @@ pub struct Build {
 #[derive(Args)]
 pub struct Fuzz {
     /// Target to fuzz
-    #[clap(value_name = "TARGET", default_value = "")]
+    #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
     target: String,
 
     /// Shared corpus directory
@@ -120,18 +123,18 @@ pub struct Fuzz {
 #[derive(Args)]
 pub struct Run {
     /// Target to use
-    #[clap(value_name = "TARGET", default_value = "")]
+    #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
     target: String,
 
     /// Input directories and/or files to run
-    #[clap(value_name = "DIR", default_value = DEFAULT_CORPUS)]
+    #[clap(short, long, value_name = "DIR", default_value = DEFAULT_CORPUS)]
     inputs: Vec<PathBuf>,
 }
 
 #[derive(Args)]
 pub struct Minimize {
     /// Target to use
-    #[clap(value_name = "TARGET", default_value = "")]
+    #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
     target: String,
 
     /// Corpus directory to minimize
@@ -146,7 +149,7 @@ pub struct Minimize {
 #[derive(Args)]
 pub struct Cover {
     /// Target to generate coverage for
-    #[clap(value_name = "TARGET", default_value = "")]
+    #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
     target: String,
     /// Corpus directory to run target on
     #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CORPUS)]
@@ -191,7 +194,7 @@ fn main() {
 #[cfg(feature = "cli")]
 fn get_target(target: String) -> String {
     // If the target is already set, we're done here
-    if !target.is_empty() {
+    if target != DEFAULT_UNMODIFIED_TARGET {
         println!("    Using given target {target}\n");
         return target;
     }
