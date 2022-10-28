@@ -262,6 +262,7 @@ fn build_fuzzers(no_libfuzzer: bool) -> Result<()> {
                 -Cllvm-args=-sanitizer-coverage-level=4 \
                 -Cllvm-args=-sanitizer-coverage-inline-8bit-counters \
                 -Cllvm-args=-sanitizer-coverage-pc-table \
+                --cfg=fuzzing \
                 "
             .to_string(),
         };
