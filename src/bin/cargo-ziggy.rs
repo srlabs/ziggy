@@ -157,6 +157,9 @@ pub struct Cover {
     /// Output directory for code coverage report
     #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_COVERAGE_DIR)]
     output: PathBuf,
+    /// Source directory of covered code
+    #[clap(short, long, value_parser, value_name = "DIR", default_value = "$HOME")]
+    source: PathBuf,
 }
 
 #[cfg(feature = "cli")]
@@ -185,7 +188,7 @@ fn main() {
         }
         Ziggy::Cover(mut args) => {
             args.target = get_target(args.target);
-            generate_coverage(&args.target, &args.corpus, &args.output)
+            generate_coverage(&args.target, &args.corpus, &args.output, &args.source)
                 .expect("failure while running coverage generation")
         }
     }
@@ -983,7 +986,7 @@ fn minimize_corpus(target: &str, input_corpus: &Path, output_corpus: &Path) -> R
 }
 
 #[cfg(feature = "cli")]
-fn generate_coverage(target: &str, corpus: &Path, output: &Path) -> Result<()> {
+fn generate_coverage(target: &str, corpus: &Path, output: &Path, source: &Path) -> Result<()> {
     // We remove the previous coverage files
     process::Command::new("rm")
         .args(["-rf", "target/coverage/"])
@@ -1021,15 +1024,17 @@ fn generate_coverage(target: &str, corpus: &Path, output: &Path) -> Result<()> {
         .spawn()?
         .wait()?;
 
+    let source_str = match source.display().to_string().as_str() {
+        "$HOME" => env::var("HOME").unwrap_or_else(|_| String::from(".")),
+        s => s.to_string(),
+    };
+
     // We generate the code coverage report
     process::Command::new("grcov")
         .args([
             ".",
             &format!("-b=./target/coverage/debug/{target}"),
-            &format!(
-                "-s={}",
-                env::var("HOME").unwrap_or_else(|_| String::from("."))
-            ),
+            &format!("-s={source_str}"),
             "-t=html",
             "--llvm",
             "--branch",
