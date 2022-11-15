@@ -51,3 +51,16 @@ Options:
 ```
 
 For an example fuzz project, see [the url example](./examples/url/).
+
+## Note about coverage
+
+The `cargo cover` command will assume two things if you run it without any arguments:
+- you are working somewhere within your `$HOME` directory
+- your `$CARGO_HOME` is also somewhere within your `$HOME` directory
+
+If one of these assumptions is incorrect, you can use the following workaround:
+```
+CARGO_HOME=$PROJECT_DIR/.cargo cargo ziggy cover --source $PROJECT_DIR
+```
+
+where `$PROJECT_DIR` encapsulates all of the code that you want the fuzzer to cover.
