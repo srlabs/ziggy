@@ -37,6 +37,9 @@ pub const DEFAULT_COVERAGE_DIR: &str = "./output/{target_name}/coverage/";
 #[cfg(feature = "cli")]
 pub const DEFAULT_MINIMIZATION_CORPUS: &str = "./output/{target_name}/minimized_corpus/";
 
+#[cfg(feature = "cli")]
+pub const DEFAULT_PLOT_DIR: &str = "./output/{target_name}/plot/";
+
 // We want to make sure we don't mistake a minimization kill for a found crash
 #[cfg(feature = "cli")]
 const SECONDS_TO_WAIT_AFTER_KILL: u32 = 5;
@@ -65,20 +68,19 @@ pub enum Ziggy {
     Build(Build),
 
     /// Fuzz targets using different fuzzers in parallel
-    // #[clap(arg_required_else_help = true)]
     Fuzz(Fuzz),
 
     /// Run a specific input or a directory of inputs to analyze backtrace
-    // #[clap(arg_required_else_help = true)]
     Run(Run),
 
     /// Minimize the input corpus using the given fuzzing target
-    // #[clap(arg_required_else_help = true)]
     Minimize(Minimize),
 
     /// Generate code coverage information using the existing corpus
-    // #[clap(arg_required_else_help = true)]
     Cover(Cover),
+
+    /// Plot AFL++ data using afl-plot
+    Plot(Plot),
 }
 
 #[derive(Args)]
@@ -164,6 +166,19 @@ pub struct Cover {
     source: PathBuf,
 }
 
+#[derive(Args)]
+pub struct Plot {
+    /// Target to generate plot for
+    #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
+    target: String,
+    /// Name of AFL++ fuzzer to use as data source
+    #[clap(short, long, value_name = "NAME", default_value = "mainaflfuzzer")]
+    input: String,
+    /// Output directory for plot
+    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_PLOT_DIR)]
+    output: PathBuf,
+}
+
 #[cfg(feature = "cli")]
 fn main() {
     let Cargo::Ziggy(command) = Cargo::parse();
@@ -192,6 +207,11 @@ fn main() {
             args.target = get_target(args.target);
             generate_coverage(&args.target, &args.corpus, &args.output, &args.source)
                 .expect("failure while running coverage generation")
+        }
+        Ziggy::Plot(mut args) => {
+            args.target = get_target(args.target);
+            generate_plot(&args.target, &args.input, &args.output)
+                .expect("failure while running plot generation")
         }
     }
 }
@@ -1082,6 +1102,26 @@ fn generate_coverage(target: &str, corpus: &Path, output: &Path, source: &Path) 
                     .replace("{target_name}", target)
             ),
         ])
+        .spawn()?
+        .wait()?;
+
+    Ok(())
+}
+
+#[cfg(feature = "cli")]
+fn generate_plot(target: &str, input: &String, output: &Path) -> Result<()> {
+    // The cargo executable
+    let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
+
+    let fuzzer_data_dir = format!("./output/{}/afl/{}/", target, input);
+    let fuzzer_output_dir = output
+        .display()
+        .to_string()
+        .replace("{target_name}", target);
+
+    // We run the afl-plot command
+    process::Command::new(cargo)
+        .args(["afl", "plot", &fuzzer_data_dir, &fuzzer_output_dir])
         .spawn()?
         .wait()?;
 
