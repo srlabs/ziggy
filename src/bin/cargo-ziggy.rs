@@ -424,10 +424,12 @@ fn run_fuzzers(args: &Fuzz) -> Result<()> {
         .unwrap()
         .as_millis();
 
-    let ziggy_crash_dir = format!("./output/{}/crashes/{}", args.target, time);
+    let ziggy_crash_dir = format!("./output/{}/crashes/{}/", args.target, time);
     let ziggy_crash_path = Path::new(&ziggy_crash_dir);
 
     fs::create_dir_all(ziggy_crash_path).unwrap();
+
+    let mut crash_has_been_found = false;
 
     loop {
         let sleep_duration = Duration::from_millis(100);
@@ -496,9 +498,12 @@ fn run_fuzzers(args: &Fuzz) -> Result<()> {
                     cycle_done = String::from(msg[19..].split('|').next().unwrap_or_default());
                 }
             }
+            if saved_crashes != "0" {
+                crash_has_been_found = true;
+            }
 
             // We print the new values
-            term.move_cursor_up(9)?;
+            term.move_cursor_up(11)?;
             term.write_line(&format!(
                 "{} {}",
                 style("       execs per sec :").dim(),
@@ -542,6 +547,14 @@ fn run_fuzzers(args: &Fuzz) -> Result<()> {
                 style("       total crashes :").dim(),
                 &total_crashes
             ))?;
+            if crash_has_been_found {
+                term.write_line(&format!(
+                    "\nCrashes have been found, see in {}",
+                    style(&ziggy_crash_dir).bold()
+                ))?;
+            } else {
+                term.write_line("\nNo crash has been found so far")?;
+            }
             term.write_line("")?;
         }
 
@@ -924,7 +937,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
     println!("    Waiting for afl++ to");
     println!("    finish executing the");
     println!("    existing corpus once");
-    println!("\n\n\n");
+    println!("\n\n\n\n\n");
 
     Ok((fuzzer_handles, statsd_port))
 }
