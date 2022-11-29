@@ -15,7 +15,7 @@ use std::{
     net::UdpSocket,
     path::{Path, PathBuf},
     process, thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 #[cfg(feature = "cli")]
@@ -419,6 +419,16 @@ fn run_fuzzers(args: &Fuzz) -> Result<()> {
 
     let mut last_merge = Instant::now();
 
+    let time = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+
+    let ziggy_crash_dir = format!("./output/{}/crashes/{}", args.target, time);
+    let ziggy_crash_path = Path::new(&ziggy_crash_dir);
+
+    fs::create_dir_all(ziggy_crash_path).unwrap();
+
     loop {
         let sleep_duration = Duration::from_millis(100);
         thread::sleep(sleep_duration);
@@ -533,6 +543,29 @@ fn run_fuzzers(args: &Fuzz) -> Result<()> {
                 &total_crashes
             ))?;
             term.write_line("")?;
+        }
+
+        // We only start checking for crashes after AFL++ has started responding to us
+        if !execs_per_sec.is_empty() {
+            // We check AFL++ and Honggfuzz's outputs for crash files
+            let afl_crash_dir = format!("./output/{}/afl/mainaflfuzzer/crashes/", args.target);
+            let honggfuzz_crash_dir =
+                format!("./output/{}/honggfuzz/{}/", args.target, args.target);
+
+            let afl_crashes = fs::read_dir(afl_crash_dir).unwrap();
+            let honggfuzz_crashes = fs::read_dir(honggfuzz_crash_dir).unwrap();
+
+            for crash_input in afl_crashes.chain(honggfuzz_crashes).flatten() {
+                let file_name = crash_input.file_name();
+                let to_path = ziggy_crash_path.join(&file_name);
+                if to_path.exists()
+                    || ["", "README.txt", "HONGGFUZZ.REPORT.TXT", "input"]
+                        .contains(&file_name.to_str().unwrap_or_default())
+                {
+                    continue;
+                }
+                fs::copy(crash_input.path(), to_path).unwrap();
+            }
         }
 
         // Every DEFAULT_MINIMIZATION_TIMEOUT, we kill the fuzzers and minimize the shared corpus, before launching the fuzzers again
