@@ -8,6 +8,8 @@ use clap::{Args, Parser, Subcommand};
 #[cfg(feature = "cli")]
 use console::{style, Term};
 #[cfg(feature = "cli")]
+use glob::glob;
+#[cfg(feature = "cli")]
 use std::{
     env,
     fs::{self, File},
@@ -590,16 +592,6 @@ fn run_fuzzers(args: &Fuzz) -> Result<()> {
                 &style("Running minimization").magenta().bold()
             ))?;
 
-            process::Command::new("mv")
-                .args([
-                    &parsed_corpus,
-                    &format!("./output/{}/main_corpus", args.target),
-                ])
-                .output()
-                .map_err(|_| anyhow!("could not move shared_corpus to main_corpus directory"))?;
-
-            use glob::glob;
-
             for path in glob(&format!("./output/{}/afl/**/queue/*", args.target))
                 .map_err(|_| anyhow!("failed to read glob pattern"))?
                 .flatten()
@@ -609,8 +601,8 @@ fn run_fuzzers(args: &Fuzz) -> Result<()> {
                         path.to_str()
                             .ok_or_else(|| anyhow!("could not parse input path"))?,
                         format!(
-                            "./output/{}/main_corpus/{}",
-                            args.target,
+                            "{}/{}",
+                            &parsed_corpus,
                             path.file_name()
                                 .ok_or_else(|| anyhow!("could not parse input file name"))?
                                 .to_str()
@@ -620,16 +612,19 @@ fn run_fuzzers(args: &Fuzz) -> Result<()> {
                 }
             }
 
-            let old_corpus_size = fs::read_dir(format!("./output/{}/main_corpus", args.target))
+            let old_corpus_size = fs::read_dir(&parsed_corpus)
                 .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
+
+            let minimized_corpus =
+                DEFAULT_MINIMIZATION_CORPUS.replace("{target_name}", &args.target);
 
             match minimize_corpus(
                 &args.target,
-                &PathBuf::from(format!("./output/{}/main_corpus", args.target)),
-                &args.corpus,
+                &PathBuf::from(&parsed_corpus),
+                &PathBuf::from(&minimized_corpus),
             ) {
                 Ok(_) => {
-                    let new_corpus_size = fs::read_dir(&parsed_corpus)
+                    let new_corpus_size = fs::read_dir(&minimized_corpus)
                         .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
 
                     process::Command::new("rm")
@@ -652,19 +647,12 @@ fn run_fuzzers(args: &Fuzz) -> Result<()> {
                         old_corpus_size,
                         new_corpus_size
                     ))?;
+
+                    fs::remove_dir_all(&parsed_corpus)?;
+                    fs::rename(minimized_corpus, &parsed_corpus)?;
                 }
                 Err(_) => {
                     term.write_line("error running minimization... probably a memory error")?;
-
-                    process::Command::new("mv")
-                        .args([
-                            &format!("./output/{}/main_corpus", args.target),
-                            &parsed_corpus,
-                        ])
-                        .output()
-                        .map_err(|_| {
-                            anyhow!("could not move main_corpus to shared_corpus directory")
-                        })?;
                 }
             }
 
