@@ -1,5 +1,17 @@
 # Changes
 
+## 0.3.0 - 2022-11-29
+
+- Add support for #[cfg(fuzzing)] and #[cfg(not(fuzzing))]
+- Add warning for AFL++ kernel and CPU rules (#6)
+- Change input corpus argument in the run subcommand
+- Add source option for coverage generation (#8)
+- Add crash aggregation directory (#3)
+- Add variable to track if crashes were found (#10)
+- Fix behaviour when user stops fuzzing in the middle of minimization (#7)
+- Add `plot` subcommand using afl-plot (#5)
+- Add initial corpus directory argument for fuzzing (#9)
+
 ## 0.2.3 - 2022-10-24
 
 - Update dependencies (fixes yanked dependency issue)
