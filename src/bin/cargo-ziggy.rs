@@ -103,6 +103,10 @@ pub struct Fuzz {
     #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CORPUS)]
     corpus: PathBuf,
 
+    /// Initial corpus directory (will only be read)
+    #[clap(short, long, value_parser, value_name = "DIR")]
+    initial_corpus: Option<PathBuf>,
+
     /// Timeout before shared corpus minimization
     #[clap(short, long, value_name = "SECS", default_value_t = DEFAULT_MINIMIZATION_TIMEOUT)]
     minimization_timeout: u32,
@@ -814,6 +818,10 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
             0 => format!("-F{}", &parsed_corpus),
             _ => String::new(),
         };
+        let use_initial_corpus_dir = match (&args.initial_corpus, job_num) {
+            (Some(initial_corpus), 0) => format!("-F{}", &initial_corpus.display().to_string()),
+            _ => String::new(),
+        };
         // A quarter of secondary fuzzers have the MOpt mutator enabled
         let mopt_mutator = match job_num % 4 {
             1 => "-L0",
@@ -857,6 +865,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
                         &format!("-ooutput/{}/afl", args.target),
                         banner,
                         &use_shared_corpus,
+                        &use_initial_corpus_dir,
                         &format!(
                             "-V{}",
                             args.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL
