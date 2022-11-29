@@ -357,12 +357,17 @@ fn build_fuzzers(no_libfuzzer: bool) -> Result<()> {
 #[cfg(feature = "cli")]
 fn kill_subprocesses_recursively(pid: &str) {
     let subprocesses = process::Command::new("pgrep")
-            .arg(&format!("-P{pid}"))
-            .output()
-            .unwrap();
+        .arg(&format!("-P{pid}"))
+        .output()
+        .unwrap();
 
-    for subprocess in std::str::from_utf8(&subprocesses.stdout).unwrap().split('\n') {
-        if subprocess.is_empty() { continue }
+    for subprocess in std::str::from_utf8(&subprocesses.stdout)
+        .unwrap()
+        .split('\n')
+    {
+        if subprocess.is_empty() {
+            continue;
+        }
 
         kill_subprocesses_recursively(subprocess);
 
@@ -617,8 +622,6 @@ fn run_fuzzers(args: &Fuzz) -> Result<()> {
                 }
             }
 
-            // TODO Run coverage report here
-
             last_merge = Instant::now();
 
             (processes, statsd_port) = spawn_new_fuzzers(args)?;
@@ -747,7 +750,6 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
-    // TODO install afl if it's not already present
     for job_num in 0..args.jobs {
         // We set the fuzzer name, and if it's the main or a secondary fuzzer
         let fuzzer_name = match job_num {
@@ -841,7 +843,6 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
         None => String::new(),
     };
 
-    // TODO install honggfuzz if it's not already present
     fuzzer_handles.push(
         process::Command::new(cargo)
             .args(["hfuzz", "run", &args.target])
