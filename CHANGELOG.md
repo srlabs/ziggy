@@ -1,5 +1,9 @@
 # Changes
 
+## 0.3.1 - 2022-11-30
+
+- Fix CLI output bug
+
 ## 0.3.0 - 2022-11-29
 
 - Add support for #[cfg(fuzzing)] and #[cfg(not(fuzzing))]
