@@ -574,10 +574,7 @@ fn run_fuzzers(args: &Fuzz) -> Result<()> {
                 &total_crashes
             ))?;
             if crash_has_been_found {
-                term.write_line(&format!(
-                    "\nCrashes have been found, see in {}",
-                    style(&ziggy_crash_dir).bold()
-                ))?;
+                term.write_line("\nCrashes have been found")?;
             } else {
                 term.write_line("\nNo crash has been found so far")?;
             }
