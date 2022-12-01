@@ -588,19 +588,21 @@ fn run_fuzzers(args: &Fuzz) -> Result<()> {
             let honggfuzz_crash_dir =
                 format!("./output/{}/honggfuzz/{}/", args.target, args.target);
 
-            let afl_crashes = fs::read_dir(afl_crash_dir).unwrap();
-            let honggfuzz_crashes = fs::read_dir(honggfuzz_crash_dir).unwrap();
-
-            for crash_input in afl_crashes.chain(honggfuzz_crashes).flatten() {
-                let file_name = crash_input.file_name();
-                let to_path = ziggy_crash_path.join(&file_name);
-                if to_path.exists()
-                    || ["", "README.txt", "HONGGFUZZ.REPORT.TXT", "input"]
-                        .contains(&file_name.to_str().unwrap_or_default())
-                {
-                    continue;
+            if let (Ok(afl_crashes), Ok(honggfuzz_crashes)) = (
+                fs::read_dir(afl_crash_dir),
+                fs::read_dir(honggfuzz_crash_dir),
+            ) {
+                for crash_input in afl_crashes.chain(honggfuzz_crashes).flatten() {
+                    let file_name = crash_input.file_name();
+                    let to_path = ziggy_crash_path.join(&file_name);
+                    if to_path.exists()
+                        || ["", "README.txt", "HONGGFUZZ.REPORT.TXT", "input"]
+                            .contains(&file_name.to_str().unwrap_or_default())
+                    {
+                        continue;
+                    }
+                    fs::copy(crash_input.path(), to_path).unwrap();
                 }
-                fs::copy(crash_input.path(), to_path).unwrap();
             }
         }
 
