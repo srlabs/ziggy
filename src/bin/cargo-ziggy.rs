@@ -811,7 +811,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
         // We set the fuzzer name, and if it's the main or a secondary fuzzer
         let fuzzer_name = match job_num {
             0 => String::from("-Mmainaflfuzzer"),
-            n => format!("-Ssecondaryfuzzer{}", n),
+            n => format!("-Ssecondaryfuzzer{n}"),
         };
         let use_shared_corpus = match job_num {
             0 => format!("-F{}", &parsed_corpus),
@@ -1127,7 +1127,7 @@ fn generate_plot(target: &str, input: &String, output: &Path) -> Result<()> {
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
-    let fuzzer_data_dir = format!("./output/{}/afl/{}/", target, input);
+    let fuzzer_data_dir = format!("./output/{target}/afl/{input}/");
     let fuzzer_output_dir = output
         .display()
         .to_string()
