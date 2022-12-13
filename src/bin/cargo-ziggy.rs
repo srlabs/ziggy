@@ -524,7 +524,7 @@ fn run_fuzzers(args: &Fuzz) -> Result<()> {
                     cycle_done = String::from(msg[19..].split('|').next().unwrap_or_default());
                 }
             }
-            if saved_crashes != "0" {
+            if saved_crashes.trim() != "0" && !saved_crashes.trim().is_empty() {
                 crash_has_been_found = true;
             }
 
@@ -852,6 +852,12 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
             None => String::new(),
         };
 
+        // statsd is only enabled for the main instance
+        let statsd_enabled = match job_num {
+            0 => "1",
+            _ => "0",
+        };
+
         fuzzer_handles.push(
             process::Command::new(cargo.clone())
                 .args(
@@ -878,7 +884,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
                     .iter()
                     .filter(|a| a != &&""),
                 )
-                .env("AFL_STATSD", "1")
+                .env("AFL_STATSD", statsd_enabled)
                 .env("AFL_STATSD_TAGS_FLAVOR", "dogstatsd")
                 .env("AFL_STATSD_PORT", format!("{statsd_port}"))
                 .env("AFL_AUTORESUME", "1")
