@@ -1,5 +1,10 @@
 # Changes
 
+## 0.3.3 - 2022-12-13
+
+- Only run statsd on the main instance
+- Fix small display bug
+
 ## 0.3.2 - 2022-12-01
 
 - Fix crash directory bug
