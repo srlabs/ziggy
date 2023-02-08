@@ -1,5 +1,11 @@
 # Changes
 
+## 0.3.4 - 2023-02-08
+
+- Add -G and -g flags for max and min input sizes
+- Add deterministic fuzzing to some AFL++ instances
+- Update dependencies
+
 ## 0.3.3 - 2022-12-13
 
 - Only run statsd on the main instance
