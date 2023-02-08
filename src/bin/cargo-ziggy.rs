@@ -123,6 +123,14 @@ pub struct Fuzz {
     #[clap(short = 'x', long = "dict", value_name = "FILE")]
     dictionary: Option<PathBuf>,
 
+    /// Maximum length of input
+    #[clap(short = 'G', long = "maxlength", default_value_t = 1048576)]
+    max_length: u64,
+
+    /// Minimum length of input (AFL++ only)
+    #[clap(short = 'g', long = "minlength", default_value_t = 1)]
+    min_length: u64,
+
     /// Skip running libfuzzer
     #[clap(long)]
     no_libfuzzer: bool,
@@ -133,6 +141,10 @@ pub struct Run {
     /// Target to use
     #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
     target: String,
+
+    /// Maximum length of input
+    #[clap(short = 'G', long = "maxlength", default_value_t = 1048576)]
+    max_length: u64,
 
     /// Input directories and/or files to run
     #[clap(short, long, value_name = "DIR", default_value = DEFAULT_CORPUS)]
@@ -200,7 +212,7 @@ fn main() {
         }
         Ziggy::Run(mut args) => {
             args.target = get_target(args.target);
-            run_inputs(&args.target, &args.inputs).expect("failure while running input")
+            run_inputs(&args).expect("failure while running input")
         }
         Ziggy::Minimize(mut args) => {
             args.target = get_target(args.target);
@@ -762,6 +774,8 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
                     ),
                     &format!("-jobs={}", args.jobs),
                     "-ignore_crashes=1",
+                    &format!("-max_len={}", args.max_length),
+                    &format!("-len_control=0"),
                     &format!(
                         "-max_total_time={}",
                         args.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL
@@ -868,6 +882,8 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
                         &format!("-i{}", &parsed_corpus,),
                         &format!("-p{power_schedule}"),
                         &format!("-ooutput/{}/afl", args.target),
+                        &format!("-g{}", args.min_length),
+                        &format!("-G{}", args.max_length),
                         banner,
                         &use_shared_corpus,
                         &use_initial_corpus_dir,
@@ -923,10 +939,11 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
             .env(
                 "HFUZZ_RUN_ARGS",
                 format!(
-                    "--run_time={} -i{} -n{} {timeout_option} {dictionary_option}",
+                    "--run_time={} -i{} -n{} -F{} {timeout_option} {dictionary_option}",
                     args.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL,
                     &parsed_corpus,
-                    args.jobs
+                    args.jobs,
+                    args.max_length,
                 ),
             )
             .stderr(File::create(format!(
@@ -965,7 +982,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
 }
 
 #[cfg(feature = "cli")]
-fn run_inputs(target: &str, inputs: &[PathBuf]) -> Result<()> {
+fn run_inputs(args: &Run) -> Result<()> {
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
     // We build the runner
@@ -991,15 +1008,21 @@ fn run_inputs(target: &str, inputs: &[PathBuf]) -> Result<()> {
 
     println!("    {} runner", style("Finished").cyan().bold());
 
-    let mut args: Vec<String> = inputs
+    let mut run_args: Vec<String> = args
+        .inputs
         .iter()
-        .map(|x| x.display().to_string().replace("{target_name}", target))
+        .map(|x| {
+            x.display()
+                .to_string()
+                .replace("{target_name}", &args.target)
+        })
         .collect();
-    args.push("--".to_string());
-    args.push("-runs=1".to_string());
+    run_args.push("--".to_string());
+    run_args.push("-runs=1 ".to_string());
+    run_args.push(format!("-max_len={}", args.max_length));
 
-    process::Command::new(format!("./target/runner/debug/{target}"))
-        .args(args)
+    process::Command::new(format!("./target/runner/debug/{}", args.target))
+        .args(run_args)
         .env("RUST_BACKTRACE", "full")
         .spawn()?
         .wait()?;
@@ -1034,8 +1057,12 @@ fn minimize_corpus(target: &str, input_corpus: &Path, output_corpus: &Path) -> R
             &format!("./target/afl/debug/{target}"),
         ])
         .env("AFL_MAP_SIZE", "10000000")
-        .stderr(File::create(format!("./output/{target}/minimization.log"))?)
-        .stdout(File::create(format!("./output/{target}/minimization.log"))?)
+        .stderr(File::create(format!(
+            "./output/{target}/logs/minimization.log"
+        ))?)
+        .stdout(File::create(format!(
+            "./output/{target}/logs/minimization.log"
+        ))?)
         .spawn()?
         .wait()?;
 
@@ -1045,8 +1072,8 @@ fn minimize_corpus(target: &str, input_corpus: &Path, output_corpus: &Path) -> R
         .args(&["hfuzz", "run", target])
         .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
         .env("HFUZZ_RUN_ARGS", format!("-i{corpus} -M -Woutput/{target}/honggfuzz"))
-        .stderr(File::create(format!("./output/{target}/minimization.log"))?)
-        .stdout(File::create(format!("./output/{target}/minimization.log"))?)
+        .stderr(File::create(format!("./output/{target}/logs/minimization.log"))?)
+        .stdout(File::create(format!("./output/{target}/logs/minimization.log"))?)
         .spawn()?
         .wait()?;
     */
