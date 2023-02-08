@@ -775,7 +775,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
                     &format!("-jobs={}", args.jobs),
                     "-ignore_crashes=1",
                     &format!("-max_len={}", args.max_length),
-                    &format!("-len_control=0"),
+                    "-len_control=0",
                     &format!(
                         "-max_total_time={}",
                         args.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL
@@ -849,6 +849,11 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
             9 => "-Z",
             _ => "",
         };
+        // Deterministic fuzzing
+        let deterministic_fuzzing = match job_num % 7 {
+            0 => "-D",
+            _ => "",
+        };
         // Banner to differentiate the statsd output
         let banner = match job_num {
             0 => "-Tmain_fuzzer",
@@ -892,6 +897,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
                             args.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL
                         ),
                         old_queue_cycling,
+                        deterministic_fuzzing,
                         mopt_mutator,
                         &timeout_option_afl,
                         &dictionary_option,
