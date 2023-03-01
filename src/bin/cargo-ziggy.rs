@@ -273,7 +273,7 @@ fn get_target(target: String) -> String {
         }
         Err(err) => {
             println!("    Target is not obvious, {err}\n");
-            std::process::exit(0);
+            process::exit(0);
         }
     }
 }
@@ -428,7 +428,7 @@ fn run_fuzzers(args: &Fuzz) -> Result<()> {
 
         if execs_per_sec.is_empty() {
             if let Ok(afl_log) =
-                fs::read_to_string(format!("./output/{}/logs/afl_0.log", args.target))
+                fs::read_to_string(format!("./output/{}/logs/afl.log", args.target))
             {
                 if afl_log.contains("echo core >/proc/sys/kernel/core_pattern") {
                     stop_fuzzers(&mut processes);
@@ -743,6 +743,13 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
             _ => "0",
         };
 
+        let log_destination = || match job_num {
+            0 => File::create(format!("output/{}/logs/afl.log", args.target))
+                .unwrap()
+                .into(),
+            _ => process::Stdio::null(),
+        };
+
         fuzzer_handles.push(
             process::Command::new(cargo.clone())
                 .args(
@@ -781,14 +788,8 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
                 .env("AFL_FAST_CAL", "1")
                 .env("AFL_MAP_SIZE", "10000000")
                 .env("AFL_FORCE_UI", "1")
-                .stdout(File::create(format!(
-                    "output/{}/logs/afl_{job_num}.log",
-                    args.target
-                ))?)
-                .stderr(File::create(format!(
-                    "output/{}/logs/afl_{job_num}.log",
-                    args.target
-                ))?)
+                .stdout(log_destination())
+                .stderr(log_destination())
                 .spawn()?,
         )
     }
@@ -835,7 +836,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
 
     println!(
         "\nSee more live info by running {}\n",
-        style(format!("tail -f ./output/{}/logs/afl_0.log", args.target)).bold()
+        style(format!("tail -f ./output/{}/logs/afl.log", args.target)).bold()
     );
     println!(
         "{}",
