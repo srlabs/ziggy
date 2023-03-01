@@ -87,11 +87,7 @@ pub enum Ziggy {
 pub struct Init {}
 
 #[derive(Args)]
-pub struct Build {
-    /// Skip building libfuzzer
-    #[clap(long)]
-    no_libfuzzer: bool,
-}
+pub struct Build {}
 
 #[derive(Args)]
 pub struct Fuzz {
@@ -130,10 +126,6 @@ pub struct Fuzz {
     /// Minimum length of input (AFL++ only)
     #[clap(short = 'g', long = "minlength", default_value_t = 1)]
     min_length: u64,
-
-    /// Skip running libfuzzer
-    #[clap(long)]
-    no_libfuzzer: bool,
 }
 
 #[derive(Args)]
@@ -202,12 +194,12 @@ fn main() {
         Ziggy::Init(_) => {
             todo!("Please see the examples directory");
         }
-        Ziggy::Build(args) => {
-            build_fuzzers(args.no_libfuzzer).expect("failure while building fuzzers");
+        Ziggy::Build(_) => {
+            build_fuzzers().expect("failure while building fuzzers");
         }
         Ziggy::Fuzz(mut args) => {
             args.target = get_target(args.target);
-            build_fuzzers(args.no_libfuzzer).expect("failure while building fuzzers");
+            build_fuzzers().expect("failure while building fuzzers");
             run_fuzzers(&args).expect("failure while fuzzing");
         }
         Ziggy::Run(mut args) => {
@@ -288,63 +280,9 @@ fn get_target(target: String) -> String {
 
 // This method will build our fuzzers
 #[cfg(feature = "cli")]
-fn build_fuzzers(no_libfuzzer: bool) -> Result<()> {
+fn build_fuzzers() -> Result<()> {
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
-
-    // First fuzzer we build: LibFuzzer
-    // We do not build it if asked not to
-    if !no_libfuzzer {
-        println!("    {} libfuzzer", style("Building").red().bold());
-
-        // User-provided flags can replace the default libfuzzer rustflags
-        let rustflags = match env::var("LIBFUZZER_RUSTFLAGS") {
-            Ok(flags) => flags,
-            Err(_) => "\
-                -Cpasses=sancov-module \
-                -Zsanitizer=address \
-                -Cllvm-args=-sanitizer-coverage-level=4 \
-                -Cllvm-args=-sanitizer-coverage-inline-8bit-counters \
-                -Cllvm-args=-sanitizer-coverage-pc-table \
-                --cfg=fuzzing \
-                "
-            .to_string(),
-        };
-
-        let rustup_command = process::Command::new("rustup")
-            .args(["show", "active-toolchain"])
-            .output()?;
-        let rust_target = std::str::from_utf8(&rustup_command.stdout)?
-            .split(' ')
-            .next()
-            .ok_or("Could not get rustup active toolchain")
-            .unwrap_or("nightly-x86_64-unknown-linux-gnu")
-            .strip_prefix("nightly-")
-            .ok_or_else(|| {
-                anyhow!("You should be using rust nightly if you want to use libfuzzer")
-            })?;
-
-        // We run the compilation command
-        let run = process::Command::new(cargo.clone())
-            .args([
-                "rustc",
-                "--features=ziggy/libfuzzer-sys",
-                "--target-dir=target/libfuzzer",
-                &format!("--target={rust_target}"),
-            ])
-            .env("RUSTFLAGS", rustflags)
-            .spawn()?
-            .wait()?;
-
-        if !run.success() {
-            return Err(anyhow!(
-                "error building libfuzzer fuzzer: Exited with {:?}",
-                run.code()
-            ));
-        }
-
-        println!("    {} libfuzzer", style("Finished").cyan().bold());
-    }
 
     println!("    {} afl", style("Building").red().bold());
 
@@ -732,78 +670,6 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
     writeln!(&mut initial_corpus, "00000000")?;
     drop(initial_corpus);
 
-    if !args.no_libfuzzer {
-        let _ = process::Command::new("mkdir")
-            .args(["-p", &format!("./output/{}/libfuzzer", args.target)])
-            .stderr(process::Stdio::piped())
-            .spawn()?
-            .wait()?;
-
-        let dictionary_option = match &args.dictionary {
-            Some(d) => format!("-dict{}", &d.display().to_string()),
-            None => String::new(),
-        };
-
-        let rustup_command = process::Command::new("rustup")
-            .args(["show", "active-toolchain"])
-            .output()?;
-        let rust_target = std::str::from_utf8(&rustup_command.stdout)?
-            .split(' ')
-            .next()
-            .ok_or("Could not get rustup active toolchain")
-            .unwrap_or("nightly-x86_64-unknown-linux-gnu")
-            .strip_prefix("nightly-")
-            .ok_or_else(|| {
-                anyhow!("You should be using rust nightly if you want to use libfuzzer")
-            })?;
-
-        fuzzer_handles.push(
-            process::Command::new(fs::canonicalize(format!(
-                "./target/libfuzzer/{}/debug/{}",
-                rust_target, args.target,
-            ))?)
-            .args(
-                [
-                    fs::canonicalize(&parsed_corpus)?
-                        .to_str()
-                        .ok_or_else(|| anyhow!("could not parse shared corpus path"))?,
-                    "--",
-                    &format!(
-                        "-artifact_prefix={}/",
-                        fs::canonicalize(&parsed_corpus)?.display()
-                    ),
-                    &format!("-jobs={}", args.jobs),
-                    "-ignore_crashes=1",
-                    &format!("-max_len={}", args.max_length),
-                    "-len_control=0",
-                    &format!(
-                        "-max_total_time={}",
-                        args.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL
-                    ),
-                    &timeout_option,
-                    &dictionary_option,
-                ]
-                .iter()
-                .filter(|a| a != &&""),
-            )
-            .current_dir(format!("./output/{}/libfuzzer", args.target))
-            .stdout(File::create(format!(
-                "./output/{}/logs/libfuzzer.log",
-                args.target
-            ))?)
-            .stderr(File::create(format!(
-                "./output/{}/logs/libfuzzer.log",
-                args.target
-            ))?)
-            .spawn()?,
-        );
-
-        println!(
-            "{} libfuzzer          ",
-            style("    Launched").green().bold()
-        );
-    }
-
     let _ = process::Command::new("mkdir")
         .args(["-p", &format!("./output/{}/afl", args.target)])
         .stderr(process::Stdio::piped())
@@ -915,11 +781,11 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
                 .env("AFL_FAST_CAL", "1")
                 .env("AFL_MAP_SIZE", "10000000")
                 .env("AFL_FORCE_UI", "1")
-                .stdout(File::create(&format!(
+                .stdout(File::create(format!(
                     "output/{}/logs/afl_{job_num}.log",
                     args.target
                 ))?)
-                .stderr(File::create(&format!(
+                .stderr(File::create(format!(
                     "output/{}/logs/afl_{job_num}.log",
                     args.target
                 ))?)
@@ -996,25 +862,21 @@ fn run_inputs(args: &Run) -> Result<()> {
 
     // We run the compilation command
     let run = process::Command::new(cargo)
-        .args([
-            "rustc",
-            "--features=ziggy/libfuzzer-sys",
-            "--target-dir=target/runner",
-        ])
+        .args(["rustc", "--target-dir=target/runner"])
         .env("RUSTFLAGS", "")
         .spawn()?
         .wait()?;
 
     if !run.success() {
         return Err(anyhow!(
-            "error building libfuzzer runner: Exited with {:?}",
+            "error building runner: Exited with {:?}",
             run.code()
         ));
     }
 
     println!("    {} runner", style("Finished").cyan().bold());
 
-    let mut run_args: Vec<String> = args
+    let run_args: Vec<String> = args
         .inputs
         .iter()
         .map(|x| {
@@ -1023,9 +885,9 @@ fn run_inputs(args: &Run) -> Result<()> {
                 .replace("{target_name}", &args.target)
         })
         .collect();
-    run_args.push("--".to_string());
-    run_args.push("-runs=1 ".to_string());
-    run_args.push(format!("-max_len={}", args.max_length));
+    //run_args.push("--".to_string());
+    //run_args.push("-runs=1 ".to_string());
+    //run_args.push(format!("-max_len={}", args.max_length));
 
     process::Command::new(format!("./target/runner/debug/{}", args.target))
         .args(run_args)
@@ -1098,18 +960,15 @@ fn generate_coverage(target: &str, corpus: &Path, output: &Path, source: &Path) 
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
-    let libfuzzer_rustflags = env::var("LIBFUZZER_RUSTFLAGS").unwrap_or_else(|_| String::from("-Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort"));
+    let coverage_rustflags = env::var("LIBFUZZER_RUSTFLAGS").unwrap_or_else(|_| String::from("-Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort"));
 
-    // We build the libfuzzer runner with the appropriate flags for coverage
+    // We build the runner with the appropriate flags for coverage
     process::Command::new(cargo)
-        .args([
-            "rustc",
-            "--features=ziggy/libfuzzer-sys",
-            "--target-dir=target/coverage",
-        ])
-        .env("RUSTFLAGS", libfuzzer_rustflags)
+        .args(["rustc", "--target-dir=target/coverage"])
+        .env("RUSTFLAGS", coverage_rustflags)
         .env("RUSTDOCFLAGS", "-Cpanic=abort")
         .env("CARGO_INCREMENTAL", "0")
+        .env("RUSTC_BOOTSTRAP", "1") // Trick to avoid forcing user to use rust nightly
         .spawn()?
         .wait()?;
 
@@ -1120,8 +979,8 @@ fn generate_coverage(target: &str, corpus: &Path, output: &Path, source: &Path) 
                 .display()
                 .to_string()
                 .replace("{target_name}", target),
-            "--".into(),
-            "-runs=1".into(),
+            //"--".into(),
+            //"-runs=1".into(),
         ])
         .spawn()?
         .wait()?;

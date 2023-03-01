@@ -7,7 +7,7 @@
 
 ## Feature set
 
-- 🤹 handling of different fuzzing processes in parallel (LibFuzzer, honggfuzz, AFL++)
+- 🤹 handling of different fuzzing processes in parallel (honggfuzz, AFL++)
 - 🗃️ one shared corpus for all fuzzers
 - 🤏 regular corpus minimization
 - 📊 insightful monitoring
