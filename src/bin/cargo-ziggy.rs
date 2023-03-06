@@ -961,7 +961,7 @@ fn generate_coverage(target: &str, corpus: &Path, output: &Path, source: &Path) 
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
-    let coverage_rustflags = env::var("LIBFUZZER_RUSTFLAGS").unwrap_or_else(|_| String::from("-Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort"));
+    let coverage_rustflags = env::var("COVERAGE_RUSTFLAGS").unwrap_or_else(|_| String::from("-Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort"));
 
     // We build the runner with the appropriate flags for coverage
     process::Command::new(cargo)
