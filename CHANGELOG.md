@@ -1,5 +1,11 @@
 # Changes
 
+## 0.4.0 - 2023-03-06
+
+- Remove libfuzzer and add a custom runner
+- Remove secondary afl logs
+- Remove need to use rust nightly
+
 ## 0.3.4 - 2023-02-08
 
 - Add -G and -g flags for max and min input sizes
