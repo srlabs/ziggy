@@ -27,13 +27,13 @@ macro_rules! read_args_and_fuzz {
         #[no_mangle]
         fn main() {
             let args: Vec<String> = std::env::args().collect();
-            for path in args {
+            for path in &args[1..] {
                 let files: Vec<String> = match std::fs::metadata(&path).unwrap().is_dir() {
                     true => std::fs::read_dir(&path)
                         .unwrap()
                         .map(|x| x.unwrap().path().to_str().unwrap().to_string())
                         .collect::<Vec<String>>(),
-                    false => vec![path],
+                    false => vec![path.to_string()],
                 };
                 for file in files {
                     $crate::read_file_and_fuzz(|$buf| $body, file);
