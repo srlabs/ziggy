@@ -1,5 +1,9 @@
 # Changes
 
+## 0.4.1 - 2023-03-07
+
+- Fix cargo ziggy run argument bug
+
 ## 0.4.0 - 2023-03-06
 
 - Remove libfuzzer and add a custom runner
