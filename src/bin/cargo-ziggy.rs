@@ -800,9 +800,16 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
         None => String::new(),
     };
 
+    // The `script` invocation is a trick to get the correct TTY output for honggfuzz
     fuzzer_handles.push(
-        process::Command::new(cargo)
-            .args(["hfuzz", "run", &args.target])
+        process::Command::new("script")
+            .args([
+                "--flush",
+                "--quiet",
+                "-c",
+                &format!("{} hfuzz run {}", cargo, &args.target),
+                "/dev/null",
+            ])
             .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
             .env("CARGO_TARGET_DIR", "./target/honggfuzz")
             .env(
@@ -819,6 +826,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
                     args.max_length,
                 ),
             )
+            .stdin(std::process::Stdio::null())
             .stderr(File::create(format!(
                 "./output/{}/logs/honggfuzz.log",
                 args.target
@@ -835,8 +843,13 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
     );
 
     println!(
-        "\nSee more live info by running {}\n",
-        style(format!("tail -f ./output/{}/logs/afl.log", args.target)).bold()
+        "\nSee more live info by running\n  {}\nor\n  {}\n",
+        style(format!("tail -f ./output/{}/logs/afl.log", args.target)).bold(),
+        style(format!(
+            "tail -f ./output/{}/logs/honggfuzz.log",
+            args.target
+        ))
+        .bold(),
     );
     println!(
         "{}",
