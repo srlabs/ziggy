@@ -965,12 +965,6 @@ fn minimize_corpus(target: &str, input_corpus: &Path, output_corpus: &Path) -> R
 
 #[cfg(feature = "cli")]
 fn generate_coverage(target: &str, corpus: &Path, output: &Path, source: &Path) -> Result<()> {
-    // We remove the previous coverage files
-    process::Command::new("rm")
-        .args(["-rf", "target/coverage/"])
-        .spawn()?
-        .wait()?;
-
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
@@ -986,16 +980,19 @@ fn generate_coverage(target: &str, corpus: &Path, output: &Path, source: &Path) 
         .spawn()?
         .wait()?;
 
+    // We remove the previous coverage files
+    if let Ok(gcda_files) = glob("target/coverage/debug/deps/*.gcda") {
+        for file in gcda_files.flatten() {
+            fs::remove_file(file)?;
+        }
+    }
+
     // We run the target against the corpus
     process::Command::new(format!("./target/coverage/debug/{target}"))
-        .args([
-            corpus
-                .display()
-                .to_string()
-                .replace("{target_name}", target),
-            //"--".into(),
-            //"-runs=1".into(),
-        ])
+        .args([corpus
+            .display()
+            .to_string()
+            .replace("{target_name}", target)])
         .spawn()?
         .wait()?;
 
@@ -1003,6 +1000,14 @@ fn generate_coverage(target: &str, corpus: &Path, output: &Path, source: &Path) 
         "$HOME" => env::var("HOME").unwrap_or_else(|_| String::from(".")),
         s => s.to_string(),
     };
+
+    let output_dir = output
+        .display()
+        .to_string()
+        .replace("{target_name}", target);
+
+    // We remove the previous coverage
+    fs::remove_dir_all(&output_dir)?;
 
     // We generate the code coverage report
     process::Command::new("grcov")
@@ -1014,13 +1019,7 @@ fn generate_coverage(target: &str, corpus: &Path, output: &Path, source: &Path) 
             "--llvm",
             "--branch",
             "--ignore-not-existing",
-            &format!(
-                "-o={}",
-                output
-                    .display()
-                    .to_string()
-                    .replace("{target_name}", target)
-            ),
+            &format!("-o={output_dir}"),
         ])
         .spawn()?
         .wait()?;
