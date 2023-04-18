@@ -1007,7 +1007,12 @@ fn generate_coverage(target: &str, corpus: &Path, output: &Path, source: &Path) 
         .replace("{target_name}", target);
 
     // We remove the previous coverage
-    fs::remove_dir_all(&output_dir)?;
+    if let Err(error) = fs::remove_dir_all(&output_dir) {
+        match error.kind() {
+            std::io::ErrorKind::NotFound => {}
+            e => return Err(anyhow!(e)),
+        }
+    };
 
     // We generate the code coverage report
     process::Command::new("grcov")
