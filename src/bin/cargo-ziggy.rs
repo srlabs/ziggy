@@ -2,7 +2,7 @@
 fn main() {}
 
 #[cfg(feature = "cli")]
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 #[cfg(feature = "cli")]
 use clap::{Args, Parser, Subcommand};
 #[cfg(feature = "cli")]
@@ -188,48 +188,54 @@ pub struct Plot {
 }
 
 #[cfg(feature = "cli")]
-fn main() {
+fn main() -> Result<(), anyhow::Error> {
     let Cargo::Ziggy(command) = Cargo::parse();
     match command {
-        Ziggy::Init(_) => {
-            todo!("Please see the examples directory");
-        }
+        Ziggy::Init(_) => Err(anyhow!("⚠️  Please see the examples directory")),
         Ziggy::Build(_) => {
-            build_fuzzers().expect("failure while building fuzzers");
+            build_fuzzers().context("⚠️  failure while building fuzzers")?;
+            Ok(())
         }
         Ziggy::Fuzz(mut args) => {
-            args.target = get_target(args.target);
-            build_fuzzers().expect("failure while building fuzzers");
-            run_fuzzers(&args).expect("failure while fuzzing");
+            args.target = get_target(args.target)?;
+            build_fuzzers().context("⚠️  failure while building fuzzers")?;
+            run_fuzzers(&args).context("⚠️  failure running fuzzers: run_fuzzers")?;
+            Ok(())
         }
         Ziggy::Run(mut args) => {
-            args.target = get_target(args.target);
-            run_inputs(&args).expect("failure while running input")
+            args.target = get_target(args.target)?;
+            run_inputs(&args).context("⚠️  failure running inputs: run_inputs")?;
+            Ok(())
         }
         Ziggy::Minimize(mut args) => {
-            args.target = get_target(args.target);
+            args.target = get_target(args.target)?;
             minimize_corpus(&args.target, &args.input_corpus, &args.output_corpus)
-                .expect("failure while running minimizer")
+                .context("⚠️  failure minimizing: minimize_corpus")?;
+            Ok(())
         }
         Ziggy::Cover(mut args) => {
-            args.target = get_target(args.target);
+            args.target = get_target(args.target)?;
             generate_coverage(&args.target, &args.corpus, &args.output, &args.source)
-                .expect("failure while running coverage generation")
+                .context("⚠️  failure generating coverage: generate_coverage")?;
+            Ok(())
         }
         Ziggy::Plot(mut args) => {
-            args.target = get_target(args.target);
+            args.target = get_target(args.target)?;
             generate_plot(&args.target, &args.input, &args.output)
-                .expect("failure while running plot generation")
+                .context("⚠️  failure generating plot: generate_plot")?;
+            Ok(())
         }
     }
 }
 
 #[cfg(feature = "cli")]
-fn get_target(target: String) -> String {
+fn get_target(target: String) -> Result<String> {
+    println!("📋  Guessing target");
+
     // If the target is already set, we're done here
     if target != DEFAULT_UNMODIFIED_TARGET {
         println!("    Using given target {target}\n");
-        return target;
+        return Ok(target);
     }
 
     fn get_new_target() -> Result<String> {
@@ -243,7 +249,7 @@ fn get_target(target: String) -> String {
             for bin_target in bin_array {
                 if bin_target["path"]
                     .as_str()
-                    .expect("path should be a string in Cargo.toml")
+                    .context("path should be a string in Cargo.toml")?
                     == "src/main.rs"
                 {
                     return Ok(bin_target["name"]
@@ -269,21 +275,20 @@ fn get_target(target: String) -> String {
     match new_target_result {
         Ok(new_target) => {
             println!("    Using target {new_target}\n");
-            new_target
+            Ok(new_target)
         }
         Err(err) => {
-            println!("    Target is not obvious, {err}\n");
-            process::exit(0);
+            Err(anyhow!("    Target is not obvious, {err}\n"))
         }
     }
 }
 
 // This method will build our fuzzers
 #[cfg(feature = "cli")]
-fn build_fuzzers() -> Result<()> {
+fn build_fuzzers() -> Result<(), anyhow::Error> {
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
-
+    println!("📋  Starting build command");
     println!("    {} afl", style("Building").red().bold());
 
     // Second fuzzer we build: AFL++
@@ -296,7 +301,8 @@ fn build_fuzzers() -> Result<()> {
         ])
         .env("AFL_QUIET", "1")
         .spawn()?
-        .wait()?;
+        .wait()
+        .context("⚠️  error spawning afl build command")?;
 
     if !run.success() {
         return Err(anyhow!(
@@ -316,7 +322,8 @@ fn build_fuzzers() -> Result<()> {
         .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
         .stdout(process::Stdio::piped())
         .spawn()?
-        .wait()?;
+        .wait()
+        .context("⚠️  error spawning hfuzz build command")?;
 
     if !run.success() {
         return Err(anyhow!(
@@ -331,42 +338,47 @@ fn build_fuzzers() -> Result<()> {
 }
 
 #[cfg(feature = "cli")]
-fn kill_subprocesses_recursively(pid: &str) {
+fn kill_subprocesses_recursively(pid: &str) -> Result<(), anyhow::Error> {
+    println!("📋  Killing pid {pid}");
+
     let subprocesses = process::Command::new("pgrep")
         .arg(&format!("-P{pid}"))
-        .output()
-        .unwrap();
+        .output()?;
 
-    for subprocess in std::str::from_utf8(&subprocesses.stdout)
-        .unwrap()
-        .split('\n')
-    {
+    for subprocess in std::str::from_utf8(&subprocesses.stdout)?.split('\n') {
         if subprocess.is_empty() {
             continue;
         }
 
-        kill_subprocesses_recursively(subprocess);
+        kill_subprocesses_recursively(subprocess)
+            .context("⚠️  error in kill_subprocesses_recursively for pid {pid}")?;
 
         process::Command::new("kill")
             .arg(subprocess)
             .output()
-            .unwrap();
+            .context("⚠️  error killing subprocess: {subprocess}")?;
     }
+    Ok(())
 }
 
 // Stop all fuzzer processes
 #[cfg(feature = "cli")]
-fn stop_fuzzers(processes: &mut Vec<process::Child>) {
+fn stop_fuzzers(processes: &mut Vec<process::Child>) -> Result<(), anyhow::Error> {
+    println!("📋  Stopping fuzzer processes");
+
     for process in processes {
-        kill_subprocesses_recursively(&process.id().to_string());
-        process.kill().unwrap();
-        process.wait().unwrap();
+        kill_subprocesses_recursively(&process.id().to_string())?;
+        process.kill()?;
+        process.wait()?;
     }
+    Ok(())
 }
 
 // Manages the continuous running of fuzzers
 #[cfg(feature = "cli")]
-fn run_fuzzers(args: &Fuzz) -> Result<()> {
+fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
+    println!("📋  Running fuzzer");
+
     let (mut processes, mut statsd_port) = spawn_new_fuzzers(args)?;
 
     let parsed_corpus = args
@@ -389,21 +401,20 @@ fn run_fuzzers(args: &Fuzz) -> Result<()> {
     let mut total_crashes = String::new();
 
     // We connect to the afl statsd socket
-    let mut socket = UdpSocket::bind(("127.0.0.1", statsd_port))?;
+    println!("📋  Binding to afl statsd socket");
+    let mut socket = UdpSocket::bind(("127.0.0.1", statsd_port))
+        .context("⚠️  cannot bind to afl statsd socket")?;
     socket.set_nonblocking(true)?;
     let mut buf = [0; 4096];
 
     let mut last_merge = Instant::now();
 
-    let time = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis();
+    let time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
 
     let ziggy_crash_dir = format!("./output/{}/crashes/{}/", args.target, time);
     let ziggy_crash_path = Path::new(&ziggy_crash_dir);
 
-    fs::create_dir_all(ziggy_crash_path).unwrap();
+    fs::create_dir_all(ziggy_crash_path)?;
 
     let mut crash_has_been_found = false;
 
@@ -431,14 +442,14 @@ fn run_fuzzers(args: &Fuzz) -> Result<()> {
                 fs::read_to_string(format!("./output/{}/logs/afl.log", args.target))
             {
                 if afl_log.contains("echo core >/proc/sys/kernel/core_pattern") {
-                    stop_fuzzers(&mut processes);
+                    stop_fuzzers(&mut processes)?;
                     println!("AFL++ needs you to run the following command before it can start fuzzing:\n");
                     println!("    echo core >/proc/sys/kernel/core_pattern");
                     println!();
                     return Ok(());
                 }
                 if afl_log.contains("cd /sys/devices/system/cpu") {
-                    stop_fuzzers(&mut processes);
+                    stop_fuzzers(&mut processes)?;
                     println!("AFL++ needs you to run the following commands before it can start fuzzing:\n");
                     println!("    cd /sys/devices/system/cpu");
                     println!("    echo performance | tee cpu*/cpufreq/scaling_governor");
@@ -551,14 +562,14 @@ fn run_fuzzers(args: &Fuzz) -> Result<()> {
                     {
                         continue;
                     }
-                    fs::copy(crash_input.path(), to_path).unwrap();
+                    fs::copy(crash_input.path(), to_path)?;
                 }
             }
         }
 
         // Every DEFAULT_MINIMIZATION_TIMEOUT, we kill the fuzzers and minimize the shared corpus, before launching the fuzzers again
         if last_merge.elapsed() > Duration::from_secs(args.minimization_timeout.into()) {
-            stop_fuzzers(&mut processes);
+            stop_fuzzers(&mut processes)?;
 
             term.write_line(&format!(
                 "    {}",
@@ -641,7 +652,9 @@ fn run_fuzzers(args: &Fuzz) -> Result<()> {
 
 // Spawns new fuzzers
 #[cfg(feature = "cli")]
-fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
+fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), anyhow::Error> {
+    println!("📋  Spawning new fuzzers");
+
     let mut fuzzer_handles = vec![];
 
     let timeout_option = match args.timeout {
@@ -859,16 +872,16 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16)> {
             .to_string()
     );
     println!("\n");
-    println!("    Waiting for afl++ to");
-    println!("    finish executing the");
-    println!("    existing corpus once");
+    println!("📋  Waiting for afl++ to");
+    println!("📋  finish executing the");
+    println!("📋  existing corpus once");
     println!("\n\n\n\n\n");
 
     Ok((fuzzer_handles, statsd_port))
 }
 
 #[cfg(feature = "cli")]
-fn run_inputs(args: &Run) -> Result<()> {
+fn run_inputs(args: &Run) -> Result<(), anyhow::Error> {
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
     // We build the runner
@@ -889,7 +902,7 @@ fn run_inputs(args: &Run) -> Result<()> {
     }
 
     println!("    {} runner", style("Finished").cyan().bold());
-
+    println!("📋  Running inputs");
     let run_args: Vec<String> = args
         .inputs
         .iter()
@@ -913,7 +926,13 @@ fn run_inputs(args: &Run) -> Result<()> {
 }
 
 #[cfg(feature = "cli")]
-fn minimize_corpus(target: &str, input_corpus: &Path, output_corpus: &Path) -> Result<()> {
+fn minimize_corpus(
+    target: &str,
+    input_corpus: &Path,
+    output_corpus: &Path,
+) -> Result<(), anyhow::Error> {
+    println!("📋  Minimizing corpus");
+
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
     // AFL++ minimization
@@ -964,7 +983,14 @@ fn minimize_corpus(target: &str, input_corpus: &Path, output_corpus: &Path) -> R
 }
 
 #[cfg(feature = "cli")]
-fn generate_coverage(target: &str, corpus: &Path, output: &Path, source: &Path) -> Result<()> {
+fn generate_coverage(
+    target: &str,
+    corpus: &Path,
+    output: &Path,
+    source: &Path,
+) -> Result<(), anyhow::Error> {
+    println!("📋  Generating coverage");
+
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
@@ -1033,7 +1059,9 @@ fn generate_coverage(target: &str, corpus: &Path, output: &Path, source: &Path) 
 }
 
 #[cfg(feature = "cli")]
-fn generate_plot(target: &str, input: &String, output: &Path) -> Result<()> {
+fn generate_plot(target: &str, input: &String, output: &Path) -> Result<(), anyhow::Error> {
+    println!("📋  Generating plot");
+
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
