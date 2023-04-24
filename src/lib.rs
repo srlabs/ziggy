@@ -6,17 +6,16 @@ pub use honggfuzz::fuzz as honggfuzz_fuzz;
 // This is our inner harness handler function for the runner and for coverage.
 // We open the input file and feed the data to the harness closure.
 #[cfg(not(any(feature = "afl", feature = "honggfuzz")))]
-pub fn read_file_and_fuzz<F>(mut closure: F, file: String) -> Result<(), anyhow::Error>
+pub fn read_file_and_fuzz<F>(mut closure: F, file: String) 
 where
     F: FnMut(&[u8]),
 {
     println!("Now running file {file}");
     use std::{fs::File, io::Read};
     let mut buffer: Vec<u8> = Vec::new();
-    let mut f = File::open(file)?;
-    f.read_to_end(&mut buffer)?;
+    let mut f = File::open(file).unwrap();
+    f.read_to_end(&mut buffer).unwrap();
     closure(buffer.as_slice());
-    anyhow::Ok(())
 }
 
 // This is our middle harness handler macro for the runner and for coverage.
