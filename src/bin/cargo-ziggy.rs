@@ -81,7 +81,15 @@ pub enum Ziggy {
 }
 
 #[derive(Args)]
-pub struct Build {}
+pub struct Build {
+    /// No honggfuzz (Fuzz only with AFL++)
+    #[clap(long = "no-afl", action)]
+    no_afl: bool,
+
+    /// No AFL++ (Fuzz only with honggfuzz)
+    #[clap(long = "no-honggfuzz", action)]
+    no_honggfuzz: bool,
+}
 
 #[derive(Args)]
 pub struct Fuzz {
@@ -120,6 +128,14 @@ pub struct Fuzz {
     /// Minimum length of input (AFL++ only)
     #[clap(short = 'g', long = "minlength", default_value_t = 1)]
     min_length: u64,
+
+    /// No honggfuzz (Fuzz only with AFL++)
+    #[clap(long = "no-afl", action)]
+    no_afl: bool,
+
+    /// No AFL++ (Fuzz only with honggfuzz)
+    #[clap(long = "no-honggfuzz", action)]
+    no_honggfuzz: bool,
 }
 
 #[derive(Args)]
@@ -185,13 +201,15 @@ pub struct Plot {
 fn main() -> Result<(), anyhow::Error> {
     let Cargo::Ziggy(command) = Cargo::parse();
     match command {
-        Ziggy::Build(_) => {
-            build_fuzzers().context("⚠️  failure while building fuzzers")?;
+        Ziggy::Build(args) => {
+            build_fuzzers(args.no_afl, args.no_honggfuzz)
+                .context("⚠️  failure while building fuzzers")?;
             Ok(())
         }
         Ziggy::Fuzz(mut args) => {
             args.target = get_target(args.target)?;
-            build_fuzzers().context("⚠️  failure while building fuzzers")?;
+            build_fuzzers(args.no_afl, args.no_honggfuzz)
+                .context("⚠️  failure while building fuzzers")?;
             run_fuzzers(&args).context("⚠️  failure running fuzzers: run_fuzzers")?;
             Ok(())
         }
@@ -276,55 +294,64 @@ fn get_target(target: String) -> Result<String> {
 
 // This method will build our fuzzers
 #[cfg(feature = "cli")]
-fn build_fuzzers() -> Result<(), anyhow::Error> {
+fn build_fuzzers(no_afl: bool, no_honggfuzz: bool) -> Result<(), anyhow::Error> {
+    // No fuzzers for you
+    if no_afl && no_honggfuzz {
+        return Err(anyhow!("⚠️  Pick at least one fuzzer"));
+    }
+
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
     println!("📋  Starting build command");
-    println!("    {} afl", style("Building").red().bold());
 
-    // Second fuzzer we build: AFL++
-    let run = process::Command::new(cargo.clone())
-        .args([
-            "afl",
-            "build",
-            "--features=ziggy/afl",
-            "--target-dir=target/afl",
-        ])
-        .env("AFL_QUIET", "1")
-        .spawn()?
-        .wait()
-        .context("⚠️  error spawning afl build command")?;
+    if !no_afl {
+        println!("    {} afl", style("Building").red().bold());
 
-    if !run.success() {
-        return Err(anyhow!(
-            "error building afl fuzzer: Exited with {:?}",
-            run.code()
-        ));
+        // Second fuzzer we build: AFL++
+        let run = process::Command::new(cargo.clone())
+            .args([
+                "afl",
+                "build",
+                "--features=ziggy/afl",
+                "--target-dir=target/afl",
+            ])
+            .env("AFL_QUIET", "1")
+            .spawn()?
+            .wait()
+            .context("⚠️  error spawning afl build command")?;
+
+        if !run.success() {
+            return Err(anyhow!(
+                "error building afl fuzzer: Exited with {:?}",
+                run.code()
+            ));
+        }
+
+        println!("    {} afl", style("Finished").cyan().bold());
     }
 
-    println!("    {} afl", style("Finished").cyan().bold());
+    if !no_honggfuzz {
+        println!("    {} honggfuzz", style("Building").red().bold());
 
-    println!("    {} honggfuzz", style("Building").red().bold());
+        // Third fuzzer we build: Honggfuzz
+        let run = process::Command::new(cargo)
+            .args(["hfuzz", "build"])
+            .env("CARGO_TARGET_DIR", "./target/honggfuzz")
+            .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
+            .stdout(process::Stdio::piped())
+            .spawn()?
+            .wait()
+            .context("⚠️  error spawning hfuzz build command")?;
 
-    // Third fuzzer we build: Honggfuzz
-    let run = process::Command::new(cargo)
-        .args(["hfuzz", "build"])
-        .env("CARGO_TARGET_DIR", "./target/honggfuzz")
-        .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
-        .stdout(process::Stdio::piped())
-        .spawn()?
-        .wait()
-        .context("⚠️  error spawning hfuzz build command")?;
+        if !run.success() {
+            return Err(anyhow!(
+                "error building honggfuzz fuzzer: Exited with {:?}",
+                run.code()
+            ));
+        }
 
-    if !run.success() {
-        return Err(anyhow!(
-            "error building honggfuzz fuzzer: Exited with {:?}",
-            run.code()
-        ));
+        println!("    {} honggfuzz", style("Finished").cyan().bold());
     }
-
-    println!("    {} honggfuzz", style("Finished").cyan().bold());
-
     Ok(())
 }
 
@@ -644,6 +671,11 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
 // Spawns new fuzzers
 #[cfg(feature = "cli")]
 fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), anyhow::Error> {
+    // No fuzzers for you
+    if args.no_afl && args.no_honggfuzz {
+        return Err(anyhow!("⚠️  Pick at least one fuzzer"));
+    }
+
     println!("📋  Spawning new fuzzers");
 
     let mut fuzzer_handles = vec![];
@@ -669,182 +701,186 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), anyhow::
         .spawn()?
         .wait()?;
 
-    // We create an initial corpus file, so that AFL++ starts-up properly
-    let mut initial_corpus = File::create(parsed_corpus.clone() + "/init")?;
-    writeln!(&mut initial_corpus, "00000000")?;
-    drop(initial_corpus);
-
-    let _ = process::Command::new("mkdir")
-        .args(["-p", &format!("./output/{}/afl", args.target)])
-        .stderr(process::Stdio::piped())
-        .spawn()?
-        .wait()?;
-
-    // https://aflplus.plus/docs/fuzzing_in_depth/#c-using-multiple-cores
-    let afl_modes = vec!["fast", "explore", "coe", "lin", "quad", "exploit", "rare"];
+    // The cargo executable
+    let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
     let mut statsd_port = 8125;
     while UdpSocket::bind(("127.0.0.1", statsd_port)).is_err() {
         statsd_port += 1;
     }
 
-    // The cargo executable
-    let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
+    if !args.no_afl {
+        // We create an initial corpus file, so that AFL++ starts-up properly
+        let mut initial_corpus = File::create(parsed_corpus.clone() + "/init")?;
+        writeln!(&mut initial_corpus, "00000000")?;
+        drop(initial_corpus);
 
-    for job_num in 0..args.jobs {
-        // We set the fuzzer name, and if it's the main or a secondary fuzzer
-        let fuzzer_name = match job_num {
-            0 => String::from("-Mmainaflfuzzer"),
-            n => format!("-Ssecondaryfuzzer{n}"),
-        };
-        let use_shared_corpus = match job_num {
-            0 => format!("-F{}", &parsed_corpus),
-            _ => String::new(),
-        };
-        let use_initial_corpus_dir = match (&args.initial_corpus, job_num) {
-            (Some(initial_corpus), 0) => format!("-F{}", &initial_corpus.display().to_string()),
-            _ => String::new(),
-        };
-        // A quarter of secondary fuzzers have the MOpt mutator enabled
-        let mopt_mutator = match job_num % 4 {
-            1 => "-L0",
-            _ => "",
-        };
-        // Power schedule
-        let power_schedule = afl_modes
-            .get(job_num as usize % afl_modes.len())
-            .unwrap_or(&"fast");
-        // Old queue cycling
-        let old_queue_cycling = match job_num % 10 {
-            9 => "-Z",
-            _ => "",
-        };
-        // Deterministic fuzzing
-        let deterministic_fuzzing = match job_num % 7 {
-            0 => "-D",
-            _ => "",
-        };
-        // Banner to differentiate the statsd output
-        let banner = match job_num {
-            0 => "-Tmain_fuzzer",
-            _ => "",
-        };
+        let _ = process::Command::new("mkdir")
+            .args(["-p", &format!("./output/{}/afl", args.target)])
+            .stderr(process::Stdio::piped())
+            .spawn()?
+            .wait()?;
 
-        // AFL timeout is in ms so we convert the value
-        let timeout_option_afl = match args.timeout {
-            Some(t) => format!("-t{}", t * 1000),
-            None => String::new(),
-        };
+        // https://aflplus.plus/docs/fuzzing_in_depth/#c-using-multiple-cores
+        let afl_modes = vec!["fast", "explore", "coe", "lin", "quad", "exploit", "rare"];
 
-        let dictionary_option = match &args.dictionary {
-            Some(d) => format!("-x{}", &d.display().to_string()),
-            None => String::new(),
-        };
+        for job_num in 0..args.jobs {
+            // We set the fuzzer name, and if it's the main or a secondary fuzzer
+            let fuzzer_name = match job_num {
+                0 => String::from("-Mmainaflfuzzer"),
+                n => format!("-Ssecondaryfuzzer{n}"),
+            };
+            let use_shared_corpus = match job_num {
+                0 => format!("-F{}", &parsed_corpus),
+                _ => String::new(),
+            };
+            let use_initial_corpus_dir = match (&args.initial_corpus, job_num) {
+                (Some(initial_corpus), 0) => format!("-F{}", &initial_corpus.display().to_string()),
+                _ => String::new(),
+            };
+            // A quarter of secondary fuzzers have the MOpt mutator enabled
+            let mopt_mutator = match job_num % 4 {
+                1 => "-L0",
+                _ => "",
+            };
+            // Power schedule
+            let power_schedule = afl_modes
+                .get(job_num as usize % afl_modes.len())
+                .unwrap_or(&"fast");
+            // Old queue cycling
+            let old_queue_cycling = match job_num % 10 {
+                9 => "-Z",
+                _ => "",
+            };
+            // Deterministic fuzzing
+            let deterministic_fuzzing = match job_num % 7 {
+                0 => "-D",
+                _ => "",
+            };
+            // Banner to differentiate the statsd output
+            let banner = match job_num {
+                0 => "-Tmain_fuzzer",
+                _ => "",
+            };
 
-        // statsd is only enabled for the main instance
-        let statsd_enabled = match job_num {
-            0 => "1",
-            _ => "0",
-        };
+            // AFL timeout is in ms so we convert the value
+            let timeout_option_afl = match args.timeout {
+                Some(t) => format!("-t{}", t * 1000),
+                None => String::new(),
+            };
 
-        let log_destination = || match job_num {
-            0 => File::create(format!("output/{}/logs/afl.log", args.target))
-                .unwrap()
-                .into(),
-            _ => process::Stdio::null(),
-        };
+            let dictionary_option = match &args.dictionary {
+                Some(d) => format!("-x{}", &d.display().to_string()),
+                None => String::new(),
+            };
 
-        fuzzer_handles.push(
-            process::Command::new(cargo.clone())
-                .args(
-                    [
-                        "afl",
-                        "fuzz",
-                        &fuzzer_name,
-                        &format!("-i{}", &parsed_corpus,),
-                        &format!("-p{power_schedule}"),
-                        &format!("-ooutput/{}/afl", args.target),
-                        &format!("-g{}", args.min_length),
-                        &format!("-G{}", args.max_length),
-                        banner,
-                        &use_shared_corpus,
-                        &use_initial_corpus_dir,
-                        &format!(
-                            "-V{}",
-                            args.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL
-                        ),
-                        old_queue_cycling,
-                        deterministic_fuzzing,
-                        mopt_mutator,
-                        &timeout_option_afl,
-                        &dictionary_option,
-                        &format!("./target/afl/debug/{}", args.target),
-                    ]
-                    .iter()
-                    .filter(|a| a != &&""),
-                )
-                .env("AFL_STATSD", statsd_enabled)
-                .env("AFL_STATSD_TAGS_FLAVOR", "dogstatsd")
-                .env("AFL_STATSD_PORT", format!("{statsd_port}"))
-                .env("AFL_AUTORESUME", "1")
-                .env("AFL_TESTCACHE_SIZE", "100")
-                .env("AFL_CMPLOG_ONLY_NEW", "1")
-                .env("AFL_FAST_CAL", "1")
-                .env("AFL_MAP_SIZE", "10000000")
-                .env("AFL_FORCE_UI", "1")
-                .stdout(log_destination())
-                .stderr(log_destination())
-                .spawn()?,
-        )
+            // statsd is only enabled for the main instance
+            let statsd_enabled = match job_num {
+                0 => "1",
+                _ => "0",
+            };
+
+            let log_destination = || match job_num {
+                0 => File::create(format!("output/{}/logs/afl.log", args.target))
+                    .unwrap()
+                    .into(),
+                _ => process::Stdio::null(),
+            };
+
+            fuzzer_handles.push(
+                process::Command::new(cargo.clone())
+                    .args(
+                        [
+                            "afl",
+                            "fuzz",
+                            &fuzzer_name,
+                            &format!("-i{}", &parsed_corpus,),
+                            &format!("-p{power_schedule}"),
+                            &format!("-ooutput/{}/afl", args.target),
+                            &format!("-g{}", args.min_length),
+                            &format!("-G{}", args.max_length),
+                            banner,
+                            &use_shared_corpus,
+                            &use_initial_corpus_dir,
+                            &format!(
+                                "-V{}",
+                                args.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL
+                            ),
+                            old_queue_cycling,
+                            deterministic_fuzzing,
+                            mopt_mutator,
+                            &timeout_option_afl,
+                            &dictionary_option,
+                            &format!("./target/afl/debug/{}", args.target),
+                        ]
+                        .iter()
+                        .filter(|a| a != &&""),
+                    )
+                    .env("AFL_STATSD", statsd_enabled)
+                    .env("AFL_STATSD_TAGS_FLAVOR", "dogstatsd")
+                    .env("AFL_STATSD_PORT", format!("{statsd_port}"))
+                    .env("AFL_AUTORESUME", "1")
+                    .env("AFL_TESTCACHE_SIZE", "100")
+                    .env("AFL_CMPLOG_ONLY_NEW", "1")
+                    .env("AFL_FAST_CAL", "1")
+                    .env("AFL_MAP_SIZE", "10000000")
+                    .env("AFL_FORCE_UI", "1")
+                    .stdout(log_destination())
+                    .stderr(log_destination())
+                    .spawn()?,
+            )
+        }
+        println!("{} afl           ", style("    Launched").green().bold());
     }
-    println!("{} afl           ", style("    Launched").green().bold());
 
-    let dictionary_option = match &args.dictionary {
-        Some(d) => format!("-w{}", &d.display().to_string()),
-        None => String::new(),
-    };
+    if !args.no_honggfuzz {
+        let dictionary_option = match &args.dictionary {
+            Some(d) => format!("-w{}", &d.display().to_string()),
+            None => String::new(),
+        };
 
-    // The `script` invocation is a trick to get the correct TTY output for honggfuzz
-    fuzzer_handles.push(
-        process::Command::new("script")
-            .args([
-                "--flush",
-                "--quiet",
-                "-c",
-                &format!("{} hfuzz run {}", cargo, &args.target),
-                "/dev/null",
-            ])
-            .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
-            .env("CARGO_TARGET_DIR", "./target/honggfuzz")
-            .env(
-                "HFUZZ_WORKSPACE",
-                format!("./output/{}/honggfuzz", args.target),
-            )
-            .env(
-                "HFUZZ_RUN_ARGS",
-                format!(
-                    "--run_time={} -i{} -n{} -F{} {timeout_option} {dictionary_option}",
-                    args.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL,
-                    &parsed_corpus,
-                    args.jobs,
-                    args.max_length,
-                ),
-            )
-            .stdin(std::process::Stdio::null())
-            .stderr(File::create(format!(
-                "./output/{}/logs/honggfuzz.log",
-                args.target
-            ))?)
-            .stdout(File::create(format!(
-                "./output/{}/logs/honggfuzz.log",
-                args.target
-            ))?)
-            .spawn()?,
-    );
-    println!(
-        "{} honggfuzz              ",
-        style("    Launched").green().bold()
-    );
+        // The `script` invocation is a trick to get the correct TTY output for honggfuzz
+        fuzzer_handles.push(
+            process::Command::new("script")
+                .args([
+                    "--flush",
+                    "--quiet",
+                    "-c",
+                    &format!("{} hfuzz run {}", cargo, &args.target),
+                    "/dev/null",
+                ])
+                .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
+                .env("CARGO_TARGET_DIR", "./target/honggfuzz")
+                .env(
+                    "HFUZZ_WORKSPACE",
+                    format!("./output/{}/honggfuzz", args.target),
+                )
+                .env(
+                    "HFUZZ_RUN_ARGS",
+                    format!(
+                        "--run_time={} -i{} -n{} -F{} {timeout_option} {dictionary_option}",
+                        args.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL,
+                        &parsed_corpus,
+                        args.jobs,
+                        args.max_length,
+                    ),
+                )
+                .stdin(std::process::Stdio::null())
+                .stderr(File::create(format!(
+                    "./output/{}/logs/honggfuzz.log",
+                    args.target
+                ))?)
+                .stdout(File::create(format!(
+                    "./output/{}/logs/honggfuzz.log",
+                    args.target
+                ))?)
+                .spawn()?,
+        );
+        println!(
+            "{} honggfuzz              ",
+            style("    Launched").green().bold()
+        );
+    }
 
     println!(
         "\nSee more live info by running\n  {}\nor\n  {}\n",
