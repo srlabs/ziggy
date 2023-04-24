@@ -61,9 +61,6 @@ pub enum Cargo {
     about = "A multi-fuzzer management utility for all of your Rust fuzzing needs 🧑‍🎤"
 )]
 pub enum Ziggy {
-    /// Create a new fuzzing target
-    Init(Init),
-
     /// Build the fuzzer and the runner binaries
     Build(Build),
 
@@ -82,9 +79,6 @@ pub enum Ziggy {
     /// Plot AFL++ data using afl-plot
     Plot(Plot),
 }
-
-#[derive(Args)]
-pub struct Init {}
 
 #[derive(Args)]
 pub struct Build {}
@@ -191,7 +185,6 @@ pub struct Plot {
 fn main() -> Result<(), anyhow::Error> {
     let Cargo::Ziggy(command) = Cargo::parse();
     match command {
-        Ziggy::Init(_) => Err(anyhow!("⚠️  Please see the examples directory")),
         Ziggy::Build(_) => {
             build_fuzzers().context("⚠️  failure while building fuzzers")?;
             Ok(())
