@@ -87,7 +87,15 @@ pub enum Ziggy {
 pub struct Init {}
 
 #[derive(Args)]
-pub struct Build {}
+pub struct Build {
+    /// No honggfuzz (Fuzz only with AFL++)
+    #[clap(long = "no-afl", action)]
+    no_afl: bool,
+
+    /// No AFL++ (Fuzz only with honggfuzz)
+    #[clap(long = "no-honggfuzz", action)]
+    no_honggfuzz: bool,
+}
 
 #[derive(Args)]
 pub struct Fuzz {
@@ -126,6 +134,15 @@ pub struct Fuzz {
     /// Minimum length of input (AFL++ only)
     #[clap(short = 'g', long = "minlength", default_value_t = 1)]
     min_length: u64,
+
+    /// No honggfuzz (Fuzz only with AFL++)
+    #[clap(long = "no-afl", action)]
+    no_afl: bool,
+
+    /// No AFL++ (Fuzz only with honggfuzz)
+    #[clap(long = "no-honggfuzz", action)]
+    no_honggfuzz: bool,
+    
 }
 
 #[derive(Args)]
@@ -192,13 +209,13 @@ fn main() -> Result<(), anyhow::Error> {
     let Cargo::Ziggy(command) = Cargo::parse();
     match command {
         Ziggy::Init(_) => Err(anyhow!("⚠️  Please see the examples directory")),
-        Ziggy::Build(_) => {
-            build_fuzzers().context("⚠️  failure while building fuzzers")?;
+        Ziggy::Build(args) => {
+            build_fuzzers(args.no_afl, args.no_honggfuzz).context("⚠️  failure while building fuzzers")?;
             Ok(())
         }
         Ziggy::Fuzz(mut args) => {
             args.target = get_target(args.target)?;
-            build_fuzzers().context("⚠️  failure while building fuzzers")?;
+            build_fuzzers(args.no_afl, args.no_honggfuzz).context("⚠️  failure while building fuzzers")?;
             run_fuzzers(&args).context("⚠️  failure running fuzzers: run_fuzzers")?;
             Ok(())
         }
@@ -285,7 +302,14 @@ fn get_target(target: String) -> Result<String> {
 
 // This method will build our fuzzers
 #[cfg(feature = "cli")]
-fn build_fuzzers() -> Result<(), anyhow::Error> {
+fn build_fuzzers(no_afl: bool, no_honggfuzz: bool) -> Result<(), anyhow::Error> {
+
+    // No fuzzers for you
+    if no_afl && no_honggfuzz {
+        return Err(anyhow!("⚠️  Pick at least one fuzzer"));
+    } 
+
+    if !no_afl {
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
     println!("📋  Starting build command");
@@ -312,7 +336,9 @@ fn build_fuzzers() -> Result<(), anyhow::Error> {
     }
 
     println!("    {} afl", style("Finished").cyan().bold());
+    }
 
+    if no_honggfuzz {
     println!("    {} honggfuzz", style("Building").red().bold());
 
     // Third fuzzer we build: Honggfuzz
@@ -333,7 +359,7 @@ fn build_fuzzers() -> Result<(), anyhow::Error> {
     }
 
     println!("    {} honggfuzz", style("Finished").cyan().bold());
-
+    }
     Ok(())
 }
 
