@@ -23,10 +23,18 @@ use std::{
 #[cfg(feature = "cli")]
 pub const DEFAULT_UNMODIFIED_TARGET: &str = "automatically guessed";
 
-// Half an hour, like in clusterfuzz
-// See https://github.com/google/clusterfuzz/blob/52f28f83a0422e9a7026a215732876859e4b267b/src/clusterfuzz/_internal/bot/fuzzers/afl/launcher.py#L54-L56
+// Default time after which we share the corpora between the fuzzer instances and re-launch the fuzzers
+// This is work in progress
+// Set to 2 hour and 20 minutes, like in clusterfuzz
+// See https://github.com/google/clusterfuzz/blob/52f28f83a0422e9a7026a215732876859e4b267b/src/local/butler/scripts/setup.py#L52
 #[cfg(feature = "cli")]
-pub const DEFAULT_MINIMIZATION_TIMEOUT: u32 = 30 * 60;
+pub const _DEFAULT_FUZZ_TIMEOUT: u32 = 8400;
+
+// Default time after which we minimize the corpus and re-launch the fuzzers
+// Set to 22 hours, like in clusterfuzz
+// See https://github.com/google/clusterfuzz/blob/52f28f83a0422e9a7026a215732876859e4b267b/src/clusterfuzz/_internal/bot/tasks/corpus_pruning_task.py#L61
+#[cfg(feature = "cli")]
+pub const DEFAULT_MINIMIZATION_TIMEOUT: u32 = 22 * 60 * 60;
 
 #[cfg(feature = "cli")]
 pub const DEFAULT_CORPUS: &str = "./output/{target_name}/shared_corpus/";
@@ -364,6 +372,30 @@ fn stop_fuzzers(processes: &mut Vec<process::Child>) {
     }
 }
 
+// Share AFL++ corpora in the shared_corpus directory
+fn share_all_corpora(args: &Fuzz, parsed_corpus: &String) -> Result<()> {
+    for path in glob(&format!("./output/{}/afl/**/queue/*", args.target))
+        .map_err(|_| anyhow!("failed to read glob pattern"))?
+        .flatten()
+    {
+        if path.is_file() {
+            fs::copy(
+                path.to_str()
+                    .ok_or_else(|| anyhow!("could not parse input path"))?,
+                format!(
+                    "{}/{}",
+                    &parsed_corpus,
+                    path.file_name()
+                        .ok_or_else(|| anyhow!("could not parse input file name"))?
+                        .to_str()
+                        .ok_or_else(|| anyhow!("could not parse input file name path"))?
+                ),
+            )?;
+        }
+    }
+    Ok(())
+}
+
 // Manages the continuous running of fuzzers
 #[cfg(feature = "cli")]
 fn run_fuzzers(args: &Fuzz) -> Result<()> {
@@ -565,25 +597,7 @@ fn run_fuzzers(args: &Fuzz) -> Result<()> {
                 &style("Running minimization").magenta().bold()
             ))?;
 
-            for path in glob(&format!("./output/{}/afl/**/queue/*", args.target))
-                .map_err(|_| anyhow!("failed to read glob pattern"))?
-                .flatten()
-            {
-                if path.is_file() {
-                    fs::copy(
-                        path.to_str()
-                            .ok_or_else(|| anyhow!("could not parse input path"))?,
-                        format!(
-                            "{}/{}",
-                            &parsed_corpus,
-                            path.file_name()
-                                .ok_or_else(|| anyhow!("could not parse input file name"))?
-                                .to_str()
-                                .ok_or_else(|| anyhow!("could not parse input file name path"))?
-                        ),
-                    )?;
-                }
-            }
+            share_all_corpora(args, &parsed_corpus)?;
 
             let old_corpus_size = fs::read_dir(&parsed_corpus)
                 .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
