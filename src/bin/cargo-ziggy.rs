@@ -117,7 +117,7 @@ pub struct Fuzz {
     #[clap(short, long, value_name = "SECS", default_value_t = DEFAULT_MINIMIZATION_TIMEOUT)]
     minimization_timeout: u32,
 
-    /// Number of jobs per fuzzer (total CPU usage will be 3xNUM CPUs)
+    /// Number of concurent fuzzing jobs
     #[clap(short, long, value_name = "NUM", default_value_t = 1)]
     jobs: u32,
 
@@ -723,6 +723,20 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), anyhow::
         statsd_port += 1;
     }
 
+    let (afl_jobs, honggfuzz_jobs) = {
+        if args.no_afl {
+            (0, args.jobs)
+        } else if args.no_honggfuzz {
+            (args.jobs, 0)
+        } else if args.jobs > 6 {
+            // If there are more than 6 jobs, we assign 3 to honggfuzz and the rest to AFL++
+            (args.jobs - 3, 3)
+        } else {
+            // Otherwise, we assign half/half with priority to AFL++
+            (args.jobs / 2 + args.jobs % 2, args.jobs / 2)
+        }
+    };
+
     if !args.no_afl {
         // We create an initial corpus file, so that AFL++ starts-up properly
         let mut initial_corpus = File::create(parsed_corpus.clone() + "/init")?;
@@ -738,7 +752,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), anyhow::
         // https://aflplus.plus/docs/fuzzing_in_depth/#c-using-multiple-cores
         let afl_modes = vec!["fast", "explore", "coe", "lin", "quad", "exploit", "rare"];
 
-        for job_num in 0..args.jobs {
+        for job_num in 0..afl_jobs {
             // We set the fuzzer name, and if it's the main or a secondary fuzzer
             let fuzzer_name = match job_num {
                 0 => String::from("-Mmainaflfuzzer"),
@@ -875,7 +889,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), anyhow::
                         "--run_time={} -i{} -n{} -F{} {timeout_option} {dictionary_option}",
                         args.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL,
                         &parsed_corpus,
-                        args.jobs,
+                        honggfuzz_jobs,
                         args.max_length,
                     ),
                 )
