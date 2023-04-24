@@ -1,5 +1,9 @@
 # Changes
 
+## 0.4.3 - 2023-04-24
+
+- Fix dependency bug
+
 ## 0.4.2 - 2023-04-24
 
 - Fix honggfuzz interface not showing up in logs
