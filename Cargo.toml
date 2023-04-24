@@ -14,7 +14,6 @@ toml = { version = "0.7.2", optional = true }
 anyhow = { version = "1.0.69", optional = true }
 afl = { version = "0.12.12", default-features = false, optional = true }
 honggfuzz = { version = "0.5.55", optional = true }
-signal-hook = "0.3.15"
 
 [features]
 default = ["cli"]

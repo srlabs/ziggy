@@ -277,9 +277,7 @@ fn get_target(target: String) -> Result<String> {
             println!("    Using target {new_target}\n");
             Ok(new_target)
         }
-        Err(err) => {
-            Err(anyhow!("    Target is not obvious, {err}\n"))
-        }
+        Err(err) => Err(anyhow!("    Target is not obvious, {err}\n")),
     }
 }
 
