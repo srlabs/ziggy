@@ -37,7 +37,6 @@ A multi-fuzzer management utility for all of your Rust fuzzing needs 🧑‍🎤
 Usage: cargo ziggy <COMMAND>
 
 Commands:
-  init      Create a new fuzzing target
   build     Build the fuzzer and the runner binaries
   fuzz      Fuzz targets using different fuzzers in parallel
   run       Run a specific input or a directory of inputs to analyze backtrace

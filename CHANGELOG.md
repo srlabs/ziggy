@@ -1,5 +1,24 @@
 # Changes
 
+## 0.4.4 - 2023-04-25
+
+- Fix error handling bug
+
+## 0.4.3 - 2023-04-24
+
+- Fix dependency bug
+
+## 0.4.2 - 2023-04-24
+
+- Fix honggfuzz interface not showing up in logs
+- Fix some coverage generation difficulties (see #23)
+- More verbose error handling (thanks @brunoproduit!)
+- New default minimization timeout
+- `--no-honggfuzz` and `--no-afl` flags
+- Remove unused `init` command
+- Fix inconsistent number of jobs (now `-j 4` will launch 4 threads, not 8)
+- Update dependencies
+
 ## 0.4.1 - 2023-03-07
 
 - Fix cargo ziggy run argument bug

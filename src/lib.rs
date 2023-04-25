@@ -26,9 +26,9 @@ macro_rules! read_args_and_fuzz {
     ( |$buf:ident| $body:block ) => {
         let args: Vec<String> = std::env::args().collect();
         for path in &args[1..] {
-            let files: Vec<String> = match std::fs::metadata(&path).unwrap().is_dir() {
+            let files: Vec<String> = match std::fs::metadata(&path).expect("Provided path does not exist").is_dir() {
                 true => std::fs::read_dir(&path)
-                    .unwrap()
+                    .expect("Could not open directory")
                     .map(|x| x.unwrap().path().to_str().unwrap().to_string())
                     .collect::<Vec<String>>(),
                 false => vec![path.to_string()],
