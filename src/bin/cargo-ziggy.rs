@@ -1103,7 +1103,7 @@ fn generate_coverage(
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
-    let coverage_rustflags = env::var("COVERAGE_RUSTFLAGS").unwrap_or_else(|_| String::from("-Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort"));
+    let coverage_rustflags = env::var("COVERAGE_RUSTFLAGS").unwrap_or_else(|_| String::from("-Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=unwind"));
 
     // We build the runner with the appropriate flags for coverage
     process::Command::new(cargo)
@@ -1132,6 +1132,7 @@ fn generate_coverage(
             .replace("{target_name}", target)])
         .spawn()?
         .wait();
+
     if res.is_ok() {
         if res.as_ref().unwrap().success() {
             println!("the file {} ran successfully", target);
