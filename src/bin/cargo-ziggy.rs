@@ -258,8 +258,8 @@ fn get_target(target: String) -> Result<String> {
     }
 
     fn get_new_target() -> Result<String> {
-        let cargo_toml_string = fs::read_to_string("Cargo.toml")?;
-        let cargo_toml = cargo_toml_string.parse::<toml::Value>()?;
+        let cargo_toml_string = fs::read_to_string("Cargo.toml").context("⚠️  could not read the Cargo.toml for target guessing")?;
+        let cargo_toml = cargo_toml_string.parse::<toml::Value>().context("⚠️  could not parse the Cargo.toml for target guessing")?;
         if let Some(bin_section) = cargo_toml.get("bin") {
             let bin_array = bin_section
                 .as_array()
@@ -324,7 +324,7 @@ fn build_fuzzers(no_afl: bool, no_honggfuzz: bool) -> Result<(), anyhow::Error> 
                 "--target-dir=target/afl",
             ])
             .env("AFL_QUIET", "1")
-            .spawn()?
+            .spawn().context("⚠️  could spawn runner child")?
             .wait()
             .context("⚠️  error spawning afl build command")?;
 
@@ -347,7 +347,7 @@ fn build_fuzzers(no_afl: bool, no_honggfuzz: bool) -> Result<(), anyhow::Error> 
             .env("CARGO_TARGET_DIR", "./target/honggfuzz")
             .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
             .stdout(process::Stdio::piped())
-            .spawn()?
+            .spawn().context("⚠️  could spawn runner child")?
             .wait()
             .context("⚠️  error spawning hfuzz build command")?;
 
@@ -369,9 +369,9 @@ fn kill_subprocesses_recursively(pid: &str) -> Result<(), anyhow::Error> {
 
     let subprocesses = process::Command::new("pgrep")
         .arg(&format!("-P{pid}"))
-        .output()?;
+        .output().context("⚠️  could not pgrep for given pid")?;
 
-    for subprocess in std::str::from_utf8(&subprocesses.stdout)?.split('\n') {
+    for subprocess in std::str::from_utf8(&subprocesses.stdout).context("⚠️  could not parse pgrep stdout as utf8")?.split('\n') {
         if subprocess.is_empty() {
             continue;
         }
@@ -394,8 +394,8 @@ fn stop_fuzzers(processes: &mut Vec<process::Child>) -> Result<(), anyhow::Error
 
     for process in processes {
         kill_subprocesses_recursively(&process.id().to_string())?;
-        process.kill()?;
-        process.wait()?;
+        process.kill().context(format!("⚠️  could not kill process with pid {}", &process.id().to_string()))?;
+        process.wait().context(format!("⚠️  could not wait for process with pid {}", &process.id().to_string()))?;
     }
     Ok(())
 }
@@ -454,17 +454,17 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
     println!("📋  Binding to afl statsd socket");
     let mut socket = UdpSocket::bind(("127.0.0.1", statsd_port))
         .context("⚠️  cannot bind to afl statsd socket")?;
-    socket.set_nonblocking(true)?;
+    socket.set_nonblocking(true).context("⚠️  could not set statsd socket to non blocking")?;
     let mut buf = [0; 4096];
 
     let mut last_merge = Instant::now();
 
-    let time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
+    let time = SystemTime::now().duration_since(UNIX_EPOCH).context("⚠️  could not get duration since epoch")?.as_millis();
 
     let ziggy_crash_dir = format!("./output/{}/crashes/{}/", args.target, time);
     let ziggy_crash_path = Path::new(&ziggy_crash_dir);
 
-    fs::create_dir_all(ziggy_crash_path)?;
+    fs::create_dir_all(ziggy_crash_path).context(format!("⚠️  could not create directory {}", ziggy_crash_path.display()))?;
 
     let mut crash_has_been_found = false;
 
@@ -514,7 +514,7 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
             let mut v: Vec<u8> = Vec::new();
             v.extend_from_slice(&buf[0..amt]);
 
-            for msg in String::from_utf8(v)?.split_terminator('\n') {
+            for msg in String::from_utf8(v).context("⚠️  could not parse data from socket to utf8")?.split_terminator('\n') {
                 if !msg.contains("main_fuzzer") {
                     break;
                 } else if msg.contains("corpus_count") {
@@ -540,22 +540,22 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
             }
 
             // We print the new values
-            term.move_cursor_up(11)?;
+            term.move_cursor_up(11).context("⚠️  could not move up cursor in terminal")?;
             term.write_line(&format!(
                 "{} {}",
                 style("       execs per sec :").dim(),
                 &execs_per_sec
-            ))?;
+            )).context("⚠️  could not write line to terminal")?;
             term.write_line(&format!(
                 "{} {}",
                 style("          execs done :").dim(),
                 &execs_done
-            ))?;
+            )).context("⚠️  could not write line to terminal")?;
             term.write_line(&format!(
                 "{} {}",
                 style("        corpus count :").dim(),
                 &corpus_count
-            ))?;
+            )).context("⚠️  could not write line to terminal")?;
             let edges_percentage = 100f64 * edges_found.parse::<f64>().unwrap_or_default()
                 / total_edges.parse::<f64>().unwrap_or(1f64);
             term.write_line(&format!(
@@ -563,33 +563,33 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
                 style("         edges found :").dim(),
                 &edges_found,
                 &edges_percentage
-            ))?;
+            )).context("⚠️  could not write line to terminal")?;
             term.write_line(&format!(
                 "{} {}",
                 style("          cycle done :").dim(),
                 &cycle_done
-            ))?;
+            )).context("⚠️  could not write line to terminal")?;
             term.write_line(&format!(
                 "{} {}",
                 style("cycles without finds :").dim(),
                 &cycles_wo_finds
-            ))?;
+            )).context("⚠️  could not write line to terminal")?;
             term.write_line(&format!(
                 "{} {}",
                 style("       saved crashes :").dim(),
                 &saved_crashes
-            ))?;
+            )).context("⚠️  could not write line to terminal")?;
             term.write_line(&format!(
                 "{} {}",
                 style("       total crashes :").dim(),
                 &total_crashes
-            ))?;
+            )).context("⚠️  could not write line to terminal")?;
             if crash_has_been_found {
                 term.write_line("\nCrashes have been found       ")?;
             } else {
                 term.write_line("\nNo crash has been found so far")?;
             }
-            term.write_line("")?;
+            term.write_line("").context("⚠️  could not write line to terminal")?;
         }
 
         // We only start checking for crashes after AFL++ has started responding to us
@@ -612,7 +612,7 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
                     {
                         continue;
                     }
-                    fs::copy(crash_input.path(), to_path)?;
+                    fs::copy(crash_input.path(), to_path.clone()).context(format!("⚠️  could not copy the crash input {} to path {}", crash_input.path().display(), to_path.clone().display()))?;
                 }
             }
         }
@@ -656,7 +656,7 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
                         .output()
                         .map_err(|_| anyhow!("could not remove main_corpus"))?;
 
-                    term.move_cursor_up(1)?;
+                    term.move_cursor_up(1).context("⚠️  could move cursor up in terminal")?;
                     term.write_line(&format!(
                         "{} the corpus ({} -> {} files)             ",
                         style("    Minimized").magenta().bold(),
@@ -664,8 +664,8 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
                         new_corpus_size
                     ))?;
 
-                    fs::remove_dir_all(&parsed_corpus)?;
-                    fs::rename(minimized_corpus, &parsed_corpus)?;
+                    fs::remove_dir_all(&parsed_corpus).context(format!("⚠️  could not remove dir {}", &parsed_corpus))?;
+                    fs::rename(minimized_corpus.clone(), &parsed_corpus).context(format!("⚠️  could not rename {} to {}", minimized_corpus, &parsed_corpus))?;
                 }
                 Err(_) => {
                     term.write_line("error running minimization... probably a memory error")?;
@@ -676,8 +676,8 @@ fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
 
             (processes, statsd_port) = spawn_new_fuzzers(args)?;
 
-            socket = UdpSocket::bind(("127.0.0.1", statsd_port))?;
-            socket.set_nonblocking(true)?;
+            socket = UdpSocket::bind(("127.0.0.1", statsd_port)).context("⚠️  cannot bind to afl statsd socket")?;
+            socket.set_nonblocking(true).context("⚠️  could not set statsd socket to non blocking")?;
         }
     }
 }
@@ -855,7 +855,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), anyhow::
                     .env("AFL_FORCE_UI", "1")
                     .stdout(log_destination())
                     .stderr(log_destination())
-                    .spawn()?,
+                    .spawn().context("⚠️  could not spawn afl fuzzer")?,
             )
         }
         println!("{} afl           ", style("    Launched").green().bold());
@@ -902,7 +902,7 @@ fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), anyhow::
                     "./output/{}/logs/honggfuzz.log",
                     args.target
                 ))?)
-                .spawn()?,
+                .spawn().context("⚠️  could not spawn honggfuzz fuzzer")?,
         );
         println!(
             "{} honggfuzz              ",
@@ -974,8 +974,8 @@ fn run_inputs(args: &Run) -> Result<(), anyhow::Error> {
     process::Command::new(format!("./target/runner/debug/{}", args.target))
         .args(run_args)
         .env("RUST_BACKTRACE", "full")
-        .spawn()?
-        .wait()?;
+        .spawn().context("⚠️  could not spawn runner")?
+        .wait().context("⚠️  could not wait for runner to finish")?;
 
     Ok(())
 }
@@ -1019,8 +1019,8 @@ fn minimize_corpus(
         .stdout(File::create(format!(
             "./output/{target}/logs/minimization.log"
         ))?)
-        .spawn()?
-        .wait()?;
+        .spawn().context("⚠️  could not spawn minimizer")?
+        .wait().context("⚠️  could not wait for minimizer to finish")?;
 
     /*
     // HONGGFUZZ minimization
@@ -1058,8 +1058,8 @@ fn generate_coverage(
         .env("RUSTDOCFLAGS", "-Cpanic=abort")
         .env("CARGO_INCREMENTAL", "0")
         .env("RUSTC_BOOTSTRAP", "1") // Trick to avoid forcing user to use rust nightly
-        .spawn()?
-        .wait()?;
+        .spawn().context("⚠️  could not spawn rustc for coverage")?
+        .wait().context("⚠️  could not wait for rustc for coverage to finish")?;
 
     // We remove the previous coverage files
     if let Ok(gcda_files) = glob("target/coverage/debug/deps/*.gcda") {
@@ -1107,8 +1107,8 @@ fn generate_coverage(
             "--ignore-not-existing",
             &format!("-o={output_dir}"),
         ])
-        .spawn()?
-        .wait()?;
+        .spawn().context("⚠️  could not spawn grcov")?
+        .wait().context("⚠️  could not wait for grcov to finish")?;
 
     Ok(())
 }
@@ -1129,8 +1129,8 @@ fn generate_plot(target: &str, input: &String, output: &Path) -> Result<(), anyh
     // We run the afl-plot command
     process::Command::new(cargo)
         .args(["afl", "plot", &fuzzer_data_dir, &fuzzer_output_dir])
-        .spawn()?
-        .wait()?;
+        .spawn().context("⚠️  could not spawn afl plot")?
+        .wait().context("⚠️  could not wait for afl plot o finish")?;
 
     Ok(())
 }
