@@ -6,7 +6,7 @@ pub use honggfuzz::fuzz as honggfuzz_fuzz;
 // This is our inner harness handler function for the runner and for coverage.
 // We open the input file and feed the data to the harness closure.
 #[cfg(not(any(feature = "afl", feature = "honggfuzz")))]
-pub fn read_file_and_fuzz<F>(mut closure: F, file: String) 
+pub fn read_file_and_fuzz<F>(mut closure: F, file: String)
 where
     F: FnMut(&[u8]),
 {
@@ -28,9 +28,13 @@ macro_rules! read_args_and_fuzz {
         fn main() {
             let args: Vec<String> = std::env::args().collect();
             for path in &args[1..] {
-                let files: Vec<String> = match std::fs::metadata(&path)?.is_dir() {
-                    true => std::fs::read_dir(&path)?
-                        .map(|x| x?.path().to_str()?.to_string())
+                let files: Vec<String> = match std::fs::metadata(&path)
+                    .expect("Provided path does not exist")
+                    .is_dir()
+                {
+                    true => std::fs::read_dir(&path)
+                        .expect("Could not open directory")
+                        .map(|x| x.unwrap().path().to_str().unwrap().to_string())
                         .collect::<Vec<String>>(),
                     false => vec![path.to_string()],
                 };
