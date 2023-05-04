@@ -188,8 +188,8 @@ pub struct Cover {
     #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_COVERAGE_DIR)]
     output: PathBuf,
     /// Source directory of covered code
-    #[clap(short, long, value_parser, value_name = "DIR", default_value = "$HOME")]
-    source: PathBuf,
+    #[clap(short, long, value_parser, value_name = "DIR")]
+    source: Option<PathBuf>,
 }
 
 #[derive(Args)]
@@ -234,7 +234,7 @@ fn main() -> Result<(), anyhow::Error> {
         }
         Ziggy::Cover(mut args) => {
             args.target = get_target(args.target)?;
-            generate_coverage(&args.target, &args.corpus, &args.output, &args.source)
+            generate_coverage(&args.target, &args.corpus, &args.output, args.source)
                 .context("⚠️  failure generating coverage: generate_coverage")?;
             Ok(())
         }
@@ -1042,7 +1042,7 @@ fn generate_coverage(
     target: &str,
     corpus: &Path,
     output: &Path,
-    source: &Path,
+    source: Option<PathBuf>,
 ) -> Result<(), anyhow::Error> {
     println!("📋  Generating coverage");
 
@@ -1077,9 +1077,24 @@ fn generate_coverage(
         .spawn()?
         .wait()?;
 
-    let source_str = match source.display().to_string().as_str() {
-        "$HOME" => env::var("HOME").unwrap_or_else(|_| String::from(".")),
-        s => s.to_string(),
+    let source_or_workspace_root = match source {
+        Some(s) => s.display().to_string(),
+        None => {
+            let metadata_output = std::process::Command::new("cargo")
+                .arg("metadata")
+                .output()
+                .context("Failed to run cargo metadata")?;
+
+            let stdout =
+                String::from_utf8(metadata_output.stdout).context("Failed to read stdout")?;
+            let metadata: serde_json::Value =
+                serde_json::from_str(&stdout).context("Failed to parse JSON")?;
+
+            metadata["workspace_root"]
+                .as_str()
+                .context("Failed to get workspace root")?
+                .to_string()
+        }
     };
 
     let output_dir = output
@@ -1100,7 +1115,7 @@ fn generate_coverage(
         .args([
             ".",
             &format!("-b=./target/coverage/debug/{target}"),
-            &format!("-s={source_str}"),
+            &format!("-s={source_or_workspace_root}"),
             "-t=html",
             "--llvm",
             "--branch",
