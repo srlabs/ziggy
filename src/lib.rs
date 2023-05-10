@@ -32,7 +32,9 @@ macro_rules! read_args_and_fuzz {
                     let files = match metadata.is_dir() {
                         true => std::fs::read_dir(&path)
                             .unwrap()
-                            .map(|x| x.unwrap().path().to_str().unwrap().to_string())
+                            .map(|x| x.unwrap().path())
+                            .filter(|x| x.is_file())
+                            .map(|x| x.to_str().unwrap().to_string())
                             .collect::<Vec<String>>(),
                         false => vec![path.to_string()],
                     };
