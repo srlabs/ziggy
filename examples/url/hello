@@ -1,0 +1,50 @@
+[2023-05-10T13:56:13Z INFO  cargo_ziggy] Guessing target
+    Using target url-fuzz
+
+[2023-05-10T13:56:13Z INFO  cargo_ziggy::build] Starting build command
+    Building afl
+warning: patch for the non root package will be ignored, specify patch at the workspace root:
+package:   /home/louis/Documents/Research/ziggy/examples/with_lazy_static/Cargo.toml
+workspace: /home/louis/Documents/Research/ziggy/Cargo.toml
+    Finished dev [unoptimized + debuginfo] target(s) in 0.02s
+    Finished afl
+    Building honggfuzz
+warning: patch for the non root package will be ignored, specify patch at the workspace root:
+package:   /home/louis/Documents/Research/ziggy/examples/with_lazy_static/Cargo.toml
+workspace: /home/louis/Documents/Research/ziggy/Cargo.toml
+    Finished release [optimized] target(s) in 0.02s
+    Finished honggfuzz
+[2023-05-10T13:56:13Z INFO  cargo_ziggy::fuzz] Running fuzzer
+[2023-05-10T13:56:13Z INFO  cargo_ziggy::fuzz] Spawning new fuzzers
+    Launched afl           
+    Launched honggfuzz              
+
+See more live info by running
+  tail -f ./output/url-fuzz/logs/afl.log
+or
+  tail -f ./output/url-fuzz/logs/honggfuzz.log
+
+    AFL++ main process stats
+
+
+   Waiting for afl++ to
+   finish executing the
+   existing corpus once
+
+
+
+
+
+
+[2023-05-10T13:56:13Z INFO  cargo_ziggy::fuzz] Binding to afl statsd socket
+[11A       execs per sec : 40.78
+          execs done : 5057
+        corpus count : 1685
+         edges found : 2590 (259000.00%)
+          cycle done : 16
+cycles without finds : 0
+       saved crashes : 0
+       total crashes : 0
+
+No crash has been found so far
+

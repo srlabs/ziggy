@@ -14,7 +14,7 @@ use std::{
 
 // Manages the continuous running of fuzzers
 pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
-    println!("📋  Running fuzzer");
+    info!("Running fuzzer");
 
     let (mut processes, mut statsd_port) = spawn_new_fuzzers(args)?;
 
@@ -38,9 +38,9 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
     let mut total_crashes = String::new();
 
     // We connect to the afl statsd socket
-    println!("📋  Binding to afl statsd socket");
-    let mut socket = UdpSocket::bind(("127.0.0.1", statsd_port))
-        .context("⚠️  cannot bind to afl statsd socket")?;
+    info!("Binding to afl statsd socket");
+    let mut socket =
+        UdpSocket::bind(("127.0.0.1", statsd_port)).context("Cannot bind to afl statsd socket")?;
     socket.set_nonblocking(true)?;
     let mut buf = [0; 4096];
 
@@ -80,17 +80,15 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
             {
                 if afl_log.contains("echo core >/proc/sys/kernel/core_pattern") {
                     stop_fuzzers(&mut processes)?;
-                    println!("AFL++ needs you to run the following command before it can start fuzzing:\n");
-                    println!("    echo core >/proc/sys/kernel/core_pattern");
-                    println!();
+                    eprintln!("AFL++ needs you to run the following command before it can start fuzzing:\n");
+                    eprintln!("    echo core >/proc/sys/kernel/core_pattern\n");
                     return Ok(());
                 }
                 if afl_log.contains("cd /sys/devices/system/cpu") {
                     stop_fuzzers(&mut processes)?;
-                    println!("AFL++ needs you to run the following commands before it can start fuzzing:\n");
-                    println!("    cd /sys/devices/system/cpu");
-                    println!("    echo performance | tee cpu*/cpufreq/scaling_governor");
-                    println!();
+                    eprintln!("AFL++ needs you to run the following commands before it can start fuzzing:\n");
+                    eprintln!("    cd /sys/devices/system/cpu");
+                    eprintln!("    echo performance | tee cpu*/cpufreq/scaling_governor\n");
                     return Ok(());
                 }
             }
@@ -241,7 +239,7 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
                             &format!("./output/{}/afl/*/.cur_input", args.target),
                         ])
                         .output()
-                        .map_err(|_| anyhow!("could not remove main_corpus"))?;
+                        .map_err(|_| anyhow!("Could not remove main_corpus"))?;
 
                     term.move_cursor_up(1)?;
                     term.write_line(&format!(
@@ -273,10 +271,10 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
 pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), anyhow::Error> {
     // No fuzzers for you
     if args.no_afl && args.no_honggfuzz {
-        return Err(anyhow!("⚠️  Pick at least one fuzzer"));
+        return Err(anyhow!("Pick at least one fuzzer"));
     }
 
-    println!("📋  Spawning new fuzzers");
+    info!("Spawning new fuzzers");
 
     let mut fuzzer_handles = vec![];
 
@@ -444,7 +442,7 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), anyh
                     .spawn()?,
             )
         }
-        println!("{} afl           ", style("    Launched").green().bold());
+        eprintln!("{} afl           ", style("    Launched").green().bold());
     }
 
     if !args.no_honggfuzz {
@@ -490,13 +488,13 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), anyh
                 ))?)
                 .spawn()?,
         );
-        println!(
+        eprintln!(
             "{} honggfuzz              ",
             style("    Launched").green().bold()
         );
     }
 
-    println!(
+    eprintln!(
         "\nSee more live info by running\n  {}\nor\n  {}\n",
         style(format!("tail -f ./output/{}/logs/afl.log", args.target)).bold(),
         style(format!(
@@ -505,24 +503,24 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), anyh
         ))
         .bold(),
     );
-    println!(
+    eprintln!(
         "{}",
         &style("    AFL++ main process stats")
             .yellow()
             .bold()
             .to_string()
     );
-    println!("\n");
-    println!("📋  Waiting for afl++ to");
-    println!("📋  finish executing the");
-    println!("📋  existing corpus once");
-    println!("\n\n\n\n\n");
+    eprintln!("\n");
+    eprintln!("   Waiting for afl++ to");
+    eprintln!("   finish executing the");
+    eprintln!("   existing corpus once");
+    eprintln!("\n\n\n\n\n");
 
     Ok((fuzzer_handles, statsd_port))
 }
 
 pub fn kill_subprocesses_recursively(pid: &str) -> Result<(), anyhow::Error> {
-    println!("📋  Killing pid {pid}");
+    info!("Killing pid {pid}");
 
     let subprocesses = process::Command::new("pgrep")
         .arg(&format!("-P{pid}"))
@@ -534,19 +532,19 @@ pub fn kill_subprocesses_recursively(pid: &str) -> Result<(), anyhow::Error> {
         }
 
         kill_subprocesses_recursively(subprocess)
-            .context("⚠️  error in kill_subprocesses_recursively for pid {pid}")?;
+            .context("Error in kill_subprocesses_recursively for pid {pid}")?;
 
         process::Command::new("kill")
             .arg(subprocess)
             .output()
-            .context("⚠️  error killing subprocess: {subprocess}")?;
+            .context("Error killing subprocess: {subprocess}")?;
     }
     Ok(())
 }
 
 // Stop all fuzzer processes
 pub fn stop_fuzzers(processes: &mut Vec<process::Child>) -> Result<(), anyhow::Error> {
-    println!("📋  Stopping fuzzer processes");
+    info!("Stopping fuzzer processes");
 
     for process in processes {
         kill_subprocesses_recursively(&process.id().to_string())?;
@@ -559,20 +557,20 @@ pub fn stop_fuzzers(processes: &mut Vec<process::Child>) -> Result<(), anyhow::E
 // Share AFL++ corpora in the shared_corpus directory
 pub fn share_all_corpora(args: &Fuzz, parsed_corpus: &String) -> Result<()> {
     for path in glob(&format!("./output/{}/afl/**/queue/*", args.target))
-        .map_err(|_| anyhow!("failed to read glob pattern"))?
+        .map_err(|_| anyhow!("Failed to read glob pattern"))?
         .flatten()
     {
         if path.is_file() {
             fs::copy(
                 path.to_str()
-                    .ok_or_else(|| anyhow!("could not parse input path"))?,
+                    .ok_or_else(|| anyhow!("Could not parse input path"))?,
                 format!(
                     "{}/{}",
                     &parsed_corpus,
                     path.file_name()
-                        .ok_or_else(|| anyhow!("could not parse input file name"))?
+                        .ok_or_else(|| anyhow!("Could not parse input file name"))?
                         .to_str()
-                        .ok_or_else(|| anyhow!("could not parse input file name path"))?
+                        .ok_or_else(|| anyhow!("Could not parse input file name path"))?
                 ),
             )?;
         }

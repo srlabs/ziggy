@@ -6,7 +6,7 @@ pub fn minimize_corpus(
     input_corpus: &Path,
     output_corpus: &Path,
 ) -> Result<(), anyhow::Error> {
-    println!("📋  Minimizing corpus");
+    eprintln!("Minimizing corpus");
 
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));

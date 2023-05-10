@@ -6,15 +6,15 @@ use std::{env, process};
 pub fn build_fuzzers(no_afl: bool, no_honggfuzz: bool) -> Result<(), anyhow::Error> {
     // No fuzzers for you
     if no_afl && no_honggfuzz {
-        return Err(anyhow!("⚠️  Pick at least one fuzzer"));
+        return Err(anyhow!("Pick at least one fuzzer"));
     }
 
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
-    println!("📋  Starting build command");
+    info!("Starting build command");
 
     if !no_afl {
-        println!("    {} afl", style("Building").red().bold());
+        eprintln!("    {} afl", style("Building").red().bold());
 
         // Second fuzzer we build: AFL++
         let run = process::Command::new(cargo.clone())
@@ -27,20 +27,20 @@ pub fn build_fuzzers(no_afl: bool, no_honggfuzz: bool) -> Result<(), anyhow::Err
             .env("AFL_QUIET", "1")
             .spawn()?
             .wait()
-            .context("⚠️  error spawning afl build command")?;
+            .context("Error spawning afl build command")?;
 
         if !run.success() {
             return Err(anyhow!(
-                "error building afl fuzzer: Exited with {:?}",
+                "Error building afl fuzzer: Exited with {:?}",
                 run.code()
             ));
         }
 
-        println!("    {} afl", style("Finished").cyan().bold());
+        eprintln!("    {} afl", style("Finished").cyan().bold());
     }
 
     if !no_honggfuzz {
-        println!("    {} honggfuzz", style("Building").red().bold());
+        eprintln!("    {} honggfuzz", style("Building").red().bold());
 
         // Third fuzzer we build: Honggfuzz
         let run = process::Command::new(cargo)
@@ -50,16 +50,16 @@ pub fn build_fuzzers(no_afl: bool, no_honggfuzz: bool) -> Result<(), anyhow::Err
             .stdout(process::Stdio::piped())
             .spawn()?
             .wait()
-            .context("⚠️  error spawning hfuzz build command")?;
+            .context("Error spawning hfuzz build command")?;
 
         if !run.success() {
             return Err(anyhow!(
-                "error building honggfuzz fuzzer: Exited with {:?}",
+                "Error building honggfuzz fuzzer: Exited with {:?}",
                 run.code()
             ));
         }
 
-        println!("    {} honggfuzz", style("Finished").cyan().bold());
+        eprintln!("    {} honggfuzz", style("Finished").cyan().bold());
     }
     Ok(())
 }

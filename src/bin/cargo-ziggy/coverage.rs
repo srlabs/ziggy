@@ -12,7 +12,7 @@ pub fn generate_coverage(
     output: &Path,
     source: Option<PathBuf>,
 ) -> Result<(), anyhow::Error> {
-    println!("📋  Generating coverage");
+    eprintln!("Generating coverage");
 
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));

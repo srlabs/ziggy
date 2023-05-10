@@ -64,3 +64,7 @@ CARGO_HOME=.cargo cargo ziggy cover
 
 This will clone every dependency into a `.cargo` directory and this directory will be included in
 the generated coverage.
+
+## `ziggy` logs
+
+If you want to see `ziggy`'s internal logs, you can set `RUST_LOG=INFO`.

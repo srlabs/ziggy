@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::{env, path::Path, process};
 
 pub fn generate_plot(target: &str, input: &String, output: &Path) -> Result<(), anyhow::Error> {
-    println!("📋  Generating plot");
+    eprintln!("Generating plot");
 
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
