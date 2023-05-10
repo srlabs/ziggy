@@ -312,11 +312,8 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), anyh
             (0, args.jobs)
         } else if args.no_honggfuzz {
             (args.jobs, 0)
-        } else if args.jobs > 6 {
-            // If there are more than 6 jobs, we assign 3 to honggfuzz and the rest to AFL++
-            (args.jobs - 3, 3)
         } else {
-            // Otherwise, we assign half/half with priority to AFL++
+            // We assign half/half with priority to AFL++
             (args.jobs / 2 + args.jobs % 2, args.jobs / 2)
         }
     };
@@ -433,7 +430,6 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), anyh
                     .env("AFL_STATSD_PORT", format!("{statsd_port}"))
                     .env("AFL_AUTORESUME", "1")
                     .env("AFL_TESTCACHE_SIZE", "100")
-                    .env("AFL_CMPLOG_ONLY_NEW", "1")
                     .env("AFL_FAST_CAL", "1")
                     .env("AFL_MAP_SIZE", "10000000")
                     .env("AFL_FORCE_UI", "1")
