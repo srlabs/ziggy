@@ -6,7 +6,6 @@ use std::{
     env,
     fs::{self, File},
     io::{BufRead, BufReader, Write},
-    net::UdpSocket,
     path::{Path, PathBuf},
     process, thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -16,7 +15,7 @@ use std::{
 pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
     info!("Running fuzzer");
 
-    let (mut processes, mut statsd_port) = spawn_new_fuzzers(args)?;
+    let mut processes = spawn_new_fuzzers(args)?;
 
     let parsed_corpus = args
         .corpus
@@ -29,20 +28,9 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
     // Variables for stats printing
     let mut execs_per_sec = String::new();
     let mut execs_done = String::new();
-    let mut corpus_count = String::new();
     let mut edges_found = String::new();
     let mut total_edges = String::new();
-    let mut cycles_wo_finds = String::new();
-    let mut cycle_done = String::new();
     let mut saved_crashes = String::new();
-    let mut total_crashes = String::new();
-
-    // We connect to the afl statsd socket
-    info!("Binding to afl statsd socket");
-    let mut socket =
-        UdpSocket::bind(("127.0.0.1", statsd_port)).context("Cannot bind to afl statsd socket")?;
-    socket.set_nonblocking(true)?;
-    let mut buf = [0; 4096];
 
     let mut last_merge = Instant::now();
 
@@ -56,22 +44,30 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
     let mut crash_has_been_found = false;
 
     loop {
-        let sleep_duration = Duration::from_millis(100);
+        let sleep_duration = Duration::from_millis(1000);
         thread::sleep(sleep_duration);
 
-        // We retrieve the total_edges value from the fuzzer_stats file
+        // We retrieve the stats from the fuzzer_stats file
         if let Ok(file) = File::open(format!(
             "./output/{}/afl/mainaflfuzzer/fuzzer_stats",
             args.target
         )) {
-            total_edges = String::from(
-                BufReader::new(file)
-                    .lines()
-                    .nth(31)
-                    .unwrap_or(Ok(String::new()))
-                    .unwrap_or_default()
-                    .trim_start_matches("total_edges       : "),
-            );
+            let lines = BufReader::new(file).lines();
+            for maybe_line in lines {
+                if let Ok(line) = maybe_line {
+                    match &line[..20] {
+                        "execs_per_sec     : " => execs_per_sec = String::from(&line[20..]),
+                        "execs_done        : " => execs_done = String::from(&line[20..]),
+                        "edges_found       : " => edges_found = String::from(&line[20..]),
+                        "total_edges       : " => total_edges = String::from(&line[20..]),
+                        "saved_crashes     : " => saved_crashes = String::from(&line[20..]),
+                        _ => {}
+                    }
+                }
+            }
+            if saved_crashes.trim() != "0" && !saved_crashes.trim().is_empty() {
+                crash_has_been_found = true;
+            }
         }
 
         if execs_per_sec.is_empty() {
@@ -94,88 +90,37 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
             }
         }
 
-        // If we have new stats from afl's statsd socket, we update our values
-        if let Ok((amt, _)) = socket.recv_from(&mut buf) {
-            let mut v: Vec<u8> = Vec::new();
-            v.extend_from_slice(&buf[0..amt]);
-
-            for msg in String::from_utf8(v)?.split_terminator('\n') {
-                if !msg.contains("main_fuzzer") {
-                    break;
-                } else if msg.contains("corpus_count") {
-                    corpus_count = String::from(msg[21..].split('|').next().unwrap_or_default());
-                } else if msg.contains("edges_found") {
-                    edges_found = String::from(msg[20..].split('|').next().unwrap_or_default());
-                } else if msg.contains("saved_crashes") {
-                    saved_crashes = String::from(msg[22..].split('|').next().unwrap_or_default());
-                } else if msg.contains("total_crashes") {
-                    total_crashes = String::from(msg[22..].split('|').next().unwrap_or_default());
-                } else if msg.contains("execs_per_sec") {
-                    execs_per_sec = String::from(msg[22..].split('|').next().unwrap_or_default());
-                } else if msg.contains("execs_done") {
-                    execs_done = String::from(msg[19..].split('|').next().unwrap_or_default());
-                } else if msg.contains("cycles_wo_finds") {
-                    cycles_wo_finds = String::from(msg[24..].split('|').next().unwrap_or_default());
-                } else if msg.contains("cycle_done") {
-                    cycle_done = String::from(msg[19..].split('|').next().unwrap_or_default());
-                }
-            }
-            if saved_crashes.trim() != "0" && !saved_crashes.trim().is_empty() {
-                crash_has_been_found = true;
-            }
-
-            // We print the new values
-            term.move_cursor_up(11)?;
-            term.write_line(&format!(
-                "{} {}",
-                style("       execs per sec :").dim(),
-                &execs_per_sec
-            ))?;
-            term.write_line(&format!(
-                "{} {}",
-                style("          execs done :").dim(),
-                &execs_done
-            ))?;
-            term.write_line(&format!(
-                "{} {}",
-                style("        corpus count :").dim(),
-                &corpus_count
-            ))?;
-            let edges_percentage = 100f64 * edges_found.parse::<f64>().unwrap_or_default()
-                / total_edges.parse::<f64>().unwrap_or(1f64);
-            term.write_line(&format!(
-                "{} {} ({:.2}%)",
-                style("         edges found :").dim(),
-                &edges_found,
-                &edges_percentage
-            ))?;
-            term.write_line(&format!(
-                "{} {}",
-                style("          cycle done :").dim(),
-                &cycle_done
-            ))?;
-            term.write_line(&format!(
-                "{} {}",
-                style("cycles without finds :").dim(),
-                &cycles_wo_finds
-            ))?;
-            term.write_line(&format!(
-                "{} {}",
-                style("       saved crashes :").dim(),
-                &saved_crashes
-            ))?;
-            term.write_line(&format!(
-                "{} {}",
-                style("       total crashes :").dim(),
-                &total_crashes
-            ))?;
-            if crash_has_been_found {
-                term.write_line("\nCrashes have been found       ")?;
-            } else {
-                term.write_line("\nNo crash has been found so far")?;
-            }
-            term.write_line("")?;
+        // We print the new values
+        term.move_cursor_up(7)?;
+        term.write_line(&format!(
+            "{} {}      ",
+            style("       execs per sec :").dim(),
+            utils::stringify_integer(execs_per_sec.parse::<f64>().unwrap_or_default() as u64),
+        ))?;
+        term.write_line(&format!(
+            "{} {}      ",
+            style("          execs done :").dim(),
+            utils::stringify_integer(execs_done.parse().unwrap_or_default()),
+        ))?;
+        let edges_percentage = 100f64 * edges_found.parse::<f64>().unwrap_or_default()
+            / total_edges.parse::<f64>().unwrap_or(1f64);
+        term.write_line(&format!(
+            "{} {} ({:.2}%)          ",
+            style("         edges found :").dim(),
+            utils::stringify_integer(edges_found.parse().unwrap_or_default()),
+            &edges_percentage
+        ))?;
+        term.write_line(&format!(
+            "{} {}         ",
+            style("       saved crashes :").dim(),
+            utils::stringify_integer(saved_crashes.parse().unwrap_or_default()),
+        ))?;
+        if crash_has_been_found {
+            term.write_line("\nCrashes have been found       ")?;
+        } else {
+            term.write_line("\nNo crash has been found so far")?;
         }
+        term.write_line("")?;
 
         // We only start checking for crashes after AFL++ has started responding to us
         if !execs_per_sec.is_empty() {
@@ -259,16 +204,13 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
 
             last_merge = Instant::now();
 
-            (processes, statsd_port) = spawn_new_fuzzers(args)?;
-
-            socket = UdpSocket::bind(("127.0.0.1", statsd_port))?;
-            socket.set_nonblocking(true)?;
+            processes = spawn_new_fuzzers(args)?;
         }
     }
 }
 
 // Spawns new fuzzers
-pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), anyhow::Error> {
+pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<Vec<process::Child>, anyhow::Error> {
     // No fuzzers for you
     if args.no_afl && args.no_honggfuzz {
         return Err(anyhow!("Pick at least one fuzzer"));
@@ -277,11 +219,6 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), anyh
     info!("Spawning new fuzzers");
 
     let mut fuzzer_handles = vec![];
-
-    let timeout_option = match args.timeout {
-        Some(t) => format!("-timeout={t}"),
-        None => String::new(),
-    };
 
     let parsed_corpus = args
         .corpus
@@ -301,11 +238,6 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), anyh
 
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
-
-    let mut statsd_port = 8125;
-    while UdpSocket::bind(("127.0.0.1", statsd_port)).is_err() {
-        statsd_port += 1;
-    }
 
     let (afl_jobs, honggfuzz_jobs) = {
         if args.no_afl {
@@ -366,11 +298,6 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), anyh
                 0 => "-D",
                 _ => "",
             };
-            // Banner to differentiate the statsd output
-            let banner = match job_num {
-                0 => "-Tmain_fuzzer",
-                _ => "",
-            };
 
             // AFL timeout is in ms so we convert the value
             let timeout_option_afl = match args.timeout {
@@ -381,12 +308,6 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), anyh
             let dictionary_option = match &args.dictionary {
                 Some(d) => format!("-x{}", &d.display().to_string()),
                 None => String::new(),
-            };
-
-            // statsd is only enabled for the main instance
-            let statsd_enabled = match job_num {
-                0 => "1",
-                _ => "0",
             };
 
             let log_destination = || match job_num {
@@ -408,7 +329,6 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), anyh
                             &format!("-ooutput/{}/afl", args.target),
                             &format!("-g{}", args.min_length),
                             &format!("-G{}", args.max_length),
-                            banner,
                             &use_shared_corpus,
                             &use_initial_corpus_dir,
                             &format!(
@@ -425,14 +345,13 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), anyh
                         .iter()
                         .filter(|a| a != &&""),
                     )
-                    .env("AFL_STATSD", statsd_enabled)
-                    .env("AFL_STATSD_TAGS_FLAVOR", "dogstatsd")
-                    .env("AFL_STATSD_PORT", format!("{statsd_port}"))
                     .env("AFL_AUTORESUME", "1")
                     .env("AFL_TESTCACHE_SIZE", "100")
                     .env("AFL_FAST_CAL", "1")
+                    // TODO Should we remove this?
                     .env("AFL_MAP_SIZE", "10000000")
                     .env("AFL_FORCE_UI", "1")
+                    .env("AFL_FUZZER_STATS_UPDATE_INTERVAL", "1")
                     .stdout(log_destination())
                     .stderr(log_destination())
                     .spawn()?,
@@ -444,6 +363,11 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), anyh
     if !args.no_honggfuzz {
         let dictionary_option = match &args.dictionary {
             Some(d) => format!("-w{}", &d.display().to_string()),
+            None => String::new(),
+        };
+
+        let timeout_option = match args.timeout {
+            Some(t) => format!("-t{t}"),
             None => String::new(),
         };
 
@@ -506,13 +430,13 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<(Vec<process::Child>, u16), anyh
             .bold()
             .to_string()
     );
-    eprintln!("\n");
+    eprintln!("");
     eprintln!("   Waiting for afl++ to");
     eprintln!("   finish executing the");
     eprintln!("   existing corpus once");
-    eprintln!("\n\n\n\n\n");
+    eprintln!("\n\n");
 
-    Ok((fuzzer_handles, statsd_port))
+    Ok(fuzzer_handles)
 }
 
 pub fn kill_subprocesses_recursively(pid: &str) -> Result<(), anyhow::Error> {

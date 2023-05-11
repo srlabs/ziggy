@@ -13,6 +13,8 @@ mod minimize;
 mod plot;
 #[cfg(feature = "cli")]
 mod run;
+#[cfg(feature = "cli")]
+mod utils;
 
 #[cfg(feature = "cli")]
 use anyhow::{anyhow, Context, Result};
