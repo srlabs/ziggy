@@ -24,27 +24,24 @@ where
 #[cfg(not(any(feature = "afl", feature = "honggfuzz")))]
 macro_rules! read_args_and_fuzz {
     ( |$buf:ident| $body:block ) => {
-        #[no_mangle]
-        fn main() {
-            let args: Vec<String> = std::env::args().collect();
-            for path in &args[1..] {
-                if let Ok(metadata) = std::fs::metadata(&path) {
-                    let files = match metadata.is_dir() {
-                        true => std::fs::read_dir(&path)
-                            .unwrap()
-                            .map(|x| x.unwrap().path())
-                            .filter(|x| x.is_file())
-                            .map(|x| x.to_str().unwrap().to_string())
-                            .collect::<Vec<String>>(),
-                        false => vec![path.to_string()],
-                    };
+        let args: Vec<String> = std::env::args().collect();
+        for path in &args[1..] {
+            if let Ok(metadata) = std::fs::metadata(&path) {
+                let files = match metadata.is_dir() {
+                    true => std::fs::read_dir(&path)
+                        .unwrap()
+                        .map(|x| x.unwrap().path())
+                        .filter(|x| x.is_file())
+                        .map(|x| x.to_str().unwrap().to_string())
+                        .collect::<Vec<String>>(),
+                    false => vec![path.to_string()],
+                };
 
-                    for file in files {
-                        $crate::read_file_and_fuzz(|$buf| $body, file);
-                    }
-                } else {
-                    println!("Could not read metadata for {path}");
+                for file in files {
+                    $crate::read_file_and_fuzz(|$buf| $body, file);
                 }
+            } else {
+                println!("Could not read metadata for {path}");
             }
         }
     };
@@ -80,10 +77,7 @@ macro_rules! fuzz {
 #[cfg(feature = "afl")]
 macro_rules! fuzz {
     ( $($x:tt)* ) => {
-        #[no_mangle]
-        fn main() {
-            $crate::afl_fuzz!($($x)*);
-        }
+        $crate::afl_fuzz!($($x)*);
     };
 }
 
@@ -91,11 +85,8 @@ macro_rules! fuzz {
 #[cfg(feature = "honggfuzz")]
 macro_rules! fuzz {
     ( $($x:tt)* ) => {
-        #[no_mangle]
-        fn main() {
-            loop {
-                $crate::honggfuzz_fuzz!($($x)*);
-            }
+        loop {
+            $crate::honggfuzz_fuzz!($($x)*);
         }
     };
 }

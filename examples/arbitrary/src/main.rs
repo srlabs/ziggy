@@ -1,4 +1,3 @@
-#![no_main]
 use arbitrary::Arbitrary;
 
 #[derive(Arbitrary, Debug, PartialEq, Eq)]
@@ -30,9 +29,11 @@ impl Hex {
     }
 }
 
-ziggy::fuzz!(|color: Rgb| {
-    let hex = color.as_hex();
-    let rgb = hex.as_rgb();
+fn main() {
+    ziggy::fuzz!(|color: Rgb| {
+        let hex = color.as_hex();
+        let rgb = hex.as_rgb();
 
-    assert_eq!(color, rgb);
-});
+        assert_eq!(color, rgb);
+    });
+}
