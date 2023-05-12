@@ -54,13 +54,17 @@ For an example fuzz project, see [the url example](./examples/url/).
 
 ## Note about coverage
 
-The `cargo cover` command will assume two things if you run it without any arguments:
-- you are working somewhere within your `$HOME` directory
-- your `$CARGO_HOME` is also somewhere within your `$HOME` directory
+The `cargo cover` command will not generate coverage for the dependencies of your fuzzed project
+by default.
 
-If one of these assumptions is incorrect, you can use the following workaround:
+If this is something you would like to change, you can use the following trick:
 ```
-CARGO_HOME=$PROJECT_DIR/.cargo cargo ziggy cover --source $PROJECT_DIR
+CARGO_HOME=.cargo cargo ziggy cover 
 ```
 
-where `$PROJECT_DIR` encapsulates all of the code that you want the fuzzer to cover.
+This will clone every dependency into a `.cargo` directory and this directory will be included in
+the generated coverage.
+
+## `ziggy` logs
+
+If you want to see `ziggy`'s internal logs, you can set `RUST_LOG=INFO`.

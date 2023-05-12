@@ -26,15 +26,22 @@ macro_rules! read_args_and_fuzz {
     ( |$buf:ident| $body:block ) => {
         let args: Vec<String> = std::env::args().collect();
         for path in &args[1..] {
-            let files: Vec<String> = match std::fs::metadata(&path).expect("Provided path does not exist").is_dir() {
-                true => std::fs::read_dir(&path)
-                    .expect("Could not open directory")
-                    .map(|x| x.unwrap().path().to_str().unwrap().to_string())
-                    .collect::<Vec<String>>(),
-                false => vec![path.to_string()],
-            };
-            for file in files {
-                $crate::read_file_and_fuzz(|$buf| $body, file);
+            if let Ok(metadata) = std::fs::metadata(&path) {
+                let files = match metadata.is_dir() {
+                    true => std::fs::read_dir(&path)
+                        .unwrap()
+                        .map(|x| x.unwrap().path())
+                        .filter(|x| x.is_file())
+                        .map(|x| x.to_str().unwrap().to_string())
+                        .collect::<Vec<String>>(),
+                    false => vec![path.to_string()],
+                };
+
+                for file in files {
+                    $crate::read_file_and_fuzz(|$buf| $body, file);
+                }
+            } else {
+                println!("Could not read metadata for {path}");
             }
         }
     };
