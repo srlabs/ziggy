@@ -60,16 +60,14 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
         // We retrieve the stats from the fuzzer_stats file
         if let Ok(file) = File::open(fuzzer_stats_file.clone()) {
             let lines = BufReader::new(file).lines();
-            for maybe_line in lines {
-                if let Ok(line) = maybe_line {
-                    match &line[..20] {
-                        "execs_ps_last_min : " => exec_speed = String::from(&line[20..]),
-                        "execs_done        : " => execs_done = String::from(&line[20..]),
-                        "edges_found       : " => edges_found = String::from(&line[20..]),
-                        "total_edges       : " => total_edges = String::from(&line[20..]),
-                        "saved_crashes     : " => saved_crashes = String::from(&line[20..]),
-                        _ => {}
-                    }
+            for line in lines.flatten() {
+                match &line[..20] {
+                    "execs_ps_last_min : " => exec_speed = String::from(&line[20..]),
+                    "execs_done        : " => execs_done = String::from(&line[20..]),
+                    "edges_found       : " => edges_found = String::from(&line[20..]),
+                    "total_edges       : " => total_edges = String::from(&line[20..]),
+                    "saved_crashes     : " => saved_crashes = String::from(&line[20..]),
+                    _ => {}
                 }
             }
             if saved_crashes.trim() != "0" && !saved_crashes.trim().is_empty() {
@@ -441,7 +439,7 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<Vec<process::Child>, anyhow::Err
             .bold()
             .to_string()
     );
-    eprintln!("");
+    eprintln!();
     eprintln!("   Waiting for afl++ to");
     eprintln!("   finish executing the");
     eprintln!("   existing corpus once");
