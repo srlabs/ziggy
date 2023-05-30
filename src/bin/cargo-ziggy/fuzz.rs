@@ -15,6 +15,16 @@ use std::{
 pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
     info!("Running fuzzer");
 
+    let fuzzer_stats_file = format!("./output/{}/afl/mainaflfuzzer/fuzzer_stats", args.target);
+
+    if fs::metadata(&fuzzer_stats_file).is_ok() {
+        if let Err(err) = fs::rename(&fuzzer_stats_file, fuzzer_stats_file.clone() + ".old") {
+            info!("Error moving fuzzer stats file: {}", err);
+        } else {
+            info!("Fuzzer stats file moved");
+        }
+    }
+
     let mut processes = spawn_new_fuzzers(args)?;
 
     let parsed_corpus = args
@@ -26,7 +36,7 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
     let term = Term::stdout();
 
     // Variables for stats printing
-    let mut execs_per_sec = String::new();
+    let mut exec_speed = String::new();
     let mut execs_done = String::new();
     let mut edges_found = String::new();
     let mut total_edges = String::new();
@@ -48,15 +58,12 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
         thread::sleep(sleep_duration);
 
         // We retrieve the stats from the fuzzer_stats file
-        if let Ok(file) = File::open(format!(
-            "./output/{}/afl/mainaflfuzzer/fuzzer_stats",
-            args.target
-        )) {
+        if let Ok(file) = File::open(fuzzer_stats_file.clone()) {
             let lines = BufReader::new(file).lines();
             for maybe_line in lines {
                 if let Ok(line) = maybe_line {
                     match &line[..20] {
-                        "execs_per_sec     : " => execs_per_sec = String::from(&line[20..]),
+                        "execs_ps_last_min : " => exec_speed = String::from(&line[20..]),
                         "execs_done        : " => execs_done = String::from(&line[20..]),
                         "edges_found       : " => edges_found = String::from(&line[20..]),
                         "total_edges       : " => total_edges = String::from(&line[20..]),
@@ -70,7 +77,7 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
             }
         }
 
-        if execs_per_sec.is_empty() {
+        if exec_speed.is_empty() || exec_speed == "0.00" {
             if let Ok(afl_log) =
                 fs::read_to_string(format!("./output/{}/logs/afl.log", args.target))
             {
@@ -92,10 +99,14 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
 
         // We print the new values
         term.move_cursor_up(7)?;
+        let exec_speed_formated = match exec_speed.as_str() {
+            "0.00" | "" => String::from("..."),
+            _ => utils::stringify_integer(exec_speed.parse::<f64>().unwrap_or_default() as u64),
+        };
         term.write_line(&format!(
             "{} {}      ",
-            style("       execs per sec :").dim(),
-            utils::stringify_integer(execs_per_sec.parse::<f64>().unwrap_or_default() as u64),
+            style("          exec speed :").dim(),
+            exec_speed_formated,
         ))?;
         term.write_line(&format!(
             "{} {}      ",
@@ -123,7 +134,7 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
         term.write_line("")?;
 
         // We only start checking for crashes after AFL++ has started responding to us
-        if !execs_per_sec.is_empty() {
+        if !exec_speed.is_empty() || exec_speed == "0.00" {
             // We check AFL++ and Honggfuzz's outputs for crash files
             let afl_crash_dir = format!("./output/{}/afl/mainaflfuzzer/crashes/", args.target);
             let honggfuzz_crash_dir =
