@@ -18,6 +18,6 @@ pub fn stringify_integer(value: u64) -> String {
         10_000_000_000_000..=99_999_999_999_999 => {
             format!("{:0.01}T", value as f64 / 1_000_000_000_000f64)
         }
-        _ => format!("infty"),
+        _ => "infty".to_string(),
     }
 }

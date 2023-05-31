@@ -97,11 +97,11 @@ pub enum Ziggy {
 
 #[derive(Args)]
 pub struct Build {
-    /// No honggfuzz (Fuzz only with AFL++)
+    /// No AFL++ (Fuzz only with honggfuzz)
     #[clap(long = "no-afl", action)]
     no_afl: bool,
 
-    /// No AFL++ (Fuzz only with honggfuzz)
+    /// No honggfuzz (Fuzz only with AFL++)
     #[clap(long = "no-honggfuzz", action)]
     no_honggfuzz: bool,
 }
@@ -144,11 +144,11 @@ pub struct Fuzz {
     #[clap(short = 'g', long = "minlength", default_value_t = 1)]
     min_length: u64,
 
-    /// No honggfuzz (Fuzz only with AFL++)
+    /// No AFL++ (Fuzz only with honggfuzz)
     #[clap(long = "no-afl", action)]
     no_afl: bool,
 
-    /// No AFL++ (Fuzz only with honggfuzz)
+    /// No honggfuzz (Fuzz only with AFL++)
     #[clap(long = "no-honggfuzz", action)]
     no_honggfuzz: bool,
 }
