@@ -102,7 +102,7 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
             _ => utils::stringify_integer(exec_speed.parse::<f64>().unwrap_or_default() as u64),
         };
         term.write_line(&format!(
-            "{} {}      ",
+            "{} {}/sec  ",
             style("          exec speed :").dim(),
             exec_speed_formated,
         ))?;
