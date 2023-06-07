@@ -1,5 +1,15 @@
 # Changes
 
+## 0.5.0 - 2023-06-07
+
+- Update dependencies
+- Fix coverage bug (see #27)
+- Add better error handling and logs
+- Split cargo-ziggy into different source files
+- Remove statsd use for afl++
+- Simplify console output while fuzzing
+- Fix some long-standing fuzzer failure bugs
+
 ## 0.4.4 - 2023-04-25
 
 - Fix error handling bug
