@@ -8,7 +8,7 @@ use std::{
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
     process, thread,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 // Manages the continuous running of fuzzers
@@ -42,14 +42,23 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
     let mut total_edges = String::new();
     let mut saved_crashes = String::new();
 
-    let mut last_merge = Instant::now();
-
     let time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
 
     let ziggy_crash_dir = format!("./output/{}/crashes/{}/", args.target, time);
     let ziggy_crash_path = Path::new(&ziggy_crash_dir);
 
     fs::create_dir_all(ziggy_crash_path)?;
+
+    process::Command::new("rm")
+        .args([
+            "-r",
+            &format!("./output/{}/afl/*/.synced/", args.target),
+            &format!("./output/{}/afl/*/_resume/", args.target),
+            &format!("./output/{}/afl/*/fuzzer_stats", args.target),
+            &format!("./output/{}/afl/*/.cur_input", args.target),
+        ])
+        .output()
+        .map_err(|_| anyhow!("Could not remove afl directories"))?;
 
     let mut crash_has_been_found = false;
 
@@ -102,7 +111,7 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
             _ => utils::stringify_integer(exec_speed.parse::<f64>().unwrap_or_default() as u64),
         };
         term.write_line(&format!(
-            "{} {}      ",
+            "{} {}/sec  ",
             style("          exec speed :").dim(),
             exec_speed_formated,
         ))?;
@@ -156,8 +165,12 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
             }
         }
 
-        // Every DEFAULT_MINIMIZATION_TIMEOUT, we kill the fuzzers and minimize the shared corpus, before launching the fuzzers again
-        if last_merge.elapsed() > Duration::from_secs(args.minimization_timeout.into()) {
+        // Every DEFAULT_MINIMIZATION_TIMEOUT, the fuzzers will stop and we will minimize the
+        // shared corpus, before launching the fuzzers again
+        if processes
+            .iter_mut()
+            .all(|p| p.try_wait().unwrap_or(None).is_some())
+        {
             stop_fuzzers(&mut processes)?;
 
             term.write_line(&format!(
@@ -173,6 +186,11 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
             let minimized_corpus =
                 DEFAULT_MINIMIZATION_CORPUS.replace("{target_name}", &args.target);
 
+            process::Command::new("rm")
+                .args(["-r", &minimized_corpus])
+                .output()
+                .map_err(|_| anyhow!("Could not remove minimized corpus directory"))?;
+
             match minimize::minimize_corpus(
                 &args.target,
                 &PathBuf::from(&parsed_corpus),
@@ -185,7 +203,6 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
                     process::Command::new("rm")
                         .args([
                             "-r",
-                            &format!("./output/{}/main_corpus/", args.target),
                             &format!("./output/{}/afl/*/.synced/", args.target),
                             &format!("./output/{}/afl/*/_resume/", args.target),
                             &format!("./output/{}/afl/*/queue/", args.target),
@@ -193,7 +210,7 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
                             &format!("./output/{}/afl/*/.cur_input", args.target),
                         ])
                         .output()
-                        .map_err(|_| anyhow!("Could not remove main_corpus"))?;
+                        .map_err(|_| anyhow!("Could not remove afl directories"))?;
 
                     term.move_cursor_up(1)?;
                     term.write_line(&format!(
@@ -210,8 +227,6 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
                     term.write_line("error running minimization... probably a memory error")?;
                 }
             }
-
-            last_merge = Instant::now();
 
             processes = spawn_new_fuzzers(args)?;
         }
@@ -358,7 +373,7 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<Vec<process::Child>, anyhow::Err
                     .env("AFL_TESTCACHE_SIZE", "100")
                     .env("AFL_FAST_CAL", "1")
                     // TODO Should we remove this?
-                    .env("AFL_MAP_SIZE", "10000000")
+                    // .env("AFL_MAP_SIZE", "10000000")
                     .env("AFL_FORCE_UI", "1")
                     .env("AFL_FUZZER_STATS_UPDATE_INTERVAL", "1")
                     .stdout(log_destination())
@@ -449,8 +464,6 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<Vec<process::Child>, anyhow::Err
 }
 
 pub fn kill_subprocesses_recursively(pid: &str) -> Result<(), anyhow::Error> {
-    info!("Killing pid {pid}");
-
     let subprocesses = process::Command::new("pgrep")
         .arg(&format!("-P{pid}"))
         .output()?;
@@ -462,11 +475,11 @@ pub fn kill_subprocesses_recursively(pid: &str) -> Result<(), anyhow::Error> {
 
         kill_subprocesses_recursively(subprocess)
             .context("Error in kill_subprocesses_recursively for pid {pid}")?;
+    }
 
-        process::Command::new("kill")
-            .arg(subprocess)
-            .output()
-            .context("Error killing subprocess: {subprocess}")?;
+    info!("Killing pid {pid}");
+    unsafe {
+        libc::kill(pid.parse::<i32>().unwrap(), libc::SIGTERM);
     }
     Ok(())
 }
@@ -477,8 +490,8 @@ pub fn stop_fuzzers(processes: &mut Vec<process::Child>) -> Result<(), anyhow::E
 
     for process in processes {
         kill_subprocesses_recursively(&process.id().to_string())?;
-        process.kill()?;
-        process.wait()?;
+        info!("Process kill: {:?}", process.kill());
+        info!("Process wait: {:?}", process.wait());
     }
     Ok(())
 }

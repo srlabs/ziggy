@@ -10,6 +10,8 @@ pub fn minimize_corpus(
 
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
+
+    /*
     // AFL++ minimization
     process::Command::new(cargo)
         .args([
@@ -41,18 +43,36 @@ pub fn minimize_corpus(
         ))?)
         .spawn()?
         .wait()?;
+    */
 
-    /*
     // HONGGFUZZ minimization
     process::Command::new(cargo)
-        .args(&["hfuzz", "run", target])
+        .args(["hfuzz", "run", target])
+        .env("CARGO_TARGET_DIR", "./target/honggfuzz")
         .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
-        .env("HFUZZ_RUN_ARGS", format!("-i{corpus} -M -Woutput/{target}/honggfuzz"))
-        .stderr(File::create(format!("./output/{target}/logs/minimization.log"))?)
-        .stdout(File::create(format!("./output/{target}/logs/minimization.log"))?)
+        .env("HFUZZ_WORKSPACE", format!("./output/{}/honggfuzz", target))
+        .env(
+            "HFUZZ_RUN_ARGS",
+            format!(
+                "-i{} -M -o{}",
+                input_corpus
+                    .display()
+                    .to_string()
+                    .replace("{target_name}", target),
+                output_corpus
+                    .display()
+                    .to_string()
+                    .replace("{target_name}", target),
+            ),
+        )
+        .stderr(File::create(format!(
+            "./output/{target}/logs/minimization.log"
+        ))?)
+        .stdout(File::create(format!(
+            "./output/{target}/logs/minimization.log"
+        ))?)
         .spawn()?
         .wait()?;
-    */
 
     Ok(())
 }
