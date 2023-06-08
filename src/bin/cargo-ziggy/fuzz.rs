@@ -17,14 +17,6 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
 
     let fuzzer_stats_file = format!("./output/{}/afl/mainaflfuzzer/fuzzer_stats", args.target);
 
-    if fs::metadata(&fuzzer_stats_file).is_ok() {
-        if let Err(err) = fs::rename(&fuzzer_stats_file, fuzzer_stats_file.clone() + ".old") {
-            info!("Error moving fuzzer stats file: {}", err);
-        } else {
-            info!("Fuzzer stats file moved");
-        }
-    }
-
     let mut processes = spawn_new_fuzzers(args)?;
 
     let parsed_corpus = args
@@ -49,16 +41,7 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
 
     fs::create_dir_all(ziggy_crash_path)?;
 
-    process::Command::new("rm")
-        .args([
-            "-r",
-            &format!("./output/{}/afl/*/.synced/", args.target),
-            &format!("./output/{}/afl/*/_resume/", args.target),
-            &format!("./output/{}/afl/*/fuzzer_stats", args.target),
-            &format!("./output/{}/afl/*/.cur_input", args.target),
-        ])
-        .output()
-        .map_err(|_| anyhow!("Could not remove afl directories"))?;
+    share_all_corpora(args, &parsed_corpus)?;
 
     let mut crash_has_been_found = false;
 
@@ -199,18 +182,6 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
                 Ok(_) => {
                     let new_corpus_size = fs::read_dir(&minimized_corpus)
                         .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
-
-                    process::Command::new("rm")
-                        .args([
-                            "-r",
-                            &format!("./output/{}/afl/*/.synced/", args.target),
-                            &format!("./output/{}/afl/*/_resume/", args.target),
-                            &format!("./output/{}/afl/*/queue/", args.target),
-                            &format!("./output/{}/afl/*/fuzzer_stats", args.target),
-                            &format!("./output/{}/afl/*/.cur_input", args.target),
-                        ])
-                        .output()
-                        .map_err(|_| anyhow!("Could not remove afl directories"))?;
 
                     term.move_cursor_up(1)?;
                     term.write_line(&format!(
