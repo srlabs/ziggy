@@ -2,6 +2,11 @@
 
 ## 0.5.0 - 2023-06-07
 
+- Remove no_main (pr #29, issue #28)
+- Remove useless code
+
+## 0.5.0 - 2023-06-07
+
 - Update dependencies
 - Fix coverage bug (see #27)
 - Add better error handling and logs
