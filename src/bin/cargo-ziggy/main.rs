@@ -181,6 +181,10 @@ pub struct Minimize {
     /// Output directory
     #[clap(short, long, default_value = DEFAULT_MINIMIZATION_CORPUS)]
     output_corpus: PathBuf,
+
+    /// Number of concurent minimizing jobs
+    #[clap(short, long, value_name = "NUM", default_value_t = 1)]
+    jobs: u32,
 }
 
 #[derive(Args)]
@@ -236,8 +240,13 @@ fn main() -> Result<(), anyhow::Error> {
         }
         Ziggy::Minimize(mut args) => {
             args.target = get_target(args.target)?;
-            minimize::minimize_corpus(&args.target, &args.input_corpus, &args.output_corpus)
-                .context("Failure minimizing")?;
+            minimize::minimize_corpus(
+                &args.target,
+                &args.input_corpus,
+                &args.output_corpus,
+                args.jobs,
+            )
+            .context("Failure minimizing")?;
             Ok(())
         }
         Ziggy::Cover(mut args) => {

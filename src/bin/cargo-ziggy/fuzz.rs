@@ -178,21 +178,27 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
                 &args.target,
                 &PathBuf::from(&parsed_corpus),
                 &PathBuf::from(&minimized_corpus),
+                args.jobs,
             ) {
                 Ok(_) => {
                     let new_corpus_size = fs::read_dir(&minimized_corpus)
                         .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
 
                     term.move_cursor_up(1)?;
-                    term.write_line(&format!(
-                        "{} the corpus ({} -> {} files)             ",
-                        style("    Minimized").magenta().bold(),
-                        old_corpus_size,
-                        new_corpus_size
-                    ))?;
 
-                    fs::remove_dir_all(&parsed_corpus)?;
-                    fs::rename(minimized_corpus, &parsed_corpus)?;
+                    if new_corpus_size == *"err" || new_corpus_size == *"0" {
+                        term.write_line("error during minimization... please check the logs and make sure the right version of the fuzzers are installed")?;
+                    } else {
+                        term.write_line(&format!(
+                            "{} the corpus ({} -> {} files)             ",
+                            style("    Minimized").magenta().bold(),
+                            old_corpus_size,
+                            new_corpus_size
+                        ))?;
+
+                        fs::remove_dir_all(&parsed_corpus)?;
+                        fs::rename(minimized_corpus, &parsed_corpus)?;
+                    }
                 }
                 Err(_) => {
                     term.write_line("error running minimization... probably a memory error")?;
@@ -344,7 +350,7 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<Vec<process::Child>, anyhow::Err
                     .env("AFL_TESTCACHE_SIZE", "100")
                     .env("AFL_FAST_CAL", "1")
                     // TODO Should we remove this?
-                    // .env("AFL_MAP_SIZE", "10000000")
+                    .env("AFL_MAP_SIZE", "10000000")
                     .env("AFL_FORCE_UI", "1")
                     .env("AFL_FUZZER_STATS_UPDATE_INTERVAL", "1")
                     .stdout(log_destination())

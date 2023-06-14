@@ -5,13 +5,18 @@ pub fn minimize_corpus(
     target: &str,
     input_corpus: &Path,
     output_corpus: &Path,
+    jobs: u32,
 ) -> Result<(), anyhow::Error> {
     info!("Minimizing corpus");
 
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
-    /*
+    let jobs_argument = match jobs {
+        0 | 1 => String::from("-Tall"),
+        t => format!("-T{t}"),
+    };
+
     // AFL++ minimization
     process::Command::new(cargo)
         .args([
@@ -31,6 +36,7 @@ pub fn minimize_corpus(
                     .to_string()
                     .replace("{target_name}", target)
             ),
+            &jobs_argument,
             "--",
             &format!("./target/afl/debug/{target}"),
         ])
@@ -43,8 +49,8 @@ pub fn minimize_corpus(
         ))?)
         .spawn()?
         .wait()?;
-    */
 
+    /*
     // HONGGFUZZ minimization
     process::Command::new(cargo)
         .args(["hfuzz", "run", target])
@@ -73,6 +79,7 @@ pub fn minimize_corpus(
         ))?)
         .spawn()?
         .wait()?;
+    */
 
     Ok(())
 }
