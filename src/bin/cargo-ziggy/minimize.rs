@@ -12,9 +12,9 @@ pub fn minimize_corpus(
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
-    let jobs_argument = match jobs {
-        0 | 1 => String::from("-Tall"),
-        t => format!("-T{t}"),
+    let jobs = match jobs {
+        0 | 1 => String::from("all"),
+        t => format!("{t}"),
     };
 
     // AFL++ minimization
@@ -22,21 +22,24 @@ pub fn minimize_corpus(
         .args([
             "afl",
             "cmin",
+            "-i",
             &format!(
-                "-i{}",
+                "{}",
                 input_corpus
                     .display()
                     .to_string()
                     .replace("{target_name}", target)
             ),
+            "-o",
             &format!(
-                "-o{}",
+                "{}",
                 output_corpus
                     .display()
                     .to_string()
                     .replace("{target_name}", target)
             ),
-            &jobs_argument,
+            "-T",
+            &jobs,
             "--",
             &format!("./target/afl/debug/{target}"),
         ])
