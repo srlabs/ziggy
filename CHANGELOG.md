@@ -1,6 +1,12 @@
 # Changes
 
-## 0.5.0 - 2023-06-07
+## 0.6.1 - 2023-06-07
+
+- Add parallel jobs for minimization
+- Add minimization at the beginning of fuzzing
+- Fix crash discovery code
+
+## 0.6.0 - 2023-06-07
 
 - Remove no_main (pr #29, issue #28)
 - Remove useless code

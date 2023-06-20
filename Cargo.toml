@@ -1,6 +1,6 @@
 [package]
 name = "ziggy"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 license = "Apache-2.0"
 description = "A multi-fuzzer management utility for all of your Rust fuzzing needs 🧑‍🎤"
@@ -19,7 +19,7 @@ console = { version = "0.15.7", optional = true }
 glob = { version = "0.3.1", optional = true }
 toml = { version = "0.7.4", optional = true }
 anyhow = { version = "1.0.71", optional = true }
-afl = { version = "0.13.0", default-features = false, optional = true }
+afl = { version = "0.13.1", default-features = false, optional = true }
 honggfuzz = { version = "0.5.55", optional = true }
 serde_json = { version = "1.0.96", optional = true }
 log = { version = "0.4.18", optional = true }

@@ -4,9 +4,9 @@ version = 3
 
 [[package]]
 name = "afl"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5112036b91d8f1aa923600991f6efb83df540c4fc3903e51b457b82f35e7dd5"
+checksum = "34bea480ea82b8f3ad81e0bee1328c41c9c85eddf5a86ae953e66cc621d6e9df"
 dependencies = [
  "clap",
  "fs_extra",
@@ -848,7 +848,7 @@ dependencies = [
 
 [[package]]
 name = "ziggy"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "afl",
  "anyhow",
