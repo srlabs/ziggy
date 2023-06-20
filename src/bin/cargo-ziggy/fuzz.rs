@@ -17,8 +17,6 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
 
     let fuzzer_stats_file = format!("./output/{}/afl/mainaflfuzzer/fuzzer_stats", args.target);
 
-    let mut processes = spawn_new_fuzzers(args)?;
-
     let parsed_corpus = args
         .corpus
         .display()
@@ -42,6 +40,10 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
     fs::create_dir_all(ziggy_crash_path)?;
 
     share_all_corpora(args, &parsed_corpus)?;
+
+    run_minimization(args, &parsed_corpus)?;
+
+    let mut processes = spawn_new_fuzzers(args)?;
 
     let mut crash_has_been_found = false;
 
@@ -156,54 +158,7 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
         {
             stop_fuzzers(&mut processes)?;
 
-            term.write_line(&format!(
-                "    {}",
-                &style("Running minimization").magenta().bold()
-            ))?;
-
-            share_all_corpora(args, &parsed_corpus)?;
-
-            let old_corpus_size = fs::read_dir(&parsed_corpus)
-                .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
-
-            let minimized_corpus =
-                DEFAULT_MINIMIZATION_CORPUS.replace("{target_name}", &args.target);
-
-            process::Command::new("rm")
-                .args(["-r", &minimized_corpus])
-                .output()
-                .map_err(|_| anyhow!("Could not remove minimized corpus directory"))?;
-
-            match minimize::minimize_corpus(
-                &args.target,
-                &PathBuf::from(&parsed_corpus),
-                &PathBuf::from(&minimized_corpus),
-                args.jobs,
-            ) {
-                Ok(_) => {
-                    let new_corpus_size = fs::read_dir(&minimized_corpus)
-                        .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
-
-                    term.move_cursor_up(1)?;
-
-                    if new_corpus_size == *"err" || new_corpus_size == *"0" {
-                        term.write_line("error during minimization... please check the logs and make sure the right version of the fuzzers are installed")?;
-                    } else {
-                        term.write_line(&format!(
-                            "{} the corpus ({} -> {} files)             ",
-                            style("    Minimized").magenta().bold(),
-                            old_corpus_size,
-                            new_corpus_size
-                        ))?;
-
-                        fs::remove_dir_all(&parsed_corpus)?;
-                        fs::rename(minimized_corpus, &parsed_corpus)?;
-                    }
-                }
-                Err(_) => {
-                    term.write_line("error running minimization... probably a memory error")?;
-                }
-            }
+            run_minimization(args, &parsed_corpus)?;
 
             processes = spawn_new_fuzzers(args)?;
         }
@@ -494,5 +449,58 @@ pub fn share_all_corpora(args: &Fuzz, parsed_corpus: &String) -> Result<()> {
             )?;
         }
     }
+    Ok(())
+}
+
+pub fn run_minimization(args: &Fuzz, parsed_corpus: &String) -> Result<()> {
+    let term = Term::stdout();
+
+    term.write_line(&format!(
+        "    {}",
+        &style("Running minimization").magenta().bold()
+    ))?;
+
+    share_all_corpora(args, parsed_corpus)?;
+
+    let old_corpus_size = fs::read_dir(parsed_corpus)
+        .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
+
+    let minimized_corpus = DEFAULT_MINIMIZATION_CORPUS.replace("{target_name}", &args.target);
+
+    process::Command::new("rm")
+        .args(["-r", &minimized_corpus])
+        .output()
+        .map_err(|_| anyhow!("Could not remove minimized corpus directory"))?;
+
+    match minimize::minimize_corpus(
+        &args.target,
+        &PathBuf::from(&parsed_corpus),
+        &PathBuf::from(&minimized_corpus),
+        args.jobs,
+    ) {
+        Ok(_) => {
+            let new_corpus_size = fs::read_dir(&minimized_corpus)
+                .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
+
+            term.move_cursor_up(1)?;
+
+            if new_corpus_size == *"err" || new_corpus_size == *"0" {
+                term.write_line("error during minimization... please check the logs and make sure the right version of the fuzzers are installed")?;
+            } else {
+                term.write_line(&format!(
+                    "{} the corpus ({} -> {} files)             ",
+                    style("    Minimized").magenta().bold(),
+                    old_corpus_size,
+                    new_corpus_size
+                ))?;
+
+                fs::remove_dir_all(parsed_corpus)?;
+                fs::rename(minimized_corpus, parsed_corpus)?;
+            }
+        }
+        Err(_) => {
+            term.write_line("error running minimization... probably a memory error")?;
+        }
+    };
     Ok(())
 }
