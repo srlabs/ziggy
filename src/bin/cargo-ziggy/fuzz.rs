@@ -41,7 +41,26 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
 
     share_all_corpora(args, &parsed_corpus)?;
 
-    run_minimization(args, &parsed_corpus)?;
+    let _ = process::Command::new("mkdir")
+        .args(["-p", &format!("./output/{}/logs/", args.target)])
+        .stderr(process::Stdio::piped())
+        .spawn()?
+        .wait()?;
+
+    if Path::new(&parsed_corpus).exists() {
+        run_minimization(args, &parsed_corpus)?;
+    } else {
+        let _ = process::Command::new("mkdir")
+            .args(["-p", &parsed_corpus])
+            .stderr(process::Stdio::piped())
+            .spawn()?
+            .wait()?;
+
+        // We create an initial corpus file, so that AFL++ starts-up properly
+        let mut initial_corpus = File::create(parsed_corpus.clone() + "/init")?;
+        writeln!(&mut initial_corpus, "00000000")?;
+        drop(initial_corpus);
+    }
 
     let mut processes = spawn_new_fuzzers(args)?;
 
@@ -128,24 +147,31 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
         // We only start checking for crashes after AFL++ has started responding to us
         if !exec_speed.is_empty() || exec_speed == "0.00" {
             // We check AFL++ and Honggfuzz's outputs for crash files
-            let afl_crash_dir = format!("./output/{}/afl/mainaflfuzzer/crashes/", args.target);
-            let honggfuzz_crash_dir =
-                format!("./output/{}/honggfuzz/{}/", args.target, args.target);
+            //let afl_crash_dir = format!("./output/{}/afl/mainaflfuzzer/crashes/", args.target);
 
-            if let (Ok(afl_crashes), Ok(honggfuzz_crashes)) = (
-                fs::read_dir(afl_crash_dir),
-                fs::read_dir(honggfuzz_crash_dir),
-            ) {
-                for crash_input in afl_crashes.chain(honggfuzz_crashes).flatten() {
-                    let file_name = crash_input.file_name();
-                    let to_path = ziggy_crash_path.join(&file_name);
-                    if to_path.exists()
-                        || ["", "README.txt", "HONGGFUZZ.REPORT.TXT", "input"]
-                            .contains(&file_name.to_str().unwrap_or_default())
-                    {
-                        continue;
+            let crash_dirs = glob(&format!("./output/{}/afl/*/crashes", args.target))
+                .map_err(|_| anyhow!("Failed to read crashes glob pattern"))?
+                .flatten()
+                .chain(vec![format!(
+                    "./output/{}/honggfuzz/{}/",
+                    args.target, args.target
+                )
+                .into()]);
+
+            for crash_dir in crash_dirs {
+                if let Ok(crashes) = fs::read_dir(crash_dir) {
+                    for crash_input in crashes.flatten() {
+                        let file_name = crash_input.file_name();
+                        let to_path = ziggy_crash_path.join(&file_name);
+                        if to_path.exists()
+                            || ["", "README.txt", "HONGGFUZZ.REPORT.TXT", "input"]
+                                .contains(&file_name.to_str().unwrap_or_default())
+                        {
+                            continue;
+                        }
+                        crash_has_been_found = true;
+                        fs::copy(crash_input.path(), to_path)?;
                     }
-                    fs::copy(crash_input.path(), to_path)?;
                 }
             }
         }
@@ -182,16 +208,6 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<Vec<process::Child>, anyhow::Err
         .to_string()
         .replace("{target_name}", &args.target);
 
-    let _ = process::Command::new("mkdir")
-        .args([
-            "-p",
-            &parsed_corpus,
-            &format!("./output/{}/logs/", args.target),
-        ])
-        .stderr(process::Stdio::piped())
-        .spawn()?
-        .wait()?;
-
     // The cargo executable
     let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
@@ -207,11 +223,6 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<Vec<process::Child>, anyhow::Err
     };
 
     if !args.no_afl {
-        // We create an initial corpus file, so that AFL++ starts-up properly
-        let mut initial_corpus = File::create(parsed_corpus.clone() + "/init")?;
-        writeln!(&mut initial_corpus, "00000000")?;
-        drop(initial_corpus);
-
         let _ = process::Command::new("mkdir")
             .args(["-p", &format!("./output/{}/afl", args.target)])
             .stderr(process::Stdio::piped())
@@ -430,7 +441,7 @@ pub fn stop_fuzzers(processes: &mut Vec<process::Child>) -> Result<(), anyhow::E
 
 // Share AFL++ corpora in the shared_corpus directory
 pub fn share_all_corpora(args: &Fuzz, parsed_corpus: &String) -> Result<()> {
-    for path in glob(&format!("./output/{}/afl/**/queue/*", args.target))
+    for path in glob(&format!("./output/{}/afl/*/queue/*", args.target))
         .map_err(|_| anyhow!("Failed to read glob pattern"))?
         .flatten()
     {
@@ -456,7 +467,7 @@ pub fn run_minimization(args: &Fuzz, parsed_corpus: &String) -> Result<()> {
     let term = Term::stdout();
 
     term.write_line(&format!(
-        "    {}",
+        "\n    {}",
         &style("Running minimization").magenta().bold()
     ))?;
 
@@ -488,7 +499,7 @@ pub fn run_minimization(args: &Fuzz, parsed_corpus: &String) -> Result<()> {
                 term.write_line("error during minimization... please check the logs and make sure the right version of the fuzzers are installed")?;
             } else {
                 term.write_line(&format!(
-                    "{} the corpus ({} -> {} files)             ",
+                    "{} the corpus ({} -> {} files)             \n",
                     style("    Minimized").magenta().bold(),
                     old_corpus_size,
                     new_corpus_size
