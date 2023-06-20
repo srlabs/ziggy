@@ -1,5 +1,9 @@
 # Changes
 
+## 0.6.3 - 2023-06-20
+
+- Add flag to skip initial minimization
+
 ## 0.6.2 - 2023-06-20
 
 - Fix parallel minimization bug
