@@ -48,7 +48,9 @@ pub fn run_fuzzers(args: &Fuzz) -> Result<(), anyhow::Error> {
         .wait()?;
 
     if Path::new(&parsed_corpus).exists() {
-        run_minimization(args, &parsed_corpus)?;
+        if !args.skip_initial_minimization {
+            run_minimization(args, &parsed_corpus)?;
+        }
     } else {
         let _ = process::Command::new("mkdir")
             .args(["-p", &parsed_corpus])

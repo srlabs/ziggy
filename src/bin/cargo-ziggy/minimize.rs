@@ -23,21 +23,15 @@ pub fn minimize_corpus(
             "afl",
             "cmin",
             "-i",
-            &format!(
-                "{}",
-                input_corpus
-                    .display()
-                    .to_string()
-                    .replace("{target_name}", target)
-            ),
+            &input_corpus
+                .display()
+                .to_string()
+                .replace("{target_name}", target),
             "-o",
-            &format!(
-                "{}",
-                output_corpus
-                    .display()
-                    .to_string()
-                    .replace("{target_name}", target)
-            ),
+            &output_corpus
+                .display()
+                .to_string()
+                .replace("{target_name}", target),
             "-T",
             &jobs,
             "--",

@@ -151,6 +151,10 @@ pub struct Fuzz {
     /// No honggfuzz (Fuzz only with AFL++)
     #[clap(long = "no-honggfuzz", action)]
     no_honggfuzz: bool,
+
+    /// Skip initial minimization
+    #[clap(long = "skip-initial-minimization", action)]
+    skip_initial_minimization: bool,
 }
 
 #[derive(Args)]
