@@ -1,6 +1,10 @@
 # Changes
 
-## 0.6.1 - 2023-06-07
+## 0.6.2 - 2023-06-20
+
+- Fix parallel minimization bug
+
+## 0.6.1 - 2023-06-20
 
 - Add parallel jobs for minimization
 - Add minimization at the beginning of fuzzing
