@@ -61,5 +61,30 @@ pub fn build_fuzzers(no_afl: bool, no_honggfuzz: bool) -> Result<(), anyhow::Err
 
         eprintln!("    {} honggfuzz", style("Finished").cyan().bold());
     }
+
+
+    //if !no_libafl {
+        eprintln!("    {} libafl", style("Building").red().bold());
+
+        // Third fuzzer we build: Honggfuzz
+        let run = process::Command::new(cargo)
+            .args(["build"])
+            .env("CARGO_TARGET_DIR", "./target/honggfuzz")
+            .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
+            .stdout(process::Stdio::piped())
+            .spawn()?
+            .wait()
+            .context("Error spawning hfuzz build command")?;
+
+        if !run.success() {
+            return Err(anyhow!(
+                "Error building honggfuzz fuzzer: Exited with {:?}",
+                run.code()
+            ));
+        }
+
+        eprintln!("    {} honggfuzz", style("Finished").cyan().bold());
+    //}
+
     Ok(())
 }

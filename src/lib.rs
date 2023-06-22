@@ -2,10 +2,16 @@
 pub use afl::fuzz as afl_fuzz;
 #[cfg(feature = "honggfuzz")]
 pub use honggfuzz::fuzz as honggfuzz_fuzz;
+#[cfg(feature = "with_libafl")]
+mod libafl_fuzzer;
+#[cfg(feature = "with_libafl")]
+pub use libafl;
+#[cfg(feature = "with_libafl")]
+pub use libafl_targets;
 
 // This is our inner harness handler function for the runner and for coverage.
 // We open the input file and feed the data to the harness closure.
-#[cfg(not(any(feature = "afl", feature = "honggfuzz")))]
+#[cfg(not(any(feature = "afl", feature = "honggfuzz", feature = "with_libafl")))]
 pub fn read_file_and_fuzz<F>(mut closure: F, file: String)
 where
     F: FnMut(&[u8]),
@@ -21,7 +27,7 @@ where
 // This is our middle harness handler macro for the runner and for coverage.
 // We read input files and directories from the command line and run the inner harness `fuzz`.
 #[macro_export]
-#[cfg(not(any(feature = "afl", feature = "honggfuzz")))]
+#[cfg(not(any(feature = "afl", feature = "honggfuzz", feature = "with_libafl")))]
 macro_rules! read_args_and_fuzz {
     ( |$buf:ident| $body:block ) => {
         let args: Vec<String> = std::env::args().collect();
@@ -50,7 +56,7 @@ macro_rules! read_args_and_fuzz {
 // This is our outer harness handler macro for the runner and for coverage.
 // It is used to handle different types of arguments for the harness closure, including Arbitrary.
 #[macro_export]
-#[cfg(not(any(feature = "afl", feature = "honggfuzz")))]
+#[cfg(not(any(feature = "afl", feature = "honggfuzz", feature = "with_libafl")))]
 macro_rules! fuzz {
     (|$buf:ident| $body:block) => {
         $crate::read_args_and_fuzz!(|$buf| $body);
@@ -88,5 +94,13 @@ macro_rules! fuzz {
         loop {
             $crate::honggfuzz_fuzz!($($x)*);
         }
+    };
+}
+
+#[macro_export]
+#[cfg(feature = "with_libafl")]
+macro_rules! fuzz {
+    ( $($x:tt)* ) => {
+        $crate::libafl_fuzz!($($x)*);
     };
 }
