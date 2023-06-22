@@ -1,5 +1,5 @@
 // To run this fuzzer, execute the following command (for example in `examples/url/`):
-// LIBAFL_EDGES_MAP_SIZE=1000000 ASAN_OPTION="detect_odr_violation=0:abort_on_error=1:symbolize=0" TSAN_OPTION="report_signal_unsafe=0" RUSTFLAGS="-C passes=sancov-module -C llvm-args=-sanitizer-coverage-level=3 -C llvm-args=-sanitizer-coverage-trace-pc-guard -C llvm-args=-sanitizer-coverage-prune-blocks=0 -C llvm-args=-sanitizer-coverage-trace-compares -C opt-level=3 -C target-cpu=native --cfg fuzzing -Cdebug-assertions -Clink-arg=-fuse-ld=gold" cargo run --features=ziggy/with_libafl --target x86_64-unknown-linux-gnu
+// LIBAFL_EDGES_MAP_SIZE=500000 RUSTFLAGS="-C passes=sancov-module -C llvm-args=-sanitizer-coverage-level=3 -C llvm-args=-sanitizer-coverage-trace-pc-guard --cfg fuzzing -Clink-arg=-fuse-ld=gold" cargo run --features=ziggy/with_libafl --target x86_64-unknown-linux-gnu --release
 
 #[macro_export]
 #[cfg(feature = "with_libafl")]
@@ -16,15 +16,16 @@ macro_rules! libafl_fuzz {
                 rands::StdRand,
                 tuples::{tuple_list, Merge},
                 AsSlice,
+                shmem::{unix_shmem, ShMemProvider},
             },
             corpus::{Corpus, InMemoryCorpus, OnDiskCorpus},
             events::{setup_restarting_mgr_std, EventConfig, EventRestarter, SimpleEventManager},
-            executors::{inprocess::InProcessExecutor, ExitKind, TimeoutExecutor},
+            executors::{inprocess::InProcessExecutor, InProcessForkExecutor, ExitKind, TimeoutExecutor},
             feedback_or, feedback_or_fast,
             feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback, TimeoutFeedback},
             fuzzer::{Fuzzer, StdFuzzer},
             inputs::{BytesInput, HasTargetBytes},
-            monitors::tui::{ui::TuiUI, TuiMonitor},
+            monitors::{tui::{ui::TuiUI, TuiMonitor}, SimpleMonitor},
             mutators::{
                 scheduled::{havoc_mutations, tokens_mutations, StdScheduledMutator},
                 token_mutations::Tokens,
@@ -37,7 +38,7 @@ macro_rules! libafl_fuzz {
             state::{HasCorpus, HasMetadata, StdState},
             Error,
         };
-        use ziggy::libafl_targets::{libfuzzer_initialize, libfuzzer_test_one_input, EDGES_MAP, MAX_EDGES_NUM};
+        use ziggy::libafl_targets::{EDGES_MAP, MAX_EDGES_NUM};
 
         // The closure that we want to fuzz
         let inner_harness = $($x)*;
@@ -52,6 +53,9 @@ macro_rules! libafl_fuzz {
 
         let ui = TuiUI::with_version(String::from("Baby Fuzzer"), String::from("0.0.1"), false);
         let monitor = TuiMonitor::new(ui);
+        
+        //let monitor = SimpleMonitor::new(|_| {});
+        //let monitor = SimpleMonitor::new(|s| println!("{s}"));
 
         let objective_dir = PathBuf::from("./crashes");
         let corpus_dirs = &[PathBuf::from("./corpus")];
@@ -101,8 +105,6 @@ macro_rules! libafl_fuzz {
             )
             .unwrap();
 
-        println!("We're a client, let's fuzz :)");
-
         // Setup a basic mutator with a mutational stage
         let mutator = StdScheduledMutator::new(havoc_mutations().merge(tokens_mutations()));
 
@@ -134,7 +136,7 @@ macro_rules! libafl_fuzz {
             // 10 seconds timeout
             Duration::new(10, 0),
         );
-
+        
         // In case the corpus is empty (on first run), reset
         if state.must_load_initial_inputs() {
             state
