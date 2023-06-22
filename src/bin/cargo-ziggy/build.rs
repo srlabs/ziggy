@@ -62,6 +62,7 @@ pub fn build_fuzzers(no_afl: bool, no_honggfuzz: bool) -> Result<(), anyhow::Err
         eprintln!("    {} honggfuzz", style("Finished").cyan().bold());
     }
 
+    /*
 
     //if !no_libafl {
         eprintln!("    {} libafl", style("Building").red().bold());
@@ -85,6 +86,8 @@ pub fn build_fuzzers(no_afl: bool, no_honggfuzz: bool) -> Result<(), anyhow::Err
 
         eprintln!("    {} honggfuzz", style("Finished").cyan().bold());
     //}
+
+    */
 
     Ok(())
 }

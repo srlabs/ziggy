@@ -1,13 +1,14 @@
+// To run this fuzzer, execute the following command (for example in `examples/url/`):
+// LIBAFL_EDGES_MAP_SIZE=1000000 ASAN_OPTION="detect_odr_violation=0:abort_on_error=1:symbolize=0" TSAN_OPTION="report_signal_unsafe=0" RUSTFLAGS="-C passes=sancov-module -C llvm-args=-sanitizer-coverage-level=3 -C llvm-args=-sanitizer-coverage-trace-pc-guard -C llvm-args=-sanitizer-coverage-prune-blocks=0 -C llvm-args=-sanitizer-coverage-trace-compares -C opt-level=3 -C target-cpu=native --cfg fuzzing -Cdebug-assertions -Clink-arg=-fuse-ld=gold" cargo run --features=ziggy/with_libafl --target x86_64-unknown-linux-gnu
+
 #[macro_export]
 #[cfg(feature = "with_libafl")]
 macro_rules! libafl_fuzz {
-    
+
     ( $($x:tt)* ) => {
-        
+
         use core::time::Duration;
-        #[cfg(feature = "crash")]
-        use std::ptr;
-        use std::{env, path::PathBuf};
+        use std::{env, path::PathBuf, ptr::write};
 
         use ziggy::libafl::{
             bolts::{
@@ -23,7 +24,7 @@ macro_rules! libafl_fuzz {
             feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback, TimeoutFeedback},
             fuzzer::{Fuzzer, StdFuzzer},
             inputs::{BytesInput, HasTargetBytes},
-            monitors::MultiMonitor,
+            monitors::tui::{ui::TuiUI, TuiMonitor},
             mutators::{
                 scheduled::{havoc_mutations, tokens_mutations, StdScheduledMutator},
                 token_mutations::Tokens,
@@ -40,7 +41,7 @@ macro_rules! libafl_fuzz {
 
         // The closure that we want to fuzz
         let inner_harness = $($x)*;
-        
+
         // The wrapped harness function, calling out to the LLVM-style harness
         let mut harness = |input: &BytesInput| {
             let target = input.target_bytes();
@@ -49,30 +50,11 @@ macro_rules! libafl_fuzz {
             ExitKind::Ok
         };
 
+        let ui = TuiUI::with_version(String::from("Baby Fuzzer"), String::from("0.0.1"), false);
+        let monitor = TuiMonitor::new(ui);
 
-
-        // 'While the stats are state, they are usually used in the broker - which is likely never restarted
-        let monitor = MultiMonitor::new(|s| println!("{s}"));
         let objective_dir = PathBuf::from("./crashes");
         let corpus_dirs = &[PathBuf::from("./corpus")];
-
-
-        let broker_port = 1337;
-/*
-        // The restarting state will spawn the same process again as child, then restarted it each time it crashes.
-        let (state, mut restarting_mgr) =
-            match setup_restarting_mgr_std(monitor, broker_port, EventConfig::AlwaysUnique) {
-                Ok(res) => res,
-                Err(err) => match err {
-                    Error::ShuttingDown => {
-                        return;
-                    }
-                    _ => {
-                        panic!("Failed to setup the restarter: {err}");
-                    }
-                },
-            };
-            */
 
         // Create an observation channel using the coverage map
         let edges_observer = unsafe {
@@ -103,8 +85,7 @@ macro_rules! libafl_fuzz {
         let mut objective = feedback_or_fast!(CrashFeedback::new(), TimeoutFeedback::new());
 
         // If not restarting, create a State from scratch
-        let mut state = //state.unwrap_or_else(|| {
-            StdState::new(
+        let mut state = StdState::new(
                 // RNG
                 StdRand::with_seed(current_nanos()),
                 // Corpus that will be evolved, we keep it in memory for performance
@@ -119,25 +100,10 @@ macro_rules! libafl_fuzz {
                 &mut objective,
             )
             .unwrap();
-        //});
 
         println!("We're a client, let's fuzz :)");
 
-/*
-        // Create a PNG dictionary if not existing
-        if state.metadata_map().get::<Tokens>().is_none() {
-            state.add_metadata(Tokens::from([
-                vec![137, 80, 78, 71, 13, 10, 26, 10], // PNG header
-                "IHDR".as_bytes().to_vec(),
-                "IDAT".as_bytes().to_vec(),
-                "PLTE".as_bytes().to_vec(),
-                "IEND".as_bytes().to_vec(),
-            ]));
-        }
-        */
-
         // Setup a basic mutator with a mutational stage
-
         let mutator = StdScheduledMutator::new(havoc_mutations().merge(tokens_mutations()));
 
         let power = StdPowerMutationalStage::new(mutator);
@@ -163,48 +129,25 @@ macro_rules! libafl_fuzz {
                 tuple_list!(edges_observer, time_observer),
                 &mut fuzzer,
                 &mut state,
-                //&mut restarting_mgr,
                 &mut mgr,
             ).unwrap(),
             // 10 seconds timeout
             Duration::new(10, 0),
         );
-        /*
-
-        // The actual target run starts here.
-        // Call LLVMFUzzerInitialize() if present.
-        let args: Vec<String> = env::args().collect();
-        if libfuzzer_initialize(&args) == -1 {
-            println!("Warning: LLVMFuzzerInitialize failed with -1");
-        }
-                */
 
         // In case the corpus is empty (on first run), reset
         if state.must_load_initial_inputs() {
             state
                 .load_initial_inputs(&mut fuzzer, &mut executor, &mut mgr, corpus_dirs)
-                //.load_initial_inputs(&mut fuzzer, &mut executor, &mut restarting_mgr, corpus_dirs)
                 .unwrap_or_else(|_| panic!("Failed to load initial corpus at {:?}", &corpus_dirs));
             println!("We imported {} inputs from disk.", state.corpus().count());
         }
 
-        // This fuzzer restarts after 1 mio `fuzz_one` executions.
-        // Each fuzz_one will internally do many executions of the target.
-        // If your target is very instable, setting a low count here may help.
-        // However, you will lose a lot of performance that way.
-        let iters = 1_000_000;
-        fuzzer.fuzz_loop_for(
+        fuzzer.fuzz_loop(
             &mut stages,
             &mut executor,
             &mut state,
-            //&mut restarting_mgr,
             &mut mgr,
-            iters,
         ).unwrap();
-
-        // It's important, that we store the state before restarting!
-        // Else, the parent will not respawn a new child and quit.
-        //restarting_mgr.on_restart(&mut state).unwrap();
-
     };
 }
