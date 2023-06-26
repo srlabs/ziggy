@@ -1,19 +1,12 @@
 #[cfg(not(feature = "cli"))]
 fn main() {}
 
-#[cfg(feature = "cli")]
 mod build;
-#[cfg(feature = "cli")]
 mod coverage;
-#[cfg(feature = "cli")]
 mod fuzz;
-#[cfg(feature = "cli")]
 mod minimize;
-#[cfg(feature = "cli")]
 mod plot;
-#[cfg(feature = "cli")]
 mod run;
-#[cfg(feature = "cli")]
 mod utils;
 
 #[cfg(feature = "cli")]
@@ -27,39 +20,30 @@ use std::{fs, path::PathBuf};
 #[macro_use]
 extern crate log;
 
-#[cfg(feature = "cli")]
 pub const DEFAULT_UNMODIFIED_TARGET: &str = "automatically guessed";
 
 // Default time after which we share the corpora between the fuzzer instances and re-launch the fuzzers
 // This is work in progress
 // Set to 2 hour and 20 minutes, like in clusterfuzz
 // See https://github.com/google/clusterfuzz/blob/52f28f83a0422e9a7026a215732876859e4b267b/src/local/butler/scripts/setup.py#L52
-#[cfg(feature = "cli")]
 pub const _DEFAULT_FUZZ_TIMEOUT: u32 = 8400;
 
 // Default time after which we minimize the corpus and re-launch the fuzzers
 // Set to 22 hours, like in clusterfuzz
 // See https://github.com/google/clusterfuzz/blob/52f28f83a0422e9a7026a215732876859e4b267b/src/clusterfuzz/_internal/bot/tasks/corpus_pruning_task.py#L61
-#[cfg(feature = "cli")]
 pub const DEFAULT_MINIMIZATION_TIMEOUT: u32 = 22 * 60 * 60;
 
-#[cfg(feature = "cli")]
 pub const DEFAULT_CORPUS: &str = "./output/{target_name}/shared_corpus/";
 
-#[cfg(feature = "cli")]
 pub const DEFAULT_COVERAGE_DIR: &str = "./output/{target_name}/coverage/";
 
-#[cfg(feature = "cli")]
 pub const DEFAULT_MINIMIZATION_CORPUS: &str = "./output/{target_name}/minimized_corpus/";
 
-#[cfg(feature = "cli")]
 pub const DEFAULT_PLOT_DIR: &str = "./output/{target_name}/plot/";
 
 // We want to make sure we don't mistake a minimization kill for a found crash
-#[cfg(feature = "cli")]
 const SECONDS_TO_WAIT_AFTER_KILL: u32 = 5;
 
-#[cfg(feature = "cli")]
 #[derive(Parser)]
 #[clap(name = "cargo")]
 #[clap(bin_name = "cargo")]
@@ -68,7 +52,6 @@ pub enum Cargo {
     Ziggy(Ziggy),
 }
 
-#[cfg(feature = "cli")]
 #[derive(Subcommand)]
 #[clap(
     author,
@@ -268,7 +251,6 @@ fn main() -> Result<(), anyhow::Error> {
     }
 }
 
-#[cfg(feature = "cli")]
 fn get_target(target: String) -> Result<String> {
     info!("Guessing target");
 
