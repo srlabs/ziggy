@@ -18,12 +18,12 @@ where
             match f.read_to_end(&mut buffer) {
                 Ok(_) => {
                     closure(buffer.as_slice());
-                },
+                }
                 Err(e) => {
                     println!("Could not get data from file: {e}");
                 }
             };
-        },
+        }
         Err(e) => {
             println!("Error opening file: {e}");
         }
@@ -36,7 +36,7 @@ where
 #[cfg(not(any(feature = "afl", feature = "honggfuzz")))]
 macro_rules! read_args_and_fuzz {
     ( |$buf:ident| $body:block ) => {
-        use std::{fs, env};
+        use std::{env, fs};
         let args: Vec<String> = env::args().collect();
         for path in &args[1..] {
             if let Ok(metadata) = fs::metadata(&path) {

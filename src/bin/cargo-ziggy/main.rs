@@ -207,18 +207,17 @@ pub struct Plot {
 fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
     let Cargo::Ziggy(command) = Cargo::parse();
+
     match command {
-        Ziggy::Build(args) => {
-            build::build_fuzzers(args.no_afl, args.no_honggfuzz)
-                .context("Failure building fuzzers")?;
-            Ok(())
-        }
+        Ziggy::Build(args) => args.build().context("Failed to build the fuzzers"),
         Ziggy::Fuzz(mut args) => {
+            let build = Build {
+                no_afl: args.no_afl,
+                no_honggfuzz: args.no_honggfuzz,
+            };
+            build.build().context("Failed to build the fuzzers")?;
             args.target = get_target(args.target)?;
-            build::build_fuzzers(args.no_afl, args.no_honggfuzz)
-                .context("Failure while building fuzzers")?;
-            fuzz::run_fuzzers(&args).context("Failure running fuzzers")?;
-            Ok(())
+            fuzz::run_fuzzers(&args).context("Failure running fuzzers")
         }
         Ziggy::Run(mut args) => {
             args.target = get_target(args.target)?;
