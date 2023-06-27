@@ -216,16 +216,12 @@ fn main() -> Result<(), anyhow::Error> {
                 no_honggfuzz: args.no_honggfuzz,
             };
             build.build().context("Failed to build the fuzzers")?;
-            args.target = get_target(args.target)?;
+            args.target = find_target(&args.target)?;
             fuzz::run_fuzzers(&args).context("Failure running fuzzers")
         }
-        Ziggy::Run(mut args) => {
-            args.target = get_target(args.target)?;
-            run::run_inputs(&args).context("Failure running inputs")?;
-            Ok(())
-        }
+        Ziggy::Run(args) => args.run().context("Failure running inputs"),
         Ziggy::Minimize(mut args) => {
-            args.target = get_target(args.target)?;
+            args.target = find_target(&args.target)?;
             minimize::minimize_corpus(
                 &args.target,
                 &args.input_corpus,
@@ -236,13 +232,13 @@ fn main() -> Result<(), anyhow::Error> {
             Ok(())
         }
         Ziggy::Cover(mut args) => {
-            args.target = get_target(args.target)?;
+            args.target = find_target(&args.target)?;
             coverage::generate_coverage(&args.target, &args.corpus, &args.output, args.source)
                 .context("Failure generating coverage")?;
             Ok(())
         }
         Ziggy::Plot(mut args) => {
-            args.target = get_target(args.target)?;
+            args.target = find_target(&args.target)?;
             plot::generate_plot(&args.target, &args.input, &args.output)
                 .context("Failure generating plot")?;
             Ok(())
@@ -250,54 +246,53 @@ fn main() -> Result<(), anyhow::Error> {
     }
 }
 
-fn get_target(target: String) -> Result<String> {
-    info!("Guessing target");
-
+pub fn find_target(target: &String) -> Result<String> {
     // If the target is already set, we're done here
     if target != DEFAULT_UNMODIFIED_TARGET {
-        eprintln!("    Using given target {target}\n");
-        return Ok(target);
+        eprintln!("    Using given target {target}");
+        return Ok(target.into());
     }
 
-    fn get_new_target() -> Result<String> {
-        let cargo_toml_string = fs::read_to_string("Cargo.toml")?;
-        let cargo_toml = cargo_toml_string.parse::<toml::Value>()?;
-        if let Some(bin_section) = cargo_toml.get("bin") {
-            let bin_array = bin_section
-                .as_array()
-                .ok_or_else(|| anyhow!("Bin section should be an array in Cargo.toml"))?;
-            // If one of the bin targets uses main, we use this target
-            for bin_target in bin_array {
-                if bin_target["path"]
+    info!("Guessing target");
+
+    let new_target_result = guess_target();
+
+    if let Ok(ref new_target) = new_target_result {
+        eprintln!("    Using target {new_target}");
+    }
+
+    new_target_result.context("Target is not obvious")
+}
+
+fn guess_target() -> Result<String> {
+    let cargo_toml_string = fs::read_to_string("Cargo.toml")?;
+    let cargo_toml = cargo_toml_string.parse::<toml::Value>()?;
+
+    if let Some(bin_section) = cargo_toml.get("bin") {
+        let bin_array = bin_section
+            .as_array()
+            .ok_or_else(|| anyhow!("Bin section should be an array in Cargo.toml"))?;
+        // If one of the bin targets uses main, we use this target
+        for bin_target in bin_array {
+            if bin_target["path"]
+                .as_str()
+                .context("Path should be a string in Cargo.toml")?
+                == "src/main.rs"
+            {
+                return Ok(bin_target["name"]
                     .as_str()
-                    .context("Path should be a string in Cargo.toml")?
-                    == "src/main.rs"
-                {
-                    return Ok(bin_target["name"]
-                        .as_str()
-                        .ok_or_else(|| anyhow!("Bin name should be a string in Cargo.toml"))?
-                        .to_string());
-                }
+                    .ok_or_else(|| anyhow!("Bin name should be a string in Cargo.toml"))?
+                    .to_string());
             }
         }
-        // src/main.rs exists, and either the bin array was empty, or it did not specify the main.rs bin target,
-        // so we use the name of the project as target.
-        if std::path::Path::new("src/main.rs").exists() {
-            return Ok(cargo_toml["package"]["name"]
-                .as_str()
-                .ok_or_else(|| anyhow!("Package name should be a string in Cargo.toml"))?
-                .to_string());
-        }
-        Err(anyhow!("Please specify a target"))
     }
-
-    let new_target_result = get_new_target();
-
-    match new_target_result {
-        Ok(new_target) => {
-            eprintln!("    Using target {new_target}\n");
-            Ok(new_target)
-        }
-        Err(err) => Err(anyhow!("    Target is not obvious, {err}\n")),
+    // src/main.rs exists, and either the bin array was empty, or it did not specify the main.rs bin target,
+    // so we use the name of the project as target.
+    if std::path::Path::new("src/main.rs").exists() {
+        return Ok(cargo_toml["package"]["name"]
+            .as_str()
+            .ok_or_else(|| anyhow!("Package name should be a string in Cargo.toml"))?
+            .to_string());
     }
+    Err(anyhow!("Please specify a target"))
 }
