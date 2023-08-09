@@ -272,6 +272,12 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<Vec<process::Child>, anyhow::Err
                 9 => "-Z",
                 _ => "",
             };
+            // Only cmplog for the first two instances
+            let cmplog_options = match job_num {
+                0 => "-l2",
+                1 => "-l2a",
+                _ => "-c-",  // disable Cmplog, needs AFL++ 4.08a
+            };
             // marc: never do this in a fuzzing compaign unless you run it just
             // for a specific time, e.g. 1 hours (-V3600)
             // Deterministic fuzzing
@@ -279,7 +285,6 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<Vec<process::Child>, anyhow::Err
             //    0 => "-D",
             //    _ => "",
             //};
-
             // AFL timeout is in ms so we convert the value
             let timeout_option_afl = match args.timeout {
                 Some(t) => format!("-t{}", t * 1000),
@@ -317,6 +322,7 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<Vec<process::Child>, anyhow::Err
                                 args.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL
                             ),
                             old_queue_cycling,
+                            cmplog_options,
                             //deterministic_fuzzing,
                             mopt_mutator,
                             &timeout_option_afl,
