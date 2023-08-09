@@ -219,12 +219,21 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<Vec<process::Child>, anyhow::Err
         } else if args.no_honggfuzz {
             (args.jobs, 0)
         } else {
-            // We assign half/half with priority to AFL++
-            (args.jobs / 2 + args.jobs % 2, args.jobs / 2)
+            // we assign roughly 2/3 to AFL++, 1/3 to honggfuzz, however do
+            // not apply more than 4 jobs to honggfuzz
+            match args.jobs {
+                1 => (1, 0),
+                2..=12 => (args.jobs - ((args.jobs + 2) / 3), (args.jobs + 2) / 3),
+                _ => (args.jobs - 4, 4),
+            }
         }
     };
 
-    if !args.no_afl {
+    if honggfuzz_jobs > 4 {
+        println!("Warning: running more honggfuzz jobs than 4 is not effective");
+    }
+
+    if !args.no_afl && afl_jobs > 0 {
         let _ = process::Command::new("mkdir")
             .args(["-p", &format!("./output/{}/afl", args.target)])
             .stderr(process::Stdio::piped())
@@ -240,6 +249,7 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<Vec<process::Child>, anyhow::Err
                 0 => String::from("-Mmainaflfuzzer"),
                 n => format!("-Ssecondaryfuzzer{n}"),
             };
+            // TODO: -F target directory should be honggfuzz -o dir
             let use_shared_corpus = match job_num {
                 0 => format!("-F{}", &parsed_corpus),
                 _ => String::new(),
@@ -262,11 +272,13 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<Vec<process::Child>, anyhow::Err
                 9 => "-Z",
                 _ => "",
             };
+            // marc: never do this in a fuzzing compaign unless you run it just
+            // for a specific time, e.g. 1 hours (-V3600)
             // Deterministic fuzzing
-            let deterministic_fuzzing = match job_num % 7 {
-                0 => "-D",
-                _ => "",
-            };
+            //let deterministic_fuzzing = match job_num % 7 {
+            //    0 => "-D",
+            //    _ => "",
+            //};
 
             // AFL timeout is in ms so we convert the value
             let timeout_option_afl = match args.timeout {
@@ -305,7 +317,7 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<Vec<process::Child>, anyhow::Err
                                 args.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL
                             ),
                             old_queue_cycling,
-                            deterministic_fuzzing,
+                            //deterministic_fuzzing,
                             mopt_mutator,
                             &timeout_option_afl,
                             &dictionary_option,
@@ -317,10 +329,13 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<Vec<process::Child>, anyhow::Err
                     .env("AFL_AUTORESUME", "1")
                     .env("AFL_TESTCACHE_SIZE", "100")
                     .env("AFL_FAST_CAL", "1")
-                    // TODO Should we remove this?
-                    .env("AFL_MAP_SIZE", "10000000")
                     .env("AFL_FORCE_UI", "1")
-                    .env("AFL_FUZZER_STATS_UPDATE_INTERVAL", "1")
+                    .env("AFL_IGNORE_UNKNOWN_ENVS", "1")
+                    .env("AFL_CMPLOG_ONLY_NEW", "1")
+                    .env("AFL_DISABLE_TRIM", "1")
+                    .env("AFL_NO_WARN_INSTABILITY", "1")
+                    // marc: 1 costs performance, 15 maybe? putting 5 for now.
+                    .env("AFL_FUZZER_STATS_UPDATE_INTERVAL", "5")
                     .stdout(log_destination())
                     .stderr(log_destination())
                     .spawn()?,
@@ -329,7 +344,7 @@ pub fn spawn_new_fuzzers(args: &Fuzz) -> Result<Vec<process::Child>, anyhow::Err
         eprintln!("{} afl           ", style("    Launched").green().bold());
     }
 
-    if !args.no_honggfuzz {
+    if !args.no_honggfuzz && honggfuzz_jobs > 0 {
         let dictionary_option = match &args.dictionary {
             Some(d) => format!("-w{}", &d.display().to_string()),
             None => String::new(),
