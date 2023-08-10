@@ -323,7 +323,6 @@ impl Fuzz {
                         .env("AFL_AUTORESUME", "1")
                         .env("AFL_TESTCACHE_SIZE", "100")
                         .env("AFL_FAST_CAL", "1")
-                        // TODO Should we remove this?
                         .env("AFL_FORCE_UI", "1")
                         .env("AFL_IGNORE_UNKNOWN_ENVS", "1")
                         .env("AFL_CMPLOG_ONLY_NEW", "1")
