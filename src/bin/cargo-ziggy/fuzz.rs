@@ -216,12 +216,21 @@ impl Fuzz {
             } else if self.no_honggfuzz {
                 (self.jobs, 0)
             } else {
-                // We assign half/half with priority to AFL++
-                (self.jobs / 2 + self.jobs % 2, self.jobs / 2)
+                // we assign roughly 2/3 to AFL++, 1/3 to honggfuzz, however do
+                // not apply more than 4 jobs to honggfuzz
+                match self.jobs {
+                    1 => (1, 0),
+                    2..=12 => (self.jobs - ((self.jobs + 2) / 3), (self.jobs + 2) / 3),
+                    _ => (self.jobs - 4, 4),
+                }
             }
         };
 
-        if !self.no_afl {
+        if honggfuzz_jobs > 4 {
+            println!("Warning: running more honggfuzz jobs than 4 is not effective");
+        }
+
+        if !self.no_afl && afl_jobs > 0 {
             let _ = process::Command::new("mkdir")
                 .args(["-p", &format!("./output/{}/afl", self.target)])
                 .stderr(process::Stdio::piped())
@@ -261,23 +270,21 @@ impl Fuzz {
                     9 => "-Z",
                     _ => "",
                 };
-                // Deterministic fuzzing
-                let deterministic_fuzzing = match job_num % 7 {
-                    0 => "-D",
-                    _ => "",
+                // Only cmplog for the first two instances
+                let cmplog_options = match job_num {
+                    0 => "-l2",
+                    1 => "-l2a",
+                    _ => "-c-", // disable Cmplog, needs AFL++ 4.08a
                 };
-
                 // AFL timeout is in ms so we convert the value
                 let timeout_option_afl = match self.timeout {
                     Some(t) => format!("-t{}", t * 1000),
                     None => String::new(),
                 };
-
                 let dictionary_option = match &self.dictionary {
                     Some(d) => format!("-x{}", &d.display().to_string()),
                     None => String::new(),
                 };
-
                 let log_destination = || match job_num {
                     0 => File::create(format!("output/{}/logs/afl.log", self.target))
                         .unwrap()
@@ -304,7 +311,7 @@ impl Fuzz {
                                     self.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL
                                 ),
                                 old_queue_cycling,
-                                deterministic_fuzzing,
+                                cmplog_options,
                                 mopt_mutator,
                                 &timeout_option_afl,
                                 &dictionary_option,
@@ -317,9 +324,13 @@ impl Fuzz {
                         .env("AFL_TESTCACHE_SIZE", "100")
                         .env("AFL_FAST_CAL", "1")
                         // TODO Should we remove this?
-                        .env("AFL_MAP_SIZE", "10000000")
                         .env("AFL_FORCE_UI", "1")
-                        .env("AFL_FUZZER_STATS_UPDATE_INTERVAL", "1")
+                        .env("AFL_IGNORE_UNKNOWN_ENVS", "1")
+                        .env("AFL_CMPLOG_ONLY_NEW", "1")
+                        .env("AFL_DISABLE_TRIM", "1")
+                        .env("AFL_NO_WARN_INSTABILITY", "1")
+                        // marc: 1 costs performance, 15 maybe? putting 5 for now.
+                        .env("AFL_FUZZER_STATS_UPDATE_INTERVAL", "5")
                         .stdout(log_destination())
                         .stderr(log_destination())
                         .spawn()?,
@@ -328,7 +339,7 @@ impl Fuzz {
             eprintln!("{} afl           ", style("    Launched").green().bold());
         }
 
-        if !self.no_honggfuzz {
+        if !self.no_honggfuzz && honggfuzz_jobs > 0 {
             let dictionary_option = match &self.dictionary {
                 Some(d) => format!("-w{}", &d.display().to_string()),
                 None => String::new(),

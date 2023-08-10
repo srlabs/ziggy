@@ -26,11 +26,16 @@ pub const DEFAULT_UNMODIFIED_TARGET: &str = "automatically guessed";
 // This is work in progress
 // Set to 2 hour and 20 minutes, like in clusterfuzz
 // See https://github.com/google/clusterfuzz/blob/52f28f83a0422e9a7026a215732876859e4b267b/src/local/butler/scripts/setup.py#L52
+// marc: this makes only sense for honggfuzz. AFL++ can learn honggfuzz's
+// findings on the fly with the right command line parameter which is more
+// effective
 pub const _DEFAULT_FUZZ_TIMEOUT: u32 = 8400;
 
 // Default time after which we minimize the corpus and re-launch the fuzzers
 // Set to 22 hours, like in clusterfuzz
 // See https://github.com/google/clusterfuzz/blob/52f28f83a0422e9a7026a215732876859e4b267b/src/clusterfuzz/_internal/bot/tasks/corpus_pruning_task.py#L61
+// marc: another thing that is not a good idea IMHO. has anyone tested if this
+// actually improving the fuzzing?
 pub const DEFAULT_MINIMIZATION_TIMEOUT: u32 = 22 * 60 * 60;
 
 pub const DEFAULT_CORPUS: &str = "./output/{target_name}/shared_corpus/";
