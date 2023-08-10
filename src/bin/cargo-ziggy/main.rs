@@ -143,6 +143,10 @@ pub struct Fuzz {
     /// Skip initial minimization
     #[clap(long = "skip-initial-minimization", action)]
     skip_initial_minimization: bool,
+
+    /// Do not let Honggfuzz bind to CPUs
+    #[clap(long = "honggfuzz-no-cpu-bind", action)]
+    honggfuzz_no_cpu_bind: bool,
 }
 
 #[derive(Args)]

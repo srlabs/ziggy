@@ -230,6 +230,66 @@ impl Fuzz {
             eprintln!("Warning: running more honggfuzz jobs than 4 is not effective");
         }
 
+        if !self.no_honggfuzz && honggfuzz_jobs > 0 {
+            let dictionary_option = match &self.dictionary {
+                Some(d) => format!("-w{}", &d.display().to_string()),
+                None => String::new(),
+            };
+
+            let timeout_option = match self.timeout {
+                Some(t) => format!("-t{t}"),
+                None => String::new(),
+            };
+
+            let bind_cpu_option = match self.honggfuzz_no_cpu_bind {
+                false => "--pin_thread_cpu=1",
+                true => "",
+            };
+
+            // The `script` invocation is a trick to get the correct TTY output for honggfuzz
+            fuzzer_handles.push(
+                process::Command::new("script")
+                    .args([
+                        "--flush",
+                        "--quiet",
+                        "-c",
+                        &format!("{} hfuzz run {}", cargo, &self.target),
+                        "/dev/null",
+                    ])
+                    .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
+                    .env("CARGO_TARGET_DIR", "./target/honggfuzz")
+                    .env(
+                        "HFUZZ_WORKSPACE",
+                        format!("./output/{}/honggfuzz", self.target),
+                    )
+                    .env(
+                        "HFUZZ_RUN_ARGS",
+                        format!(
+                            "--run_time={} -i{} -n{} -F{} {timeout_option} {dictionary_option} {bind_cpu_option}",
+                            self.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL,
+                            &self.parsed_corpus(),
+                            honggfuzz_jobs,
+                            self.max_length,
+                        ),
+                    )
+                    .stdin(std::process::Stdio::null())
+                    .stderr(File::create(format!(
+                        "./output/{}/logs/honggfuzz.log",
+                        self.target
+                    ))?)
+                    .stdout(File::create(format!(
+                        "./output/{}/logs/honggfuzz.log",
+                        self.target
+                    ))?)
+                    .spawn()?,
+            );
+            std::thread::sleep(Duration::from_millis(4000));
+            eprintln!(
+                "{} honggfuzz              ",
+                style("    Launched").green().bold()
+            );
+        }
+
         if !self.no_afl && afl_jobs > 0 {
             let _ = process::Command::new("mkdir")
                 .args(["-p", &format!("./output/{}/afl", self.target)])
@@ -336,60 +396,6 @@ impl Fuzz {
                 )
             }
             eprintln!("{} afl           ", style("    Launched").green().bold());
-        }
-
-        if !self.no_honggfuzz && honggfuzz_jobs > 0 {
-            let dictionary_option = match &self.dictionary {
-                Some(d) => format!("-w{}", &d.display().to_string()),
-                None => String::new(),
-            };
-
-            let timeout_option = match self.timeout {
-                Some(t) => format!("-t{t}"),
-                None => String::new(),
-            };
-
-            // The `script` invocation is a trick to get the correct TTY output for honggfuzz
-            fuzzer_handles.push(
-                process::Command::new("script")
-                    .args([
-                        "--flush",
-                        "--quiet",
-                        "-c",
-                        &format!("{} hfuzz run {}", cargo, &self.target),
-                        "/dev/null",
-                    ])
-                    .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
-                    .env("CARGO_TARGET_DIR", "./target/honggfuzz")
-                    .env(
-                        "HFUZZ_WORKSPACE",
-                        format!("./output/{}/honggfuzz", self.target),
-                    )
-                    .env(
-                        "HFUZZ_RUN_ARGS",
-                        format!(
-                            "--run_time={} -i{} -n{} -F{} {timeout_option} {dictionary_option}",
-                            self.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL,
-                            &self.parsed_corpus(),
-                            honggfuzz_jobs,
-                            self.max_length,
-                        ),
-                    )
-                    .stdin(std::process::Stdio::null())
-                    .stderr(File::create(format!(
-                        "./output/{}/logs/honggfuzz.log",
-                        self.target
-                    ))?)
-                    .stdout(File::create(format!(
-                        "./output/{}/logs/honggfuzz.log",
-                        self.target
-                    ))?)
-                    .spawn()?,
-            );
-            eprintln!(
-                "{} honggfuzz              ",
-                style("    Launched").green().bold()
-            );
         }
 
         eprintln!(
