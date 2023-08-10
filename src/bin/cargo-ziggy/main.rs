@@ -210,15 +210,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     match command {
         Ziggy::Build(args) => args.build().context("Failed to build the fuzzers"),
-        Ziggy::Fuzz(mut args) => {
-            let build = Build {
-                no_afl: args.no_afl,
-                no_honggfuzz: args.no_honggfuzz,
-            };
-            build.build().context("Failed to build the fuzzers")?;
-            args.target = find_target(&args.target)?;
-            fuzz::run_fuzzers(&args).context("Failure running fuzzers")
-        }
+        Ziggy::Fuzz(mut args) => args.fuzz().context("Failure running fuzzers"),
         Ziggy::Run(args) => args.run().context("Failure running inputs"),
         Ziggy::Minimize(mut args) => {
             args.target = find_target(&args.target)?;
