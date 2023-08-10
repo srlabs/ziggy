@@ -1,23 +1,29 @@
+use crate::{find_target, Plot};
 use anyhow::Result;
-use std::{env, path::Path, process};
+use std::{env, process};
 
-pub fn generate_plot(target: &str, input: &String, output: &Path) -> Result<(), anyhow::Error> {
-    eprintln!("Generating plot");
+impl Plot {
+    pub fn generate_plot(&mut self) -> Result<(), anyhow::Error> {
+        eprintln!("Generating plot");
 
-    // The cargo executable
-    let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
+        self.target = find_target(&self.target)?;
 
-    let fuzzer_data_dir = format!("./output/{target}/afl/{input}/");
-    let fuzzer_output_dir = output
-        .display()
-        .to_string()
-        .replace("{target_name}", target);
+        // The cargo executable
+        let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
-    // We run the afl-plot command
-    process::Command::new(cargo)
-        .args(["afl", "plot", &fuzzer_data_dir, &fuzzer_output_dir])
-        .spawn()?
-        .wait()?;
+        let fuzzer_data_dir = format!("./output/{}/afl/{}/", &self.target, &self.input);
+        let fuzzer_output_dir = self
+            .output
+            .display()
+            .to_string()
+            .replace("{target_name}", &self.target);
 
-    Ok(())
+        // We run the afl-plot command
+        process::Command::new(cargo)
+            .args(["afl", "plot", &fuzzer_data_dir, &fuzzer_output_dir])
+            .spawn()?
+            .wait()?;
+
+        Ok(())
+    }
 }

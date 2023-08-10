@@ -221,12 +221,7 @@ fn main() -> Result<(), anyhow::Error> {
         Ziggy::Cover(mut args) => args
             .generate_coverage()
             .context("Failure generating coverage"),
-        Ziggy::Plot(mut args) => {
-            args.target = find_target(&args.target)?;
-            plot::generate_plot(&args.target, &args.input, &args.output)
-                .context("Failure generating plot")?;
-            Ok(())
-        }
+        Ziggy::Plot(mut args) => args.generate_plot().context("Failure generating plot"),
     }
 }
 
