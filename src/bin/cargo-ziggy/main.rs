@@ -1,19 +1,12 @@
 #[cfg(not(feature = "cli"))]
 fn main() {}
 
-#[cfg(feature = "cli")]
 mod build;
-#[cfg(feature = "cli")]
 mod coverage;
-#[cfg(feature = "cli")]
 mod fuzz;
-#[cfg(feature = "cli")]
 mod minimize;
-#[cfg(feature = "cli")]
 mod plot;
-#[cfg(feature = "cli")]
 mod run;
-#[cfg(feature = "cli")]
 mod utils;
 
 #[cfg(feature = "cli")]
@@ -27,7 +20,6 @@ use std::{fs, path::PathBuf};
 #[macro_use]
 extern crate log;
 
-#[cfg(feature = "cli")]
 pub const DEFAULT_UNMODIFIED_TARGET: &str = "automatically guessed";
 
 // Default time after which we share the corpora between the fuzzer instances and re-launch the fuzzers
@@ -37,7 +29,6 @@ pub const DEFAULT_UNMODIFIED_TARGET: &str = "automatically guessed";
 // marc: this makes only sense for honggfuzz. AFL++ can learn honggfuzz's
 // findings on the fly with the right command line parameter which is more
 // effective
-#[cfg(feature = "cli")]
 pub const _DEFAULT_FUZZ_TIMEOUT: u32 = 8400;
 
 // Default time after which we minimize the corpus and re-launch the fuzzers
@@ -45,26 +36,19 @@ pub const _DEFAULT_FUZZ_TIMEOUT: u32 = 8400;
 // See https://github.com/google/clusterfuzz/blob/52f28f83a0422e9a7026a215732876859e4b267b/src/clusterfuzz/_internal/bot/tasks/corpus_pruning_task.py#L61
 // marc: another thing that is not a good idea IMHO. has anyone tested if this
 // actually improving the fuzzing?
-#[cfg(feature = "cli")]
 pub const DEFAULT_MINIMIZATION_TIMEOUT: u32 = 22 * 60 * 60;
 
-#[cfg(feature = "cli")]
 pub const DEFAULT_CORPUS: &str = "./output/{target_name}/shared_corpus/";
 
-#[cfg(feature = "cli")]
 pub const DEFAULT_COVERAGE_DIR: &str = "./output/{target_name}/coverage/";
 
-#[cfg(feature = "cli")]
 pub const DEFAULT_MINIMIZATION_CORPUS: &str = "./output/{target_name}/minimized_corpus/";
 
-#[cfg(feature = "cli")]
 pub const DEFAULT_PLOT_DIR: &str = "./output/{target_name}/plot/";
 
 // We want to make sure we don't mistake a minimization kill for a found crash
-#[cfg(feature = "cli")]
 const SECONDS_TO_WAIT_AFTER_KILL: u32 = 5;
 
-#[cfg(feature = "cli")]
 #[derive(Parser)]
 #[clap(name = "cargo")]
 #[clap(bin_name = "cargo")]
@@ -73,7 +57,6 @@ pub enum Cargo {
     Ziggy(Ziggy),
 }
 
-#[cfg(feature = "cli")]
 #[derive(Subcommand)]
 #[clap(
     author,
@@ -229,99 +212,66 @@ pub struct Plot {
 fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
     let Cargo::Ziggy(command) = Cargo::parse();
+
     match command {
-        Ziggy::Build(args) => {
-            build::build_fuzzers(args.no_afl, args.no_honggfuzz)
-                .context("Failure building fuzzers")?;
-            Ok(())
-        }
-        Ziggy::Fuzz(mut args) => {
-            args.target = get_target(args.target)?;
-            build::build_fuzzers(args.no_afl, args.no_honggfuzz)
-                .context("Failure while building fuzzers")?;
-            fuzz::run_fuzzers(&args).context("Failure running fuzzers")?;
-            Ok(())
-        }
-        Ziggy::Run(mut args) => {
-            args.target = get_target(args.target)?;
-            run::run_inputs(&args).context("Failure running inputs")?;
-            Ok(())
-        }
-        Ziggy::Minimize(mut args) => {
-            args.target = get_target(args.target)?;
-            minimize::minimize_corpus(
-                &args.target,
-                &args.input_corpus,
-                &args.output_corpus,
-                args.jobs,
-            )
-            .context("Failure minimizing")?;
-            Ok(())
-        }
-        Ziggy::Cover(mut args) => {
-            args.target = get_target(args.target)?;
-            coverage::generate_coverage(&args.target, &args.corpus, &args.output, args.source)
-                .context("Failure generating coverage")?;
-            Ok(())
-        }
-        Ziggy::Plot(mut args) => {
-            args.target = get_target(args.target)?;
-            plot::generate_plot(&args.target, &args.input, &args.output)
-                .context("Failure generating plot")?;
-            Ok(())
-        }
+        Ziggy::Build(args) => args.build().context("Failed to build the fuzzers"),
+        Ziggy::Fuzz(mut args) => args.fuzz().context("Failure running fuzzers"),
+        Ziggy::Run(args) => args.run().context("Failure running inputs"),
+        Ziggy::Minimize(mut args) => args.minimize().context("Failure running minimization"),
+        Ziggy::Cover(mut args) => args
+            .generate_coverage()
+            .context("Failure generating coverage"),
+        Ziggy::Plot(mut args) => args.generate_plot().context("Failure generating plot"),
     }
 }
 
-#[cfg(feature = "cli")]
-fn get_target(target: String) -> Result<String> {
-    info!("Guessing target");
-
+pub fn find_target(target: &String) -> Result<String> {
     // If the target is already set, we're done here
     if target != DEFAULT_UNMODIFIED_TARGET {
-        eprintln!("    Using given target {target}\n");
-        return Ok(target);
+        eprintln!("    Using given target {target}");
+        return Ok(target.into());
     }
 
-    fn get_new_target() -> Result<String> {
-        let cargo_toml_string = fs::read_to_string("Cargo.toml")?;
-        let cargo_toml = cargo_toml_string.parse::<toml::Value>()?;
-        if let Some(bin_section) = cargo_toml.get("bin") {
-            let bin_array = bin_section
-                .as_array()
-                .ok_or_else(|| anyhow!("Bin section should be an array in Cargo.toml"))?;
-            // If one of the bin targets uses main, we use this target
-            for bin_target in bin_array {
-                if bin_target["path"]
+    info!("Guessing target");
+
+    let new_target_result = guess_target();
+
+    if let Ok(ref new_target) = new_target_result {
+        eprintln!("    Using target {new_target}");
+    }
+
+    new_target_result.context("Target is not obvious")
+}
+
+fn guess_target() -> Result<String> {
+    let cargo_toml_string = fs::read_to_string("Cargo.toml")?;
+    let cargo_toml = cargo_toml_string.parse::<toml::Value>()?;
+
+    if let Some(bin_section) = cargo_toml.get("bin") {
+        let bin_array = bin_section
+            .as_array()
+            .ok_or_else(|| anyhow!("Bin section should be an array in Cargo.toml"))?;
+        // If one of the bin targets uses main, we use this target
+        for bin_target in bin_array {
+            if bin_target["path"]
+                .as_str()
+                .context("Path should be a string in Cargo.toml")?
+                == "src/main.rs"
+            {
+                return Ok(bin_target["name"]
                     .as_str()
-                    .context("Path should be a string in Cargo.toml")?
-                    == "src/main.rs"
-                {
-                    return Ok(bin_target["name"]
-                        .as_str()
-                        .ok_or_else(|| anyhow!("Bin name should be a string in Cargo.toml"))?
-                        .to_string());
-                }
+                    .ok_or_else(|| anyhow!("Bin name should be a string in Cargo.toml"))?
+                    .to_string());
             }
         }
-        // src/main.rs exists, and either the bin array was empty, or it did not specify the main.rs bin target,
-        // so we use the name of the project as target.
-        if std::path::Path::new("src/main.rs").exists() {
-            return Ok(cargo_toml["package"]["name"]
-                .as_str()
-                .ok_or_else(|| anyhow!("Package name should be a string in Cargo.toml"))?
-                .to_string());
-        }
-        Err(anyhow!("Please specify a target"))
     }
-
-    let new_target_result = get_new_target();
-
-    match new_target_result {
-        Ok(new_target) => {
-            eprintln!("    Using target {new_target}\n");
-            Ok(new_target)
-        }
-        Err(err) => Err(anyhow!("    Target is not obvious, {err}\n")),
+    // src/main.rs exists, and either the bin array was empty, or it did not specify the main.rs bin target,
+    // so we use the name of the project as target.
+    if std::path::Path::new("src/main.rs").exists() {
+        return Ok(cargo_toml["package"]["name"]
+            .as_str()
+            .ok_or_else(|| anyhow!("Package name should be a string in Cargo.toml"))?
+            .to_string());
     }
+    Err(anyhow!("Please specify a target"))
 }
