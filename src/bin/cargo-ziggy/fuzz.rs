@@ -227,7 +227,7 @@ impl Fuzz {
         };
 
         if honggfuzz_jobs > 4 {
-            println!("Warning: running more honggfuzz jobs than 4 is not effective");
+            eprintln!("Warning: running more honggfuzz jobs than 4 is not effective");
         }
 
         if !self.no_afl && afl_jobs > 0 {
