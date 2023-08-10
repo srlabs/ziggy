@@ -5,7 +5,7 @@ use std::{env, fs::File, process};
 impl Minimize {
     pub fn minimize(&mut self) -> Result<(), anyhow::Error> {
         self.target = find_target(&self.target)?;
-        
+
         info!("Minimizing corpus");
 
         // The cargo executable

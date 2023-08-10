@@ -218,23 +218,9 @@ fn main() -> Result<(), anyhow::Error> {
         Ziggy::Fuzz(mut args) => args.fuzz().context("Failure running fuzzers"),
         Ziggy::Run(args) => args.run().context("Failure running inputs"),
         Ziggy::Minimize(mut args) => args.minimize().context("Failure running minimization"),
-        /*
-            args.target = find_target(&args.target)?;
-            minimize::minimize_corpus(
-                &args.target,
-                &args.input_corpus,
-                &args.output_corpus,
-                args.jobs,
-            )
-            .context("Failure minimizing")?;
-            Ok(())
-        }*/
-        Ziggy::Cover(mut args) => {
-            args.target = find_target(&args.target)?;
-            coverage::generate_coverage(&args.target, &args.corpus, &args.output, args.source)
-                .context("Failure generating coverage")?;
-            Ok(())
-        }
+        Ziggy::Cover(mut args) => args
+            .generate_coverage()
+            .context("Failure generating coverage"),
         Ziggy::Plot(mut args) => {
             args.target = find_target(&args.target)?;
             plot::generate_plot(&args.target, &args.input, &args.output)
