@@ -328,8 +328,8 @@ impl Fuzz {
                         .env("AFL_CMPLOG_ONLY_NEW", "1")
                         .env("AFL_DISABLE_TRIM", "1")
                         .env("AFL_NO_WARN_INSTABILITY", "1")
-                        // marc: 1 costs performance, 15 maybe? putting 5 for now.
-                        .env("AFL_FUZZER_STATS_UPDATE_INTERVAL", "5")
+                        .env("AFL_FUZZER_STATS_UPDATE_INTERVAL", "10")
+                        .env("AFL_IMPORT_FIRST", "1")
                         .stdout(log_destination())
                         .stderr(log_destination())
                         .spawn()?,
