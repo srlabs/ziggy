@@ -461,12 +461,13 @@ impl Fuzz {
             .output()
             .map_err(|_| anyhow!("Could not remove minimized corpus directory"))?;
 
-        match minimize::minimize_corpus(
-            &self.target,
-            &PathBuf::from(&self.parsed_corpus()),
-            &PathBuf::from(&minimized_corpus),
-            self.jobs,
-        ) {
+        let mut minimization_args = Minimize {
+            target: self.target.clone(),
+            input_corpus: PathBuf::from(&self.parsed_corpus()),
+            output_corpus: PathBuf::from(&minimized_corpus),
+            jobs: self.jobs,
+        };
+        match minimization_args.minimize() {
             Ok(_) => {
                 let new_corpus_size = fs::read_dir(&minimized_corpus)
                     .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));

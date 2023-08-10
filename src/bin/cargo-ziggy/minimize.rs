@@ -1,82 +1,86 @@
+use crate::{find_target, Minimize};
 use anyhow::Result;
-use std::{env, fs::File, path::Path, process};
+use std::{env, fs::File, process};
 
-pub fn minimize_corpus(
-    target: &str,
-    input_corpus: &Path,
-    output_corpus: &Path,
-    jobs: u32,
-) -> Result<(), anyhow::Error> {
-    info!("Minimizing corpus");
+impl Minimize {
+    pub fn minimize(&mut self) -> Result<(), anyhow::Error> {
+        self.target = find_target(&self.target)?;
+        
+        info!("Minimizing corpus");
 
-    // The cargo executable
-    let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
+        // The cargo executable
+        let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
-    let jobs = match jobs {
-        0 | 1 => String::from("all"),
-        t => format!("{t}"),
-    };
+        let jobs_option = match self.jobs {
+            0 | 1 => String::from("all"),
+            t => format!("{t}"),
+        };
 
-    // AFL++ minimization
-    process::Command::new(cargo)
-        .args([
-            "afl",
-            "cmin",
-            "-i",
-            &input_corpus
-                .display()
-                .to_string()
-                .replace("{target_name}", target),
-            "-o",
-            &output_corpus
-                .display()
-                .to_string()
-                .replace("{target_name}", target),
-            "-T",
-            &jobs,
-            "--",
-            &format!("./target/afl/debug/{target}"),
-        ])
-        .env("AFL_MAP_SIZE", "10000000")
-        .stderr(File::create(format!(
-            "./output/{target}/logs/minimization.log"
-        ))?)
-        .stdout(File::create(format!(
-            "./output/{target}/logs/minimization.log"
-        ))?)
-        .spawn()?
-        .wait()?;
-
-    /*
-    // HONGGFUZZ minimization
-    process::Command::new(cargo)
-        .args(["hfuzz", "run", target])
-        .env("CARGO_TARGET_DIR", "./target/honggfuzz")
-        .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
-        .env("HFUZZ_WORKSPACE", format!("./output/{}/honggfuzz", target))
-        .env(
-            "HFUZZ_RUN_ARGS",
-            format!(
-                "-i{} -M -o{}",
-                input_corpus
+        // AFL++ minimization
+        process::Command::new(cargo)
+            .args([
+                "afl",
+                "cmin",
+                "-i",
+                &self
+                    .input_corpus
                     .display()
                     .to_string()
-                    .replace("{target_name}", target),
-                output_corpus
+                    .replace("{target_name}", &self.target),
+                "-o",
+                &self
+                    .output_corpus
                     .display()
                     .to_string()
-                    .replace("{target_name}", target),
-            ),
-        )
-        .stderr(File::create(format!(
-            "./output/{target}/logs/minimization.log"
-        ))?)
-        .stdout(File::create(format!(
-            "./output/{target}/logs/minimization.log"
-        ))?)
-        .spawn()?
-        .wait()?;
-    */
+                    .replace("{target_name}", &self.target),
+                "-T",
+                &jobs_option,
+                "--",
+                &format!("./target/afl/debug/{}", &self.target),
+            ])
+            .env("AFL_MAP_SIZE", "10000000")
+            .stderr(File::create(format!(
+                "./output/{}/logs/minimization.log",
+                &self.target
+            ))?)
+            .stdout(File::create(format!(
+                "./output/{}/logs/minimization.log",
+                &self.target
+            ))?)
+            .spawn()?
+            .wait()?;
 
-    Ok(())
+        /*
+        // HONGGFUZZ minimization
+        process::Command::new(cargo)
+            .args(["hfuzz", "run", &self.target])
+            .env("CARGO_TARGET_DIR", "./target/honggfuzz")
+            .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
+            .env("HFUZZ_WORKSPACE", format!("./output/{}/honggfuzz", &self.target))
+            .env(
+                "HFUZZ_RUN_ARGS",
+                format!(
+                    "-i{} -M -o{}",
+                    self.input_corpus
+                        .display()
+                        .to_string()
+                        .replace("{target_name}", &self.target),
+                    self.output_corpus
+                        .display()
+                        .to_string()
+                        .replace("{target_name}", &self.target),
+                ),
+            )
+            .stderr(File::create(format!(
+                "./output/{}/logs/minimization.log", self.
+            ))?)
+            .stdout(File::create(format!(
+                "./output/{}/logs/minimization.log", &self.target
+            ))?)
+            .spawn()?
+            .wait()?;
+        */
+
+        Ok(())
+    }
 }
