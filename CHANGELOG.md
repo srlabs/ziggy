@@ -1,5 +1,12 @@
 # Changes
 
+## 0.6.4 - 2023-08-14
+
+- Better AFL++ envs, thank you @vanhauser-thc!
+- Bump AFL++ version
+- Honggfuzz share of total CPUs is now reduced
+- Overall code cleanup
+
 ## 0.6.3 - 2023-06-20
 
 - Add flag to skip initial minimization
