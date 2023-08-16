@@ -44,11 +44,11 @@ pub const _DEFAULT_FUZZ_TIMEOUT: u32 = 8400;
 // actually improving the fuzzing?
 pub const DEFAULT_MINIMIZATION_TIMEOUT: u32 = 22 * 60 * 60;
 
-pub const DEFAULT_CORPUS: &str = "./output/{target_name}/shared_corpus/";
+pub const DEFAULT_CORPUS: &str = "./output/{target_name}/corpus_shared/";
 
 pub const DEFAULT_COVERAGE_DIR: &str = "./output/{target_name}/coverage/";
 
-pub const DEFAULT_MINIMIZATION_CORPUS: &str = "./output/{target_name}/minimized_corpus/";
+pub const DEFAULT_MINIMIZATION_CORPUS: &str = "./output/{target_name}/corpus_minimized/";
 
 pub const DEFAULT_PLOT_DIR: &str = "./output/{target_name}/plot/";
 

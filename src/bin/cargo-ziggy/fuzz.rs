@@ -70,10 +70,11 @@ impl Fuzz {
 
         let ziggy_crash_dir = format!("./output/{}/crashes/{}/", self.target, time);
         let ziggy_crash_path = Path::new(&ziggy_crash_dir);
-
         fs::create_dir_all(ziggy_crash_path)?;
 
-        self.share_all_corpora()?;
+        let corpus_afl_dir = format!("./output/{}/corpus_afl/", self.target);
+        let corpus_afl_path = Path::new(&corpus_afl_dir);
+        fs::create_dir_all(corpus_afl_path)?;
 
         let _ = process::Command::new("mkdir")
             .args(["-p", &format!("./output/{}/logs/", self.target)])
@@ -83,9 +84,11 @@ impl Fuzz {
 
         if Path::new(&self.parsed_corpus()).exists() {
             if !self.skip_initial_minimization {
-                self.run_minimization(
-                    "output/{target_name}/minimized_corpus/",
-                    FuzzingEngines::Honggfuzz,
+                self.move_all_corpora()?;
+                self.run_minimization(&corpus_afl_dir, FuzzingEngines::AFLPlusPlus)?;
+                fs::rename(
+                    self.parsed_corpus(),
+                    format!("output/{}/corpus_honggfuzz/", self.target),
                 )?;
             }
         } else {
@@ -96,7 +99,7 @@ impl Fuzz {
                 .wait()?;
 
             // We create an initial corpus file, so that AFL++ starts-up properly
-            let mut initial_corpus = File::create(self.parsed_corpus() + "/init")?;
+            let mut initial_corpus = File::create(corpus_afl_dir + "/init")?;
             writeln!(&mut initial_corpus, "00000000")?;
             drop(initial_corpus);
         }
@@ -223,8 +226,10 @@ impl Fuzz {
             {
                 stop_fuzzers(&mut processes)?;
 
+                self.copy_corpora()?;
+
                 self.run_minimization(
-                    "output/{target_name}/minimized_corpus/",
+                    "output/{target_name}/corpus_honggfuzz/",
                     FuzzingEngines::Honggfuzz,
                 )?;
 
@@ -336,7 +341,11 @@ impl Fuzz {
                                 "afl",
                                 "fuzz",
                                 &fuzzer_name,
-                                &format!("-i{}", &self.parsed_corpus()),
+                                &format!(
+                                    "-i{}",
+                                    "output/{target_name}/corpus_afl/"
+                                        .replace("{target_name}", &self.target)
+                                ),
                                 &format!("-p{power_schedule}"),
                                 &format!("-ooutput/{}/afl", self.target),
                                 &format!("-g{}", self.min_length),
@@ -406,8 +415,9 @@ impl Fuzz {
                     .env(
                         "HFUZZ_RUN_ARGS",
                         format!(
-                            "--run_time={} -i{} -n{} -F{} {timeout_option} {dictionary_option}",
+                            "--run_time={} -i{} -o{} -n{} -F{} {timeout_option} {dictionary_option}",
                             self.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL,
+                            format!("./output/{}/corpus_honggfuzz", self.target),
                             &self.parsed_corpus(),
                             honggfuzz_jobs,
                             self.max_length,
@@ -455,14 +465,46 @@ impl Fuzz {
         Ok(fuzzer_handles)
     }
 
-    // Share AFL++ corpora in the shared_corpus directory
-    pub fn share_all_corpora(&self) -> Result<()> {
+    // Copy all corpora into `corpus_shared`
+    pub fn copy_corpora(&self) -> Result<()> {
         for path in glob(&format!("./output/{}/afl/*/queue/*", self.target))
-            .map_err(|_| anyhow!("Failed to read glob pattern"))?
+            .map_err(|_| anyhow!("Failed to read AFL++ queue glob pattern"))?
             .flatten()
         {
             if path.is_file() {
                 fs::copy(
+                    path.to_str()
+                        .ok_or_else(|| anyhow!("Could not parse input path"))?,
+                    format!(
+                        "{}/{}",
+                        &self.parsed_corpus(),
+                        path.file_name()
+                            .ok_or_else(|| anyhow!("Could not parse input file name"))?
+                            .to_str()
+                            .ok_or_else(|| anyhow!("Could not parse input file name path"))?
+                    ),
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    // Move all corpora into `corpus_shared`
+    fn move_all_corpora(&self) -> Result<()> {
+        for path in glob(&format!("./output/{}/afl/*/queue/*", self.target))
+            .map_err(|_| anyhow!("Failed to read AFL++ queue glob pattern"))?
+            .chain(
+                glob(&format!("./output/{}/corpus_honggfuzz/*", self.target))
+                    .map_err(|_| anyhow!("Failed to read Honggfuzz corpus glob pattern"))?,
+            )
+            .chain(
+                glob(&format!("./output/{}/corpus_afl/*", self.target))
+                    .map_err(|_| anyhow!("Failed to read AFL++ corpus glob pattern"))?,
+            )
+            .flatten()
+        {
+            if path.is_file() {
+                fs::rename(
                     path.to_str()
                         .ok_or_else(|| anyhow!("Could not parse input path"))?,
                     format!(
@@ -486,8 +528,6 @@ impl Fuzz {
             "\n    {}",
             &style("Running minimization").magenta().bold()
         ))?;
-
-        self.share_all_corpora()?;
 
         let old_corpus_size = fs::read_dir(self.parsed_corpus())
             .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
@@ -523,8 +563,8 @@ impl Fuzz {
                         new_corpus_size
                     ))?;
 
-                    fs::remove_dir_all(self.parsed_corpus())?;
-                    fs::rename(output_corpus, self.parsed_corpus())?;
+                    // fs::remove_dir_all(self.parsed_corpus())?;
+                    // fs::rename(output_corpus, self.parsed_corpus())?;
                 }
             }
             Err(_) => {
