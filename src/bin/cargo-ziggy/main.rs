@@ -237,7 +237,7 @@ fn main() -> Result<(), anyhow::Error> {
 pub fn find_target(target: &String) -> Result<String> {
     // If the target is already set, we're done here
     if target != DEFAULT_UNMODIFIED_TARGET {
-        eprintln!("    Using given target {target}");
+        info!("    Using given target {target}");
         return Ok(target.into());
     }
 
@@ -246,7 +246,7 @@ pub fn find_target(target: &String) -> Result<String> {
     let new_target_result = guess_target();
 
     if let Ok(ref new_target) = new_target_result {
-        eprintln!("    Using target {new_target}");
+        info!("    Using target {new_target}");
     }
 
     new_target_result.context("Target is not obvious")
