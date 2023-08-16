@@ -11,6 +11,37 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+/// Main logic for managing fuzzers and the fuzzing process in ziggy.
+
+/// ## Minimization logic
+
+/// ### Initial minimization (AFL++)
+
+/// When launching fuzzers, if initial corpora exist, they are merged together and we minimize it for AFL++.
+/// ```text
+/// # bash pseudocode
+/// mv all_afl_corpora/* corpus_afl/* corpus_honggfuzz/* corpus_shared/
+/// rm -r corpus_afl corpus_honggfuzz
+/// afl++_minimization -i corpus_shared -o corpus_afl
+/// mv corpus_shared corpus_honggfuzz
+/// afl++ -i corpus_afl -o all_afl_corpora &
+///   honggfuzz -i corpus_honggfuzz -o corpus_shared
+/// ```
+/// The `all_afl_corpora` directory corresponds to the `output/target_name/afl/**/queue/` directories.
+
+/// ### Fuzz-time minimization (Honggfuzz)
+
+/// During fuzzing, after a couple of hours (set this via the `-m` flag), Honggfuzz will shut down
+/// and ziggy will run a corpus minimization using the Honggfuzz engine. This will allow honggfuzz
+/// to benefit from what the other engines have found since this last happened.
+/// ```text
+/// # bash pseudocode
+/// cp all_afl_corpora/* corpus_shared/
+/// honggfuzz_minimization -i corpus_shared -o corpus_honggfuzz
+/// rm -r corpus_shared
+/// honggfuzz -i corpus_honggfuzz -o corpus_shared
+/// ```
+
 impl Fuzz {
     // Manages the continuous running of fuzzers
     pub fn fuzz(&mut self) -> Result<(), anyhow::Error> {

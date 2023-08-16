@@ -126,7 +126,7 @@ pub struct Fuzz {
     #[clap(short, long, value_name = "SECS")]
     timeout: Option<u32>,
 
-    /// Dictionary file (format:http://llvm.org/docs/LibFuzzer.html#dictionaries)
+    /// Dictionary file (format:<http://llvm.org/docs/LibFuzzer.html#dictionaries>)
     #[clap(short = 'x', long = "dict", value_name = "FILE")]
     dictionary: Option<PathBuf>,
 
