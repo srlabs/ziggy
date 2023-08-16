@@ -12,7 +12,7 @@ mod utils;
 #[cfg(feature = "cli")]
 use anyhow::{anyhow, Context, Result};
 #[cfg(feature = "cli")]
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 #[cfg(feature = "cli")]
 use std::{fs, path::PathBuf};
 
@@ -21,6 +21,12 @@ use std::{fs, path::PathBuf};
 extern crate log;
 
 pub const DEFAULT_UNMODIFIED_TARGET: &str = "automatically guessed";
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum FuzzingEngines {
+    AFLPlusPlus,
+    Honggfuzz,
+}
 
 // Default time after which we share the corpora between the fuzzer instances and re-launch the fuzzers
 // This is work in progress
@@ -174,9 +180,12 @@ pub struct Minimize {
     #[clap(short, long, default_value = DEFAULT_MINIMIZATION_CORPUS)]
     output_corpus: PathBuf,
 
-    /// Number of concurent minimizing jobs
+    /// Number of concurent minimizing jobs (AFL++ only)
     #[clap(short, long, value_name = "NUM", default_value_t = 1)]
     jobs: u32,
+
+    #[clap(short, long, value_enum, default_value_t = FuzzingEngines::AFLPlusPlus)]
+    engine: FuzzingEngines,
 }
 
 #[derive(Args)]

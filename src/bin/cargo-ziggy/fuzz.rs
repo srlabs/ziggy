@@ -52,7 +52,10 @@ impl Fuzz {
 
         if Path::new(&self.parsed_corpus()).exists() {
             if !self.skip_initial_minimization {
-                self.run_minimization()?;
+                self.run_minimization(
+                    "output/{target_name}/minimized_corpus/",
+                    FuzzingEngines::Honggfuzz,
+                )?;
             }
         } else {
             let _ = process::Command::new("mkdir")
@@ -189,7 +192,10 @@ impl Fuzz {
             {
                 stop_fuzzers(&mut processes)?;
 
-                self.run_minimization()?;
+                self.run_minimization(
+                    "output/{target_name}/minimized_corpus/",
+                    FuzzingEngines::Honggfuzz,
+                )?;
 
                 processes = self.spawn_new_fuzzers()?;
             }
@@ -330,7 +336,7 @@ impl Fuzz {
                         .env("AFL_NO_WARN_INSTABILITY", "1")
                         .env("AFL_FUZZER_STATS_UPDATE_INTERVAL", "10")
                         .env("AFL_IMPORT_FIRST", "1")
-                        .env("AFL_FINAL_SYNC", "1")  // upcoming in v4.09c
+                        .env("AFL_FINAL_SYNC", "1") // upcoming in v4.09c
                         .stdout(log_destination())
                         .stderr(log_destination())
                         .spawn()?,
@@ -442,7 +448,7 @@ impl Fuzz {
         Ok(())
     }
 
-    pub fn run_minimization(&self) -> Result<()> {
+    pub fn run_minimization(&self, output: &str, engine: FuzzingEngines) -> Result<()> {
         let term = Term::stdout();
 
         term.write_line(&format!(
@@ -455,22 +461,23 @@ impl Fuzz {
         let old_corpus_size = fs::read_dir(self.parsed_corpus())
             .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
 
-        let minimized_corpus = DEFAULT_MINIMIZATION_CORPUS.replace("{target_name}", &self.target);
+        let output_corpus = &output.replace("{target_name}", &self.target);
 
         process::Command::new("rm")
-            .args(["-r", &minimized_corpus])
+            .args(["-r", output_corpus])
             .output()
-            .map_err(|_| anyhow!("Could not remove minimized corpus directory"))?;
+            .map_err(|_| anyhow!("Could not remove minimization output corpus directory"))?;
 
         let mut minimization_args = Minimize {
             target: self.target.clone(),
             input_corpus: PathBuf::from(&self.parsed_corpus()),
-            output_corpus: PathBuf::from(&minimized_corpus),
+            output_corpus: PathBuf::from(output_corpus),
             jobs: self.jobs,
+            engine,
         };
         match minimization_args.minimize() {
             Ok(_) => {
-                let new_corpus_size = fs::read_dir(&minimized_corpus)
+                let new_corpus_size = fs::read_dir(output)
                     .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
 
                 term.move_cursor_up(1)?;
@@ -486,7 +493,7 @@ impl Fuzz {
                     ))?;
 
                     fs::remove_dir_all(self.parsed_corpus())?;
-                    fs::rename(minimized_corpus, self.parsed_corpus())?;
+                    fs::rename(output_corpus, self.parsed_corpus())?;
                 }
             }
             Err(_) => {
