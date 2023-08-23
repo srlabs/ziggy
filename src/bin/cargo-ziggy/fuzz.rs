@@ -289,6 +289,9 @@ impl Fuzz {
                     0 => File::create(format!("output/{}/logs/afl.log", self.target))
                         .unwrap()
                         .into(),
+                    1 => File::create(format!("output/{}/logs/afl_1.log", self.target))
+                        .unwrap()
+                        .into(),
                     _ => process::Stdio::null(),
                 };
 
