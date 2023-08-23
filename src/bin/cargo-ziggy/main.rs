@@ -114,7 +114,7 @@ pub struct Fuzz {
     #[clap(short, long, value_parser, value_name = "DIR")]
     initial_corpus: Option<PathBuf>,
 
-    /// Timeout before shared corpus minimization
+    /// Timeout before shared corpus minimization (temporarily stops honggfuzz)
     #[clap(short, long, value_name = "SECS", default_value_t = DEFAULT_MINIMIZATION_TIMEOUT)]
     minimization_timeout: u32,
 

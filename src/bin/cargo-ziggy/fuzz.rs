@@ -21,9 +21,13 @@ use std::{
 /// ```text
 /// # bash pseudocode
 /// mv all_afl_corpora/* corpus_afl/* corpus_honggfuzz/* corpus_shared/
+/// # run afl++ minimization
+/// afl++_minimization -i corpus_shared -o corpus_afl_tmp
 /// rm -r corpus_afl corpus_honggfuzz all_afl_corpora
-/// afl++_minimization -i corpus_shared -o corpus_afl
-/// mv corpus_shared corpus_honggfuzz
+/// mv corpus_afl_tmp corpus_afl
+/// # in parallel, run honggfuzz minimization
+/// honggfuzz_minimization -i corpus_shared -o corpus_honggfuzz_tmp
+/// mv corpus_honggfuzz_tmp corpus_honggfuzz
 /// afl++ -i corpus_afl -o all_afl_corpora &
 ///   honggfuzz -i corpus_honggfuzz -o corpus_shared
 /// ```
@@ -37,12 +41,28 @@ use std::{
 /// ```text
 /// # bash pseudocode
 /// cp all_afl_corpora/* corpus_shared/
-/// honggfuzz_minimization -i corpus_shared -o corpus_honggfuzz
-/// rm -r corpus_shared
+/// honggfuzz_minimization -i corpus_shared -o corpus_honggfuzz_tmp
+/// rm -r corpus_shared corpus_honggfuzz
+/// mv corpus_honggfuzz_tmp corpus_honggfuzz
 /// honggfuzz -i corpus_honggfuzz -o corpus_shared
 /// ```
 
 impl Fuzz {
+    pub fn corpus_shared(&self) -> String {
+        self.corpus
+            .display()
+            .to_string()
+            .replace("{target_name}", &self.target)
+    }
+
+    pub fn corpus_afl(&self) -> String {
+        format!("./output/{}/corpus_afl/", self.target)
+    }
+
+    pub fn corpus_honggfuzz(&self) -> String {
+        format!("./output/{}/corpus_honggfuzz/", self.target)
+    }
+
     // Manages the continuous running of fuzzers
     pub fn fuzz(&mut self) -> Result<(), anyhow::Error> {
         let build = Build {
@@ -68,17 +88,13 @@ impl Fuzz {
 
         let time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
 
-        let ziggy_crash_dir = format!("./output/{}/crashes/{}/", self.target, time);
-        let ziggy_crash_path = Path::new(&ziggy_crash_dir);
-        fs::create_dir_all(ziggy_crash_path)?;
+        let crash_dir = format!("./output/{}/crashes/{}/", self.target, time);
+        let crash_path = Path::new(&crash_dir);
+        fs::create_dir_all(crash_path)?;
 
-        let corpus_afl_dir = format!("./output/{}/corpus_afl/", self.target);
-        let corpus_afl_path = Path::new(&corpus_afl_dir);
-        fs::create_dir_all(corpus_afl_path)?;
+        fs::create_dir_all(Path::new(&self.corpus_afl()))?;
 
-        let corpus_honggfuzz_dir = format!("output/{}/corpus_honggfuzz/", self.target);
-        let corpus_honggfuzz_path = Path::new(&corpus_honggfuzz_dir);
-        fs::create_dir_all(corpus_honggfuzz_path)?;
+        fs::create_dir_all(Path::new(&self.corpus_honggfuzz()))?;
 
         let _ = process::Command::new("mkdir")
             .args(["-p", &format!("./output/{}/logs/", self.target)])
@@ -86,32 +102,29 @@ impl Fuzz {
             .spawn()?
             .wait()?;
 
-        if Path::new(&self.parsed_corpus()).exists() {
+        if Path::new(&self.corpus_shared()).exists() {
             if !self.skip_initial_minimization {
                 self.move_all_corpora()?;
-                self.run_minimization(&corpus_afl_dir, FuzzingEngines::AFLPlusPlus)?;
+                self.run_minimization(&self.corpus_afl(), FuzzingEngines::AFLPlusPlus)?;
 
                 fs::remove_dir_all(format!("./output/{}/afl/", self.target))
                     .context("Could not remove AFL++ output directory")?;
-                fs::remove_dir_all(format!("./output/{}/corpus_honggfuzz/", self.target))
+                fs::remove_dir_all(self.corpus_honggfuzz())
                     .context("Could not remove Honggfuzz corpus directory")?;
 
-                fs::rename(
-                    self.parsed_corpus(),
-                    format!("output/{}/corpus_honggfuzz/", self.target),
-                )
-                .context("Error moving corpus_shared to corpus_honggfuzz")?;
+                fs::rename(self.corpus_shared(), self.corpus_honggfuzz())
+                    .context("Error moving corpus_shared to corpus_honggfuzz")?;
             }
         } else {
             let _ = process::Command::new("mkdir")
-                .args(["-p", &self.parsed_corpus()])
+                .args(["-p", &self.corpus_shared()])
                 .stderr(process::Stdio::piped())
                 .spawn()?
                 .wait()?;
         }
 
         // We create an initial corpus file, so that AFL++ starts-up properly if corpus is empty
-        let mut initial_corpus = File::create(corpus_afl_dir + "/init")?;
+        let mut initial_corpus = File::create(self.corpus_afl() + "/init")?;
         writeln!(&mut initial_corpus, "00000000")?;
         drop(initial_corpus);
 
@@ -200,13 +213,11 @@ impl Fuzz {
             // We only start checking for crashes after AFL++ has started responding to us
             if !exec_speed.is_empty() || exec_speed == "0.00" {
                 // We check AFL++ and Honggfuzz's outputs for crash files
-                //let afl_crash_dir = format!("./output/{}/afl/mainaflfuzzer/crashes/", self.target);
-
                 let crash_dirs = glob(&format!("./output/{}/afl/*/crashes", self.target))
                     .map_err(|_| anyhow!("Failed to read crashes glob pattern"))?
                     .flatten()
                     .chain(vec![format!(
-                        "./output/{}/honggfuzz/{}/",
+                        "./output/{}/honggfuzz/{}",
                         self.target, self.target
                     )
                     .into()]);
@@ -215,7 +226,7 @@ impl Fuzz {
                     if let Ok(crashes) = fs::read_dir(crash_dir) {
                         for crash_input in crashes.flatten() {
                             let file_name = crash_input.file_name();
-                            let to_path = ziggy_crash_path.join(&file_name);
+                            let to_path = crash_path.join(&file_name);
                             if to_path.exists()
                                 || ["", "README.txt", "HONGGFUZZ.REPORT.TXT", "input"]
                                     .contains(&file_name.to_str().unwrap_or_default())
@@ -246,10 +257,7 @@ impl Fuzz {
 
                 self.copy_corpora()?;
 
-                self.run_minimization(
-                    "output/{target_name}/corpus_honggfuzz/",
-                    FuzzingEngines::Honggfuzz,
-                )?;
+                self.run_minimization(&self.corpus_honggfuzz(), FuzzingEngines::Honggfuzz)?;
 
                 // We set no_afl because we only want to re-launch Honggfuzz
                 processes = self.spawn_new_fuzzers(true)?;
@@ -311,7 +319,7 @@ impl Fuzz {
                     n => format!("-Ssecondaryfuzzer{n}"),
                 };
                 let use_shared_corpus = match job_num {
-                    0 => format!("-F{}", &self.parsed_corpus()),
+                    0 => format!("-F{}", &self.corpus_shared()),
                     _ => String::new(),
                 };
                 let use_initial_corpus_dir = match (&self.initial_corpus, job_num) {
@@ -363,11 +371,7 @@ impl Fuzz {
                                 "afl",
                                 "fuzz",
                                 &fuzzer_name,
-                                &format!(
-                                    "-i{}",
-                                    "output/{target_name}/corpus_afl/"
-                                        .replace("{target_name}", &self.target)
-                                ),
+                                &format!("-i{}", self.corpus_afl()),
                                 &format!("-p{power_schedule}"),
                                 &format!("-ooutput/{}/afl", self.target),
                                 &format!("-g{}", self.min_length),
@@ -435,8 +439,8 @@ impl Fuzz {
                         format!(
                             "--run_time={} -i{} -o{} -n{} -F{} {timeout_option} {dictionary_option}",
                             self.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL,
-                            format!("./output/{}/corpus_honggfuzz", self.target),
-                            &self.parsed_corpus(),
+                            &self.corpus_honggfuzz(),
+                            &self.corpus_shared(),
                             honggfuzz_jobs,
                             self.max_length,
                         ),
@@ -495,7 +499,7 @@ impl Fuzz {
                         .ok_or_else(|| anyhow!("Could not parse input path"))?,
                     format!(
                         "{}/{}",
-                        &self.parsed_corpus(),
+                        &self.corpus_shared(),
                         path.file_name()
                             .ok_or_else(|| anyhow!("Could not parse input file name"))?
                             .to_str()
@@ -512,13 +516,13 @@ impl Fuzz {
         for path in glob(&format!("./output/{}/afl/*/queue/*", self.target))
             .map_err(|_| anyhow!("Failed to read AFL++ queue glob pattern"))?
             .chain(
-                glob(&format!("./output/{}/corpus_honggfuzz/*", self.target))
+                glob(&format!("{}/*", self.corpus_honggfuzz()))
                     .map_err(|_| anyhow!("Failed to read Honggfuzz corpus glob pattern"))?,
             )
             // In theory this can be removed, but I want to account for the case where the AFL++
             // queues have not been fully populated.
             .chain(
-                glob(&format!("./output/{}/corpus_afl/*", self.target))
+                glob(&format!("{}/*", self.corpus_afl()))
                     .map_err(|_| anyhow!("Failed to read AFL++ corpus glob pattern"))?,
             )
             .flatten()
@@ -529,7 +533,7 @@ impl Fuzz {
                         .ok_or_else(|| anyhow!("Could not parse input path"))?,
                     format!(
                         "{}/{}",
-                        &self.parsed_corpus(),
+                        &self.corpus_shared(),
                         path.file_name()
                             .ok_or_else(|| anyhow!("Could not parse input file name"))?
                             .to_str()
@@ -556,7 +560,7 @@ impl Fuzz {
                 .bold()
         ))?;
 
-        let old_corpus_size = fs::read_dir(self.parsed_corpus())
+        let old_corpus_size = fs::read_dir(self.corpus_shared())
             .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
 
         let output_corpus = &output.replace("{target_name}", &self.target);
@@ -568,7 +572,7 @@ impl Fuzz {
 
         let mut minimization_args = Minimize {
             target: self.target.clone(),
-            input_corpus: PathBuf::from(&self.parsed_corpus()),
+            input_corpus: PathBuf::from(&self.corpus_shared()),
             output_corpus: PathBuf::from(output_corpus),
             jobs: self.jobs,
             engine,
@@ -598,11 +602,17 @@ impl Fuzz {
         Ok(())
     }
 
-    pub fn parsed_corpus(&self) -> String {
-        self.corpus
-            .display()
-            .to_string()
-            .replace("{target_name}", &self.target)
+    pub fn print_stats(&self) {
+        /*
+        ─ afl++ running ─────────────────┬─ honggfuzz minimizing ──────────
+           total run time : 0 seconds    │ minimization in : 0 seconds
+              total execs : 0 thousands  │     total execs : 0
+                instances : 8            │         threads : 4
+         cumulative speed : 0 execs/sec  │   average Speed : 0 execs/sec
+            best coverage : 27.4%        │        coverage : 24%
+            crashes saved : 0            │   crashes saved : 0
+          no new find for : 0            │ no new find for : 0
+                */
     }
 }
 
