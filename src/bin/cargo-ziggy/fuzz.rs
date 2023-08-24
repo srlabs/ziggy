@@ -294,6 +294,10 @@ impl Fuzz {
                         .into(),
                     _ => process::Stdio::null(),
                 };
+                let final_sync = match job_num {
+                    0 => "1",
+                    _ => "0",
+                };
 
                 fuzzer_handles.push(
                     process::Command::new(cargo.clone())
@@ -333,7 +337,8 @@ impl Fuzz {
                         .env("AFL_NO_WARN_INSTABILITY", "1")
                         .env("AFL_FUZZER_STATS_UPDATE_INTERVAL", "10")
                         .env("AFL_IMPORT_FIRST", "1")
-                        .env("AFL_FINAL_SYNC", "1")  // upcoming in v4.09c
+                        .env("AFL_FINAL_SYNC", final_sync) // upcoming in v4.09c
+                        .env("AFL_IGNORE_SEED_PROBLEMS", "1") // upcoming in v4.09c
                         .stdout(log_destination())
                         .stderr(log_destination())
                         .spawn()?,
