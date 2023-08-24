@@ -860,7 +860,7 @@ dependencies = [
 
 [[package]]
 name = "ziggy"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "afl",
  "anyhow",

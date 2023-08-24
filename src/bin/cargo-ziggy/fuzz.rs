@@ -334,6 +334,7 @@ impl Fuzz {
                         .env("AFL_FUZZER_STATS_UPDATE_INTERVAL", "10")
                         .env("AFL_IMPORT_FIRST", "1")
                         .env("AFL_FINAL_SYNC", "1")  // upcoming in v4.09c
+                        .env("AFL_IGNORE_SEED_PROBLEMS", "1")  // upcoming in v4.09c
                         .stdout(log_destination())
                         .stderr(log_destination())
                         .spawn()?,
