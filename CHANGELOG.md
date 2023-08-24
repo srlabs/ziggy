@@ -1,5 +1,11 @@
 # Changes
 
+## 0.6.5 - 2023-08-24
+
+- Secondary AFL++ fuzzer log is now available
+- Bump AFL++ version
+- Better AFL++ envs, thanks again @vanhauser-thc
+
 ## 0.6.4 - 2023-08-14
 
 - Better AFL++ envs, thank you @vanhauser-thc!
