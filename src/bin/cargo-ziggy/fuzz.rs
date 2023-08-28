@@ -404,6 +404,7 @@ impl Fuzz {
         eprintln!(
             "\nSee more live info by running\n  {}\nor\n  {}\n",
             style(format!("tail -f ./output/{}/logs/afl.log", self.target)).bold(),
+            style(format!("tail -f ./output/{}/logs/afl_1.log", self.target)).bold(),
             style(format!(
                 "tail -f ./output/{}/logs/honggfuzz.log",
                 self.target
