@@ -5,11 +5,12 @@ use glob::glob;
 use std::{
     env,
     fs::{self, File},
-    io::{BufRead, BufReader, Write},
+    io::Write,
     path::{Path, PathBuf},
     process, thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+use strip_ansi_escapes::strip_str;
 
 /// Main logic for managing fuzzers and the fuzzing process in ziggy.
 
@@ -75,17 +76,6 @@ impl Fuzz {
 
         self.target = find_target(&self.target)?;
 
-        let fuzzer_stats_file = format!("./output/{}/afl/mainaflfuzzer/fuzzer_stats", self.target);
-
-        let term = Term::stdout();
-
-        // Variables for stats printing
-        let mut exec_speed = String::new();
-        let mut execs_done = String::new();
-        let mut edges_found = String::new();
-        let mut total_edges = String::new();
-        let mut saved_crashes = String::new();
-
         let time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
 
         let crash_dir = format!("./output/{}/crashes/{}/", self.target, time);
@@ -130,31 +120,16 @@ impl Fuzz {
 
         let mut processes = self.spawn_new_fuzzers(false)?;
 
-        let mut crash_has_been_found = false;
-
         loop {
             let sleep_duration = Duration::from_millis(1000);
             thread::sleep(sleep_duration);
 
-            // We retrieve the stats from the fuzzer_stats file
-            if let Ok(file) = File::open(fuzzer_stats_file.clone()) {
-                let lines = BufReader::new(file).lines();
-                for line in lines.flatten() {
-                    match &line[..20] {
-                        "execs_ps_last_min : " => exec_speed = String::from(&line[20..]),
-                        "execs_done        : " => execs_done = String::from(&line[20..]),
-                        "edges_found       : " => edges_found = String::from(&line[20..]),
-                        "total_edges       : " => total_edges = String::from(&line[20..]),
-                        "saved_crashes     : " => saved_crashes = String::from(&line[20..]),
-                        _ => {}
-                    }
-                }
-                if saved_crashes.trim() != "0" && !saved_crashes.trim().is_empty() {
-                    crash_has_been_found = true;
-                }
-            }
+            self.print_stats();
 
-            if exec_speed.is_empty() || exec_speed == "0.00" {
+            // TODO Check if afl-whatsup also might provide us with this info?
+            if
+            /* TODO Other heuristic */
+            true {
                 if let Ok(afl_log) =
                     fs::read_to_string(format!("./output/{}/logs/afl.log", self.target))
                 {
@@ -174,44 +149,10 @@ impl Fuzz {
                 }
             }
 
-            // We print the new values
-            term.move_cursor_up(7)?;
-            let exec_speed_formated = match exec_speed.as_str() {
-                "0.00" | "" => String::from("..."),
-                _ => utils::stringify_integer(exec_speed.parse::<f64>().unwrap_or_default() as u64),
-            };
-            term.write_line(&format!(
-                "{} {}/sec  ",
-                style("          exec speed :").dim(),
-                exec_speed_formated,
-            ))?;
-            term.write_line(&format!(
-                "{} {}      ",
-                style("          execs done :").dim(),
-                utils::stringify_integer(execs_done.parse().unwrap_or_default()),
-            ))?;
-            let edges_percentage = 100f64 * edges_found.parse::<f64>().unwrap_or_default()
-                / total_edges.parse::<f64>().unwrap_or(1f64);
-            term.write_line(&format!(
-                "{} {} ({:.2}%)          ",
-                style("         edges found :").dim(),
-                utils::stringify_integer(edges_found.parse().unwrap_or_default()),
-                &edges_percentage
-            ))?;
-            term.write_line(&format!(
-                "{} {}         ",
-                style("       saved crashes :").dim(),
-                utils::stringify_integer(saved_crashes.parse().unwrap_or_default()),
-            ))?;
-            if crash_has_been_found {
-                term.write_line("\nCrashes have been found       ")?;
-            } else {
-                term.write_line("\nNo crash has been found so far")?;
-            }
-            term.write_line("")?;
-
             // We only start checking for crashes after AFL++ has started responding to us
-            if !exec_speed.is_empty() || exec_speed == "0.00" {
+            if
+            /* TODO Other heuristic */
+            true {
                 // We check AFL++ and Honggfuzz's outputs for crash files
                 let crash_dirs = glob(&format!("./output/{}/afl/*/crashes", self.target))
                     .map_err(|_| anyhow!("Failed to read crashes glob pattern"))?
@@ -233,14 +174,11 @@ impl Fuzz {
                             {
                                 continue;
                             }
-                            crash_has_been_found = true;
                             fs::copy(crash_input.path(), to_path)?;
                         }
                     }
                 }
             }
-
-            // TODO Only check Honggfuzz one
 
             // Every DEFAULT_MINIMIZATION_TIMEOUT, Honggfuzz will stop and we will minimize the
             // shared corpus before launching it again
@@ -310,7 +248,7 @@ impl Fuzz {
                 .wait()?;
 
             // https://aflplus.plus/docs/fuzzing_in_depth/#c-using-multiple-cores
-            let afl_modes = vec!["fast", "explore", "coe", "lin", "quad", "exploit", "rare"];
+            let afl_modes = ["fast", "explore", "coe", "lin", "quad", "exploit", "rare"];
 
             for job_num in 0..afl_jobs {
                 // We set the fuzzer name, and if it's the main or a secondary fuzzer
@@ -474,15 +412,8 @@ impl Fuzz {
             ))
             .bold(),
         );
-        eprintln!(
-            "{}",
-            &style("    AFL++ main process stats")
-                .yellow()
-                .bold()
-                .to_string()
-        );
-        eprintln!();
-        eprintln!("   Waiting for afl++ to");
+        eprintln!("\n\n");
+        eprintln!("   Waiting for fuzzers to");
         eprintln!("   finish executing the");
         eprintln!("   existing corpus once");
         eprintln!("\n\n");
@@ -606,16 +537,166 @@ impl Fuzz {
     }
 
     pub fn print_stats(&self) {
-        /*
-        ─ afl++ running ─────────────────┬─ honggfuzz minimizing ──────────
-           total run time : 0 seconds    │ minimization in : 0 seconds
-              total execs : 0 thousands  │     total execs : 0
-                instances : 8            │         threads : 4
-         cumulative speed : 0 execs/sec  │   average Speed : 0 execs/sec
-            best coverage : 27.4%        │        coverage : 24%
-            crashes saved : 0            │   crashes saved : 0
-          no new find for : 0            │ no new find for : 0
-                */
+        // First step: execute afl-whatsup
+        let mut afl_status = String::from("running ");
+        let mut afl_total_run_time = String::new();
+        let mut afl_total_execs = String::new();
+        let mut afl_instances = String::new();
+        let mut afl_speed = String::new();
+        let mut afl_coverage = String::new();
+        let mut afl_crashes = String::new();
+        let mut afl_new_finds = String::new();
+
+        if self.no_afl {
+            afl_status = String::from("disabled ")
+        } else {
+            let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
+            let afl_stats_process = process::Command::new(cargo)
+                .args([
+                    "afl",
+                    "whatsup",
+                    "-s",
+                    &format!("output/{}/afl", self.target),
+                ])
+                .output();
+
+            if let Ok(process) = afl_stats_process {
+                let s = std::str::from_utf8(&process.stdout).unwrap_or_default();
+
+                for mut line in s.split('\n') {
+                    line = line.trim();
+                    if let Some(total_run_time) = line.strip_prefix("Total run time : ") {
+                        afl_total_run_time =
+                            String::from(total_run_time.split(',').next().unwrap_or_default());
+                    } else if let Some(total_execs) = line.strip_prefix("Total execs : ") {
+                        afl_total_execs =
+                            String::from(total_execs.split(',').next().unwrap_or_default());
+                    } else if let Some(instances) = line.strip_prefix("Fuzzers alive : ") {
+                        afl_instances = String::from(instances);
+                    } else if let Some(speed) = line.strip_prefix("Cumulative speed : ") {
+                        afl_speed = String::from(speed);
+                    } else if let Some(coverage) = line.strip_prefix("Coverage reached : ") {
+                        afl_coverage = String::from(coverage);
+                    } else if let Some(crashes) = line.strip_prefix("Crashes saved : ") {
+                        afl_crashes = String::from(crashes);
+                    } else if let Some(new_finds) = line.strip_prefix("Time without finds : ") {
+                        afl_new_finds = String::from(new_finds);
+                    }
+                }
+            }
+        }
+
+        // Second step: Get stats from honggfuzz logs
+        let mut hf_status = String::from("running");
+        let mut hf_minimization_in = String::new();
+        let mut hf_total_execs = String::new();
+        let mut hf_threads = String::new();
+        let mut hf_speed = String::new();
+        let mut hf_coverage = String::new();
+        let mut hf_crashes = String::new();
+        let mut hf_new_finds = String::new();
+
+        if self.no_honggfuzz {
+            hf_status = String::from("disabled ");
+        } else {
+            let hf_stats_process = process::Command::new("tail")
+                .args([
+                    "-n50",
+                    &format!("./output/{}/logs/honggfuzz.log", self.target),
+                ])
+                .output();
+            if let Ok(process) = hf_stats_process {
+                let s = std::str::from_utf8(&process.stdout).unwrap_or_default();
+                for raw_line in s.split('\n') {
+                    let stripped_line = strip_str(raw_line);
+                    let line = stripped_line.trim();
+                    if let Some(minimization_in) = line.strip_prefix("------------------------[ ") {
+                        hf_minimization_in = String::from(
+                            minimization_in.split(']').next().unwrap_or_default().trim(),
+                        );
+                        hf_minimization_in = String::from(
+                            hf_minimization_in
+                                .strip_prefix("0 days")
+                                .unwrap_or(&hf_minimization_in)
+                                .trim(),
+                        );
+                        hf_minimization_in =
+                            String::from(hf_minimization_in.split(" mins").next().unwrap_or("0"))
+                                + " mins";
+                    } else if let Some(total_execs) = line.strip_prefix("Iterations : ") {
+                        hf_total_execs =
+                            String::from(total_execs.split(' ').next().unwrap_or_default());
+                    } else if let Some(threads) = line.strip_prefix("Threads : ") {
+                        hf_threads = String::from(threads.split(',').next().unwrap_or_default());
+                    } else if let Some(speed) = line.strip_prefix("Speed : ") {
+                        hf_speed = String::from(
+                            speed
+                                .split("[avg: ")
+                                .nth(1)
+                                .unwrap_or_default()
+                                .strip_suffix(']')
+                                .unwrap_or_default(),
+                        ) + "/sec";
+                    } else if let Some(coverage) = line.strip_prefix("Coverage : ") {
+                        hf_coverage = String::from(
+                            coverage
+                                .split('[')
+                                .nth(1)
+                                .unwrap_or_default()
+                                .split(']')
+                                .next()
+                                .unwrap_or_default(),
+                        );
+                    } else if let Some(crashes) = line.strip_prefix("Crashes : ") {
+                        hf_crashes = String::from(crashes.split(' ').next().unwrap_or_default());
+                    } else if let Some(new_finds) = line.strip_prefix("Cov Update : ") {
+                        hf_new_finds = String::from(new_finds.trim());
+                        hf_new_finds = String::from(
+                            hf_new_finds
+                                .strip_prefix("0 days ")
+                                .unwrap_or(&hf_new_finds),
+                        );
+                        hf_new_finds = String::from(
+                            hf_new_finds
+                                .strip_prefix("00 hrs ")
+                                .unwrap_or(&hf_new_finds),
+                        );
+                        hf_new_finds = String::from(
+                            hf_new_finds
+                                .strip_prefix("00 mins ")
+                                .unwrap_or(&hf_new_finds),
+                        );
+                        hf_new_finds = String::from(
+                            hf_new_finds.strip_suffix(" ago").unwrap_or(&hf_new_finds),
+                        );
+                    }
+                }
+            }
+        }
+
+        // Third step: Print stats
+        // TODO Colors, of course!
+        // Move 9 lines up and clear line
+        eprint!("\x1B[9A\x1B[K");
+        eprintln!("┌── afl++ {afl_status:0}────────────────────┬─ honggfuzz {hf_status:0} ─────────────────┐");
+        eprint!("\x1B[K");
+        eprintln!("│  total run time : {afl_total_run_time:17} │ minimization in : {hf_minimization_in:17} │");
+        eprint!("\x1B[K");
+        eprintln!(
+            "│     total execs : {afl_total_execs:17} │     total execs : {hf_total_execs:17} │"
+        );
+        eprint!("\x1B[K");
+        eprintln!("│       instances : {afl_instances:17} │         threads : {hf_threads:17} │");
+        eprint!("\x1B[K");
+        eprintln!("│cumulative speed : {afl_speed:17} │   average Speed : {hf_speed:17} │");
+        eprint!("\x1B[K");
+        eprintln!("│   best coverage : {afl_coverage:17} │        coverage : {hf_coverage:17} │");
+        eprint!("\x1B[K");
+        eprintln!("│   crashes saved : {afl_crashes:17} │   crashes saved : {hf_crashes:17} │");
+        eprint!("\x1B[K");
+        eprintln!("│ no new find for : {afl_new_finds:17} │ no new find for : {hf_new_finds:17} │");
+        eprint!("\x1B[K");
+        eprintln!("└─────────────────────────────────────┴─────────────────────────────────────┘");
     }
 }
 
