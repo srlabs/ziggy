@@ -1,7 +1,7 @@
 #[cfg(not(feature = "cli"))]
 fn main() {}
 
-mod addseeds;
+mod add_seeds;
 mod build;
 mod coverage;
 mod fuzz;
