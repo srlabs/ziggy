@@ -220,6 +220,9 @@ pub struct AddSeeds {
     /// Seeds directory to be added
     #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CORPUS)]
     input: PathBuf,
+    /// Timeout for a single run
+    #[clap(short, long, value_name = "SECS")]
+    timeout: Option<u32>,
 }
 
 #[cfg(feature = "cli")]
@@ -236,7 +239,7 @@ fn main() -> Result<(), anyhow::Error> {
             .generate_coverage()
             .context("Failure generating coverage"),
         Ziggy::Plot(mut args) => args.generate_plot().context("Failure generating plot"),
-        Ziggy::AddSeeds(mut args) => args.add_seeds().context("Add seeds to running fuzzer"),
+        Ziggy::AddSeeds(mut args) => args.add_seeds().context("Failure addings seeds to AFL"),
     }
 }
 

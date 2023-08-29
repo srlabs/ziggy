@@ -238,7 +238,7 @@ impl Fuzz {
                 .wait()?;
 
             // https://aflplus.plus/docs/fuzzing_in_depth/#c-using-multiple-cores
-            let afl_modes = vec!["fast", "explore", "coe", "lin", "quad", "exploit", "rare"];
+            let afl_modes = ["fast", "explore", "coe", "lin", "quad", "exploit", "rare"];
 
             for job_num in 0..afl_jobs {
                 // We set the fuzzer name, and if it's the main or a secondary fuzzer
