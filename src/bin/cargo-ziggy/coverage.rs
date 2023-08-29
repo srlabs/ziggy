@@ -48,27 +48,19 @@ impl Cover {
         // We run the target against the corpus
         shared_corpus.canonicalize()?.read_dir()?.for_each(|input| {
             let input = input.unwrap();
-            let input_str = input.path();
-            //println!("{}", input_str);
-            let spawn_result =
-                process::Command::new(format!("./target/coverage/debug/{}", &self.target))
-                    .args([input_str.as_os_str()])
-                    .spawn();
+            let input_path = input.path();
 
-            if spawn_result.is_err() {
-                eprintln!(
-                    "Couldn't spawn the coverage runner on {}",
-                    input_str.to_string_lossy()
-                );
-            } else {
-                let wait_result = spawn_result.unwrap().wait();
-                if wait_result.is_err() {
-                    eprintln!(
-                        "found panic while running coverage on {}, continuing.",
-                        input_str.to_string_lossy()
-                    )
+            let result = process::Command::new(format!("./target/coverage/debug/{}", &self.target))
+                .args([input_path.as_os_str()])
+                .spawn()
+                .unwrap()
+                .wait_with_output()
+                .unwrap();
+
+                if !result.status.success() {
+                    eprintln!("Coverage crashed on {}, continuing.", input_path.display())
                 }
-            }
+            
         });
 
         let source_or_workspace_root = match &self.source {
