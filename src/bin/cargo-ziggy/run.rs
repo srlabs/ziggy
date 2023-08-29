@@ -17,7 +17,7 @@ impl Run {
             .args(["rustc", "--target-dir=target/runner"])
             .env("RUSTFLAGS", "")
             .spawn()
-            .context(format!("⚠️  couldn't spawn runner compilation"))?
+            .context("⚠️  couldn't spawn runner compilation")?
             .wait()
             .context("⚠️  couldn't wait for the runner compilation process")?;
 
