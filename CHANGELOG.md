@@ -1,5 +1,10 @@
 # Changes
 
+## 0.6.6 - 2023-08-29
+
+- Add CLI pointer to second AFL++ fuzzer log
+- Update dependencies, including the new AFL++ crate
+
 ## 0.6.5 - 2023-08-24
 
 - Secondary AFL++ fuzzer log is now available
