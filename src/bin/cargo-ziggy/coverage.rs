@@ -18,7 +18,7 @@ impl Cover {
         process::Command::new(cargo)
             .args(["rustc", "--target-dir=target/coverage"])
             .env("RUSTFLAGS", coverage_rustflags)
-            .env("RUSTDOCFLAGS", "-Cpanic=abort")
+            .env("RUSTDOCFLAGS", "-Cpanic=unwind")
             .env("CARGO_INCREMENTAL", "0")
             .env("RUSTC_BOOTSTRAP", "1") // Trick to avoid forcing user to use rust nightly
             .spawn()?
@@ -27,19 +27,32 @@ impl Cover {
         // We remove the previous coverage files
         if let Ok(gcda_files) = glob("target/coverage/debug/deps/*.gcda") {
             for file in gcda_files.flatten() {
-                fs::remove_file(file)?;
+                let file_string = &file.display();
+                fs::remove_file(&file)
+                    .context(format!("⚠️  couldn't find {} during coverage", file_string))?;
             }
         }
 
         // We run the target against the corpus
-        process::Command::new(format!("./target/coverage/debug/{}", &self.target))
-            .args([self
-                .corpus
-                .display()
-                .to_string()
-                .replace("{target_name}", &self.target)])
-            .spawn()?
-            .wait()?;
+        self.corpus.iter().for_each(|input| {
+            let input_str = input.to_str().expect("could not canonicalise path to str");
+            let spawn_result =
+                process::Command::new(format!("./target/coverage/debug/{}", &self.target))
+                    .args([input_str.replace("{target_name}", &self.target)])
+                    .spawn();
+
+            if spawn_result.is_err() {
+                eprintln!("Couldn't spawn the coverage runner on {}", input_str);
+            } else {
+                let wait_result = spawn_result.unwrap().wait();
+                if wait_result.is_err() {
+                    eprintln!(
+                        "found panic while running coverage on {}, continuing.",
+                        input_str
+                    )
+                }
+            }
+        });
 
         let source_or_workspace_root = match &self.source {
             Some(s) => s.display().to_string(),
