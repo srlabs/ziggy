@@ -1,10 +1,11 @@
 use crate::{find_target, Minimize};
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use std::{env, fs::File, process};
 
 impl Minimize {
     pub fn minimize(&mut self) -> Result<(), anyhow::Error> {
-        self.target = find_target(&self.target).context("⚠️  couldn't find target when minimizing")?;
+        self.target =
+            find_target(&self.target).context("⚠️  couldn't find target when minimizing")?;
 
         info!("Minimizing corpus");
 
@@ -47,8 +48,10 @@ impl Minimize {
                 "./output/{}/logs/minimization.log",
                 &self.target
             ))?)
-            .spawn().context("⚠️  couldn't spawn afl cmin")?
-            .wait().context("⚠️  couldn't spawn afl cmin")?;
+            .spawn()
+            .context("⚠️  couldn't spawn afl cmin")?
+            .wait()
+            .context("⚠️  couldn't spawn afl cmin")?;
 
         /*
         // HONGGFUZZ minimization

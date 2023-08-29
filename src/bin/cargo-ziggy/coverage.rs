@@ -7,7 +7,8 @@ impl Cover {
     pub fn generate_coverage(&mut self) -> Result<(), anyhow::Error> {
         eprintln!("Generating coverage");
 
-        self.target = find_target(&self.target).context("⚠️  couldn't find the target to start coverage")?;
+        self.target =
+            find_target(&self.target).context("⚠️  couldn't find the target to start coverage")?;
 
         // The cargo executable
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
@@ -21,14 +22,17 @@ impl Cover {
             .env("RUSTDOCFLAGS", "-Cpanic=abort")
             .env("CARGO_INCREMENTAL", "0")
             .env("RUSTC_BOOTSTRAP", "1") // Trick to avoid forcing user to use rust nightly
-            .spawn().context("⚠️  couldn't spawn rustc for coverage")?
-            .wait().context("⚠️  couldn't wait for the rustc during coverage")?;
+            .spawn()
+            .context("⚠️  couldn't spawn rustc for coverage")?
+            .wait()
+            .context("⚠️  couldn't wait for the rustc during coverage")?;
 
         // We remove the previous coverage files
         if let Ok(gcda_files) = glob("target/coverage/debug/deps/*.gcda") {
             for file in gcda_files.flatten() {
                 let file_string = &file.display();
-                fs::remove_file(&file).context(format!("⚠️  couldn't find {} during coverage", file_string))?;
+                fs::remove_file(&file)
+                    .context(format!("⚠️  couldn't find {} during coverage", file_string))?;
             }
         }
 
@@ -39,8 +43,16 @@ impl Cover {
                 .display()
                 .to_string()
                 .replace("{target_name}", &self.target)])
-            .spawn().context(format!("⚠️  couldn't spawn ./target/coverage/debug/{} during coverage", &self.target))?
-            .wait().context(format!("⚠️  couldn't wait for process ./target/coverage/debug/{} during coverage", &self.target))?;
+            .spawn()
+            .context(format!(
+                "⚠️  couldn't spawn ./target/coverage/debug/{} during coverage",
+                &self.target
+            ))?
+            .wait()
+            .context(format!(
+                "⚠️  couldn't wait for process ./target/coverage/debug/{} during coverage",
+                &self.target
+            ))?;
 
         let source_or_workspace_root = match &self.source {
             Some(s) => s.display().to_string(),
@@ -88,8 +100,10 @@ impl Cover {
                 "--ignore-not-existing",
                 &format!("-o={output_dir}"),
             ])
-            .spawn().context("⚠️  cannot find grcov in your path, please install it")?
-            .wait().context("⚠️  couldn't wait for the grcov process")?;
+            .spawn()
+            .context("⚠️  cannot find grcov in your path, please install it")?
+            .wait()
+            .context("⚠️  couldn't wait for the grcov process")?;
 
         Ok(())
     }
