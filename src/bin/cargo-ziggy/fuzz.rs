@@ -22,7 +22,7 @@ impl Fuzz {
 
         info!("Running fuzzer");
 
-        self.target = find_target(&self.target)?;
+        self.target = find_target(&self.target).context("⚠️  couldn't find target when fuzzing")?;
 
         let fuzzer_stats_file = format!("./output/{}/afl/mainaflfuzzer/fuzzer_stats", self.target);
 
@@ -256,9 +256,9 @@ impl Fuzz {
                     }
                     _ => String::new(),
                 };
-                // A quarter of secondary fuzzers have the MOpt mutator enabled
-                let mopt_mutator = match job_num % 4 {
-                    1 => "-L0",
+                // 10% of secondary fuzzers have the MOpt mutator enabled
+                let mopt_mutator = match job_num % 10 {
+                    9 => "-L0",
                     _ => "",
                 };
                 // Power schedule
@@ -267,13 +267,15 @@ impl Fuzz {
                     .unwrap_or(&"fast");
                 // Old queue cycling
                 let old_queue_cycling = match job_num % 10 {
-                    9 => "-Z",
+                    8 => "-Z",
                     _ => "",
                 };
-                // Only cmplog for the first two instances
+                // Only few instances do cmplog
                 let cmplog_options = match job_num {
-                    0 => "-l2",
-                    1 => "-l2a",
+                    0 => "-l1",
+                    1 => "-l2",
+                    3 => "-l2a",
+                    22 => "-l3at",
                     _ => "-c-", // disable Cmplog, needs AFL++ 4.08a
                 };
                 // AFL timeout is in ms so we convert the value
@@ -295,8 +297,8 @@ impl Fuzz {
                     _ => process::Stdio::null(),
                 };
                 let final_sync = match job_num {
-                    0 => "1",
-                    _ => "0",
+                    0 => "AFL_FINAL_SYNC",
+                    _ => "_DUMMY_VAR",
                 };
 
                 fuzzer_handles.push(
@@ -337,7 +339,7 @@ impl Fuzz {
                         .env("AFL_NO_WARN_INSTABILITY", "1")
                         .env("AFL_FUZZER_STATS_UPDATE_INTERVAL", "10")
                         .env("AFL_IMPORT_FIRST", "1")
-                        .env("AFL_FINAL_SYNC", final_sync) // upcoming in v4.09c
+                        .env(final_sync, "1") // upcoming in v4.09c
                         .env("AFL_IGNORE_SEED_PROBLEMS", "1") // upcoming in v4.09c
                         .stdout(log_destination())
                         .stderr(log_destination())
