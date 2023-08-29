@@ -1,5 +1,5 @@
 use crate::{find_target, Run};
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Result, Context};
 use console::style;
 use std::{env, process};
 
@@ -16,8 +16,8 @@ impl Run {
         let run = process::Command::new(cargo)
             .args(["rustc", "--target-dir=target/runner"])
             .env("RUSTFLAGS", "")
-            .spawn()?
-            .wait()?;
+            .spawn().context(format!("⚠️  couldn't spawn runner compilation"))?
+            .wait().context("⚠️  couldn't wait for the runner compilation process")?;
 
         if !run.success() {
             return Err(anyhow!(
@@ -37,8 +37,8 @@ impl Run {
         process::Command::new(format!("./target/runner/debug/{}", target))
             .args(run_args)
             .env("RUST_BACKTRACE", "full")
-            .spawn()?
-            .wait()?;
+            .spawn().context("⚠️  couldn't spawn the runner process")?
+            .wait().context("⚠️  couldn't wait for the runner process")?;
 
         Ok(())
     }
