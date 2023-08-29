@@ -1,7 +1,7 @@
 use crate::{find_target, Cover};
 use anyhow::{anyhow, Context, Result};
 use glob::glob;
-use std::{env, fs, process};
+use std::{env, fs, path::PathBuf, process};
 
 impl Cover {
     pub fn generate_coverage(&mut self) -> Result<(), anyhow::Error> {
@@ -36,22 +36,36 @@ impl Cover {
             }
         }
 
+        let mut shared_corpus = PathBuf::new();
+        shared_corpus.push(
+            self.corpus
+                .display()
+                .to_string()
+                .replace("{target_name}", &self.target)
+                .as_str(),
+        );
+
         // We run the target against the corpus
-        self.corpus.iter().for_each(|input| {
-            let input_str = input.to_str().expect("could not canonicalise path to str");
+        shared_corpus.canonicalize()?.read_dir()?.for_each(|input| {
+            let input = input.unwrap();
+            let input_str = input.path();
+            //println!("{}", input_str);
             let spawn_result =
                 process::Command::new(format!("./target/coverage/debug/{}", &self.target))
-                    .args([input_str.replace("{target_name}", &self.target)])
+                    .args([input_str.as_os_str()])
                     .spawn();
 
             if spawn_result.is_err() {
-                eprintln!("Couldn't spawn the coverage runner on {}", input_str);
+                eprintln!(
+                    "Couldn't spawn the coverage runner on {}",
+                    input_str.to_string_lossy()
+                );
             } else {
                 let wait_result = spawn_result.unwrap().wait();
                 if wait_result.is_err() {
                     eprintln!(
                         "found panic while running coverage on {}, continuing.",
-                        input_str
+                        input_str.to_string_lossy()
                     )
                 }
             }
