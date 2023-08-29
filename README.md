@@ -25,7 +25,7 @@ Features will also include:
 First, install `ziggy` and its dependencies by running:
 
 ```
-cargo install --force ziggy afl honggfuzz grcov
+cargo install --force ziggy cargo-afl honggfuzz grcov
 ```
 
 Here is the output of the tool's help:
