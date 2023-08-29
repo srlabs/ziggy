@@ -22,7 +22,7 @@ impl Fuzz {
 
         info!("Running fuzzer");
 
-        self.target = find_target(&self.target)?;
+        self.target = find_target(&self.target).context("⚠️  couldn't find target when fuzzing")?;
 
         let fuzzer_stats_file = format!("./output/{}/afl/mainaflfuzzer/fuzzer_stats", self.target);
 
