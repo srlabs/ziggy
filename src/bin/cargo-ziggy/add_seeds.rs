@@ -13,7 +13,9 @@ impl AddSeeds {
                 "afl",
                 "fuzz",
                 "-i",
-                self.input.to_str().ok_or(anyhow!("⚠️  couldn't convert target path to &str"))?,
+                self.input
+                    .to_str()
+                    .ok_or(anyhow!("⚠️  couldn't convert target path to &str"))?,
                 &format!("-ooutput/{}/afl", self.target),
                 "-V1",
                 "-c-",
