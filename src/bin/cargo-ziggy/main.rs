@@ -1,6 +1,7 @@
 #[cfg(not(feature = "cli"))]
 fn main() {}
 
+mod addseeds;
 mod build;
 mod coverage;
 mod fuzz;
@@ -81,6 +82,9 @@ pub enum Ziggy {
 
     /// Plot AFL++ data using afl-plot
     Plot(Plot),
+
+    /// Add seeds to the running AFL fuzzers
+    AddSeeds(AddSeeds),
 }
 
 #[derive(Args)]
@@ -208,6 +212,16 @@ pub struct Plot {
     output: PathBuf,
 }
 
+#[derive(Args)]
+pub struct AddSeeds {
+    /// Target to use
+    #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
+    target: String,
+    /// Seeds directory to be added
+    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CORPUS)]
+    input: PathBuf,
+}
+
 #[cfg(feature = "cli")]
 fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
@@ -222,6 +236,7 @@ fn main() -> Result<(), anyhow::Error> {
             .generate_coverage()
             .context("Failure generating coverage"),
         Ziggy::Plot(mut args) => args.generate_plot().context("Failure generating plot"),
+        Ziggy::AddSeeds(mut args) => args.add_seeds().context("Add seeds to running fuzzer"),
     }
 }
 
