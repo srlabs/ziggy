@@ -1,6 +1,7 @@
 #[cfg(not(feature = "cli"))]
 fn main() {}
 
+mod add_seeds;
 mod build;
 mod coverage;
 mod fuzz;
@@ -81,6 +82,9 @@ pub enum Ziggy {
 
     /// Plot AFL++ data using afl-plot
     Plot(Plot),
+
+    /// Add seeds to the running AFL fuzzers
+    AddSeeds(AddSeeds),
 }
 
 #[derive(Args)]
@@ -208,6 +212,19 @@ pub struct Plot {
     output: PathBuf,
 }
 
+#[derive(Args)]
+pub struct AddSeeds {
+    /// Target to use
+    #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
+    target: String,
+    /// Seeds directory to be added
+    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CORPUS)]
+    input: PathBuf,
+    /// Timeout for a single run
+    #[clap(short, long, value_name = "SECS")]
+    timeout: Option<u32>,
+}
+
 #[cfg(feature = "cli")]
 fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
@@ -222,10 +239,11 @@ fn main() -> Result<(), anyhow::Error> {
             .generate_coverage()
             .context("Failure generating coverage"),
         Ziggy::Plot(mut args) => args.generate_plot().context("Failure generating plot"),
+        Ziggy::AddSeeds(mut args) => args.add_seeds().context("Failure addings seeds to AFL"),
     }
 }
 
-pub fn find_target(target: &String) -> Result<String> {
+pub fn find_target(target: &String) -> Result<String, anyhow::Error> {
     // If the target is already set, we're done here
     if target != DEFAULT_UNMODIFIED_TARGET {
         eprintln!("    Using given target {target}");
@@ -244,8 +262,11 @@ pub fn find_target(target: &String) -> Result<String> {
 }
 
 fn guess_target() -> Result<String> {
-    let cargo_toml_string = fs::read_to_string("Cargo.toml")?;
-    let cargo_toml = cargo_toml_string.parse::<toml::Value>()?;
+    let cargo_toml_string = fs::read_to_string("Cargo.toml")
+        .context("⚠️  couldn't find Cargo.toml in this folder, cannot guess target")?;
+    let cargo_toml = cargo_toml_string.parse::<toml::Value>().context(
+        "⚠️  couldn't parse the Cargo.toml file in this folder, thus cannot guess the target",
+    )?;
 
     if let Some(bin_section) = cargo_toml.get("bin") {
         let bin_array = bin_section

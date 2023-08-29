@@ -7,7 +7,8 @@ impl Cover {
     pub fn generate_coverage(&mut self) -> Result<(), anyhow::Error> {
         eprintln!("Generating coverage");
 
-        self.target = find_target(&self.target)?;
+        self.target =
+            find_target(&self.target).context("⚠️  couldn't find the target to start coverage")?;
 
         // The cargo executable
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
@@ -21,8 +22,10 @@ impl Cover {
             .env("RUSTDOCFLAGS", "-Cpanic=unwind")
             .env("CARGO_INCREMENTAL", "0")
             .env("RUSTC_BOOTSTRAP", "1") // Trick to avoid forcing user to use rust nightly
-            .spawn()?
-            .wait()?;
+            .spawn()
+            .context("⚠️  couldn't spawn rustc for coverage")?
+            .wait()
+            .context("⚠️  couldn't wait for the rustc during coverage")?;
 
         // We remove the previous coverage files
         if let Ok(gcda_files) = glob("target/coverage/debug/deps/*.gcda") {
@@ -100,8 +103,10 @@ impl Cover {
                 "--ignore-not-existing",
                 &format!("-o={output_dir}"),
             ])
-            .spawn()?
-            .wait()?;
+            .spawn()
+            .context("⚠️  cannot find grcov in your path, please install it")?
+            .wait()
+            .context("⚠️  couldn't wait for the grcov process")?;
 
         Ok(())
     }
