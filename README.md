@@ -37,13 +37,14 @@ A multi-fuzzer management utility for all of your Rust fuzzing needs 🧑‍🎤
 Usage: cargo ziggy <COMMAND>
 
 Commands:
-  build     Build the fuzzer and the runner binaries
-  fuzz      Fuzz targets using different fuzzers in parallel
-  run       Run a specific input or a directory of inputs to analyze backtrace
-  minimize  Minimize the input corpus using the given fuzzing target
-  cover     Generate code coverage information using the existing corpus
-  plot      Plot AFL++ data using afl-plot
-  help      Print this message or the help of the given subcommand(s)
+  build      Build the fuzzer and the runner binaries
+  fuzz       Fuzz targets using different fuzzers in parallel
+  run        Run a specific input or a directory of inputs to analyze backtrace
+  minimize   Minimize the input corpus using the given fuzzing target
+  cover      Generate code coverage information using the existing corpus
+  plot       Plot AFL++ data using afl-plot
+  add-seeds  Add seeds to the running AFL fuzzers
+  help       Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help     Print help information
