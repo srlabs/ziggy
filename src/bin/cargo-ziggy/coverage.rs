@@ -57,10 +57,9 @@ impl Cover {
                 .wait_with_output()
                 .unwrap();
 
-                if !result.status.success() {
-                    eprintln!("Coverage crashed on {}, continuing.", input_path.display())
-                }
-            
+            if !result.status.success() {
+                eprintln!("Coverage crashed on {}, continuing.", input_path.display())
+            }
         });
 
         let source_or_workspace_root = match &self.source {
