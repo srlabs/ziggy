@@ -1,7 +1,7 @@
 use crate::{find_target, Cover};
 use anyhow::{anyhow, Context, Result};
 use glob::glob;
-use std::{env, fs, process};
+use std::{env, fs, path::PathBuf, process};
 
 impl Cover {
     pub fn generate_coverage(&mut self) -> Result<(), anyhow::Error> {
@@ -19,7 +19,7 @@ impl Cover {
         process::Command::new(cargo)
             .args(["rustc", "--target-dir=target/coverage"])
             .env("RUSTFLAGS", coverage_rustflags)
-            .env("RUSTDOCFLAGS", "-Cpanic=abort")
+            .env("RUSTDOCFLAGS", "-Cpanic=unwind")
             .env("CARGO_INCREMENTAL", "0")
             .env("RUSTC_BOOTSTRAP", "1") // Trick to avoid forcing user to use rust nightly
             .spawn()
@@ -36,23 +36,31 @@ impl Cover {
             }
         }
 
-        // We run the target against the corpus
-        process::Command::new(format!("./target/coverage/debug/{}", &self.target))
-            .args([self
-                .corpus
+        let mut shared_corpus = PathBuf::new();
+        shared_corpus.push(
+            self.corpus
                 .display()
                 .to_string()
-                .replace("{target_name}", &self.target)])
-            .spawn()
-            .context(format!(
-                "⚠️  couldn't spawn ./target/coverage/debug/{} during coverage",
-                &self.target
-            ))?
-            .wait()
-            .context(format!(
-                "⚠️  couldn't wait for process ./target/coverage/debug/{} during coverage",
-                &self.target
-            ))?;
+                .replace("{target_name}", &self.target)
+                .as_str(),
+        );
+
+        // We run the target against the corpus
+        shared_corpus.canonicalize()?.read_dir()?.for_each(|input| {
+            let input = input.unwrap();
+            let input_path = input.path();
+
+            let result = process::Command::new(format!("./target/coverage/debug/{}", &self.target))
+                .args([input_path.as_os_str()])
+                .spawn()
+                .unwrap()
+                .wait_with_output()
+                .unwrap();
+
+            if !result.status.success() {
+                eprintln!("Coverage crashed on {}, continuing.", input_path.display())
+            }
+        });
 
         let source_or_workspace_root = match &self.source {
             Some(s) => s.display().to_string(),
