@@ -1,4 +1,5 @@
 use crate::*;
+use rand::Rng;
 use std::{env, process};
 
 impl AddSeeds {
@@ -20,6 +21,7 @@ impl AddSeeds {
         };
 
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
+        let mut rng = rand::thread_rng();
         process::Command::new(cargo.clone())
             .args(
                 [
@@ -30,6 +32,7 @@ impl AddSeeds {
                     &format!("-ooutput/{}/afl", self.target),
                     "-V1",
                     "-c-",
+                    &format!("-Saddseeds{}", rng.gen::<u64>()),
                     &timeout_option,
                     &format!("./target/afl/debug/{}", self.target),
                 ]
