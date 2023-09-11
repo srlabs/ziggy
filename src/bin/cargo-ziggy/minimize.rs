@@ -7,7 +7,9 @@ impl Minimize {
         self.target =
             find_target(&self.target).context("⚠️  couldn't find target when minimizing")?;
 
-        info!("Minimizing corpus");
+        info!("Minimizing corpus IS DISABLED");
+
+        return Ok(());
 
         // The cargo executable
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));

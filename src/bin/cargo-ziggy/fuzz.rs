@@ -42,7 +42,8 @@ impl Fuzz {
 
         fs::create_dir_all(ziggy_crash_path)?;
 
-        self.share_all_corpora()?;
+        // self.share_all_corpora()?;
+        info!("self.share_all_corpora is DISABLED!");
 
         let _ = process::Command::new("mkdir")
             .args(["-p", &format!("./output/{}/logs/", self.target)])
@@ -63,7 +64,10 @@ impl Fuzz {
 
             // We create an initial corpus file, so that AFL++ starts-up properly
             let mut initial_corpus = File::create(self.parsed_corpus() + "/init")?;
-            writeln!(&mut initial_corpus, "00000000")?;
+            writeln!(
+                &mut initial_corpus,
+                "00000000000000000000********0000########111111111111111111111111"
+            )?;
             drop(initial_corpus);
         }
 
@@ -471,8 +475,10 @@ impl Fuzz {
 
         term.write_line(&format!(
             "\n    {}",
-            &style("Running minimization").magenta().bold()
+            &style("Running minimization DISABLED").magenta().bold()
         ))?;
+
+        return Ok(());
 
         self.share_all_corpora()?;
 
