@@ -37,6 +37,7 @@ impl Cover {
         }
 
         let mut shared_corpus = PathBuf::new();
+
         shared_corpus.push(
             self.corpus
                 .display()
@@ -44,6 +45,21 @@ impl Cover {
                 .replace("{target_name}", &self.target)
                 .as_str(),
         );
+
+        let mut afl_dir = PathBuf::new();
+        afl_dir.push(
+            shared_corpus
+                .display()
+                .to_string()
+                .replace("/shared_corpus", "/afl/mainfuzzer")
+                .as_str(),
+        );
+
+        if afl_dir.is_dir() {
+            shared_corpus = afl_dir;
+        }
+
+        info!("Corpus directory is {}", shared_corpus.display());
 
         // We run the target against the corpus
         shared_corpus.canonicalize()?.read_dir()?.for_each(|input| {
