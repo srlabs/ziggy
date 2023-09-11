@@ -51,7 +51,7 @@ impl Cover {
             shared_corpus
                 .display()
                 .to_string()
-                .replace("/shared_corpus", "/afl/mainaflfuzzer")
+                .replace("/shared_corpus", "/afl/mainaflfuzzer/queue")
                 .as_str(),
         );
 
