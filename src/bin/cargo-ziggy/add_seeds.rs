@@ -32,7 +32,7 @@ impl AddSeeds {
                     &format!("-ooutput/{}/afl", self.target),
                     "-V1",
                     "-c-",
-                    &format!("-Saddseeds{}", rng.gen::<u64>()),
+                    &format!("-Sadd{}", format!("{:x}", rng.gen::<u64>())),
                     &timeout_option,
                     &format!("./target/afl/debug/{}", self.target),
                 ]
