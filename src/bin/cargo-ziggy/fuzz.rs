@@ -242,7 +242,10 @@ impl Fuzz {
                 .wait()?;
 
             // https://aflplus.plus/docs/fuzzing_in_depth/#c-using-multiple-cores
-            let afl_modes = ["fast", "explore", "coe", "lin", "quad", "exploit", "rare"];
+            let afl_modes = [
+                "explore", "fast", "coe", "lin", "quad", "exploit", "rare", "explore", "fast",
+                "mmopt",
+            ];
 
             for job_num in 0..afl_jobs {
                 // We set the fuzzer name, and if it's the main or a secondary fuzzer
@@ -276,9 +279,9 @@ impl Fuzz {
                 };
                 // Only few instances do cmplog
                 let cmplog_options = match job_num {
-                    0 => "-l1",
-                    1 => "-l2",
-                    3 => "-l2a",
+                    1 => "-l2a",
+                    3 => "-l1",
+                    14 => "-l2a",
                     22 => "-l3at",
                     _ => "-c-", // disable Cmplog, needs AFL++ 4.08a
                 };
@@ -291,6 +294,17 @@ impl Fuzz {
                     Some(d) => format!("-x{}", &d.display().to_string()),
                     None => String::new(),
                 };
+                let mutation_option = match job_num / 5 {
+                    0..=1 => "-P600",
+                    2..=3 => "-Pexplore",
+                    _ => "-Pexploit",
+                };
+                /* wait for afl crate update
+                let mutation_option = match job_num / 2 {
+                    0 => "-abinary",
+                    _ => "-adefault",
+                };
+                */
                 let log_destination = || match job_num {
                     0 => File::create(format!("output/{}/logs/afl.log", self.target))
                         .unwrap()
@@ -326,6 +340,7 @@ impl Fuzz {
                                 old_queue_cycling,
                                 cmplog_options,
                                 mopt_mutator,
+                                mutation_option,
                                 &timeout_option_afl,
                                 &dictionary_option,
                                 &format!("./target/afl/debug/{}", self.target),
