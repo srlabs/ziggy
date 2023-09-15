@@ -17,7 +17,7 @@ impl Cover {
 
         // We build the runner with the appropriate flags for coverage
         process::Command::new(cargo)
-            .args(["rustc", "--target-dir=target/coverage"])
+            .args(["rustc", "--target-dir=target/coverage", "-F coverage"])
             .env("RUSTFLAGS", coverage_rustflags)
             .env("RUSTDOCFLAGS", "-Cpanic=unwind")
             .env("CARGO_INCREMENTAL", "0")
