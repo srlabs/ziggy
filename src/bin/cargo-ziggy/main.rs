@@ -260,7 +260,9 @@ fn main() -> Result<(), anyhow::Error> {
             .context("Failure generating coverage"),
         Ziggy::Plot(mut args) => args.generate_plot().context("Failure generating plot"),
         Ziggy::AddSeeds(mut args) => args.add_seeds().context("Failure addings seeds to AFL"),
-        Ziggy::Triage(mut args) => args.triage().context("Triaging with casr failed"),
+        Ziggy::Triage(mut args) => args
+            .triage()
+            .context("Triaging with casr failed, try \"cargo install casr\""),
     }
 }
 
