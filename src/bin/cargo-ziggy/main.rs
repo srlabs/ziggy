@@ -144,9 +144,13 @@ pub struct Fuzz {
     #[clap(long = "no-honggfuzz", action)]
     no_honggfuzz: bool,
 
-    /// Skip initial minimization
+    /// Skip initial minimization - NOT USED ANYMORE!
     #[clap(long = "skip-initial-minimization", action)]
     skip_initial_minimization: bool,
+
+    /// Perform initial minimization - not active yet!
+    #[clap(long = "perform-initial-minimization", action, default_value_t = false)]
+    perform_initial_minimization: bool,
 }
 
 #[derive(Args)]
