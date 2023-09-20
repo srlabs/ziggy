@@ -50,6 +50,8 @@ pub const DEFAULT_PLOT_DIR: &str = "./output/{target_name}/plot/";
 
 pub const DEFAULT_CRASHES_DIR: &str = "./output/{target_name}/crashes/";
 
+pub const DEFAULT_TRIAGE_DIR: &str = "./output/{target_name}/triage/";
+
 // We want to make sure we don't mistake a minimization kill for a found crash
 const SECONDS_TO_WAIT_AFTER_KILL: u32 = 5;
 
@@ -89,7 +91,7 @@ pub enum Ziggy {
     /// Add seeds to the running AFL fuzzers
     AddSeeds(AddSeeds),
 
-    /// Triage crashes found with casr
+    /// Triage crashes found with casr - currently only works for AFL++
     Triage(Triage),
 }
 
@@ -227,9 +229,17 @@ pub struct Triage {
     /// Target to use
     #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
     target: String,
-    /// Crash directory to be sourced
+    /// Triage output directory to be written to (must be empty or not exist)
+    #[clap(short, long, value_name = "TARGET", default_value = DEFAULT_TRIAGE_DIR)]
+    output: String,
+    /// Number of concurent fuzzing jobs
+    #[clap(short, long, value_name = "NUM", default_value_t = 1)]
+    jobs: u32,
+    /* future feature, wait for casr
+    /// Crash directory to be sourced from
     #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CRASHES_DIR)]
     input: PathBuf,
+    */
 }
 
 #[derive(Args)]

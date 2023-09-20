@@ -6,9 +6,14 @@ impl Triage {
         eprintln!("Running CASR triage on crashes");
 
         self.target = find_target(&self.target)?;
-
         let input_dir = format!("output/{}/afl", self.target);
-        let output_dir = format!("output/{}/triage", self.target);
+        let output_dir = if self.output != DEFAULT_TRIAGE_DIR {
+            self.output.clone()
+        } else {
+            let tmp = format!("output/{}/triage", &self.target);
+            fs::remove_dir_all(&tmp).unwrap_or_default();
+            tmp
+        };
 
         if !fs::metadata(&input_dir)
             .map(|meta| meta.is_dir())
@@ -34,6 +39,7 @@ impl Triage {
                     &input_dir,
                     "-o",
                     &output_dir,
+                    &format!("-j{}", self.jobs),
                     // future: add option for crashes directory and use runner
                 ]
                 .iter()
