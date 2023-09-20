@@ -8,6 +8,7 @@ mod fuzz;
 mod minimize;
 mod plot;
 mod run;
+mod triage;
 mod utils;
 
 #[cfg(feature = "cli")]
@@ -47,6 +48,8 @@ pub const DEFAULT_MINIMIZATION_CORPUS: &str = "./output/{target_name}/minimized_
 
 pub const DEFAULT_PLOT_DIR: &str = "./output/{target_name}/plot/";
 
+pub const DEFAULT_CRASHES_DIR: &str = "./output/{target_name}/crashes/";
+
 // We want to make sure we don't mistake a minimization kill for a found crash
 const SECONDS_TO_WAIT_AFTER_KILL: u32 = 5;
 
@@ -85,6 +88,9 @@ pub enum Ziggy {
 
     /// Add seeds to the running AFL fuzzers
     AddSeeds(AddSeeds),
+
+    /// Triage crashes found with casr
+    Triage(Triage),
 }
 
 #[derive(Args)]
@@ -217,6 +223,16 @@ pub struct Plot {
 }
 
 #[derive(Args)]
+pub struct Triage {
+    /// Target to use
+    #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
+    target: String,
+    /// Crash directory to be sourced
+    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CRASHES_DIR)]
+    input: PathBuf,
+}
+
+#[derive(Args)]
 pub struct AddSeeds {
     /// Target to use
     #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
@@ -244,6 +260,7 @@ fn main() -> Result<(), anyhow::Error> {
             .context("Failure generating coverage"),
         Ziggy::Plot(mut args) => args.generate_plot().context("Failure generating plot"),
         Ziggy::AddSeeds(mut args) => args.add_seeds().context("Failure addings seeds to AFL"),
+        Ziggy::Triage(mut args) => args.triage().context("Triaging with casr failed"),
     }
 }
 
