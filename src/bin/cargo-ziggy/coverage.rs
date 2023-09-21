@@ -1,7 +1,7 @@
 use crate::{find_target, Cover};
 use anyhow::{anyhow, Context, Result};
 use async_std::stream::StreamExt;
-use std::{env, fs, /*io::Write,*/ path::PathBuf, process, sync::Arc};
+use std::{env, fs, path::PathBuf, process, sync::Arc};
 use tokio::{runtime, sync::Semaphore};
 
 impl Cover {
@@ -79,10 +79,6 @@ impl Cover {
         eprintln!();
 
         Self::check_program("grcov");
-        /*
-        Self::check_program("llvm-profdata");
-        Self::check_program("llvm-cov");
-        */
 
         self.target =
             find_target(&self.target).context("⚠️  couldn't find the target to start coverage")?;
@@ -168,47 +164,6 @@ impl Cover {
             profile_format,
         ));
 
-        /*
-        // the profile data is saved to prof_dir, for the next step these
-        // files have to be written into a text file.
-        println!();
-        println!("Collecting profile files ...");
-        let mut prof_files: Vec<String> = vec![];
-        let prof_directory: PathBuf = (&prof_dir).into();
-        prof_directory
-            .canonicalize()?
-            .read_dir()?
-            .for_each(|input| {
-                prof_files.push(input.unwrap().path().display().to_string());
-            });
-        let prof_collection = format!("{}/files.txt", &prof_dir);
-        let mut fd = fs::File::create(&prof_collection)?;
-        for line in &prof_files {
-            writeln!(fd, "{}", line)?;
-        }
-        let _ = fd.flush();
-
-        if self.jobs == 1 { self.jobs = 0; }
-
-        // now we merge the profile data
-        println!("Merging profile data ...");
-        let prof_merged = format!("{}/merged.profdata", &prof_dir);
-        process::Command::new("llvm-profdata")
-            .args([
-                "merge",
-                "-o",
-                &prof_merged,
-                "-f",
-                &prof_collection,
-                "--sparse",
-                &format!("--num-threads={}", self.jobs),
-            ])
-            .spawn()
-            .context("⚠️  cannot find llvm-profdata in your path, please install it")?
-            .wait()
-            .context("⚠️  couldn't wait for the llvm-profdata process")?;
-        */
-
         println!();
         println!("Generating coverage report ...");
 
@@ -225,22 +180,6 @@ impl Cover {
                 e => return Err(anyhow!(e)),
             }
         };
-
-        /*
-        process::Command::new("llvm-cov")
-            .args([
-                "show",
-                "-format=html",
-                &format!("--threads={}", self.jobs),
-                &format!("-output-dir={}", &output_dir),
-                &cmd,
-                &format!("-instr-profile={}", &prof_merged),
-            ])
-            .spawn()
-            .context("⚠️  cannot find llvm-profdata in your path, please install it")?
-            .wait()
-            .context("⚠️  couldn't wait for the llvm-profdata process")?;
-        */
 
         process::Command::new("grcov")
             .args([
