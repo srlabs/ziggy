@@ -3,7 +3,7 @@
 In the root project directory, run:
 
 ```
-cargo install afl honggfuzz
+cargo install cargo-afl honggfuzz
 cargo install --force --path .
 ```
 

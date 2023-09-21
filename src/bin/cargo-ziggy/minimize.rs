@@ -1,10 +1,11 @@
 use crate::{find_target, FuzzingEngines, Minimize};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::{env, fs::File, process};
 
 impl Minimize {
     pub fn minimize(&mut self) -> Result<(), anyhow::Error> {
-        self.target = find_target(&self.target)?;
+        self.target =
+            find_target(&self.target).context("⚠️  couldn't find target when minimizing")?;
 
         info!("Minimizing corpus");
 

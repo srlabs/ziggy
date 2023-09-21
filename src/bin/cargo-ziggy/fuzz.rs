@@ -6,7 +6,7 @@ use std::{
     env,
     fs::{self, File},
     io::Write,
-    path::{Path, PathBuf},
+    path::Path,
     process, thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -74,17 +74,18 @@ impl Fuzz {
 
         info!("Running fuzzer");
 
-        self.target = find_target(&self.target)?;
+        self.target = find_target(&self.target).context("⚠️  couldn't find target when fuzzing")?;
 
         let time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
 
         let crash_dir = format!("./output/{}/crashes/{}/", self.target, time);
         let crash_path = Path::new(&crash_dir);
         fs::create_dir_all(crash_path)?;
-
         fs::create_dir_all(Path::new(&self.corpus_afl()))?;
-
         fs::create_dir_all(Path::new(&self.corpus_honggfuzz()))?;
+
+        // self.share_all_corpora()?;
+        info!("self.share_all_corpora is DISABLED!");
 
         let _ = process::Command::new("mkdir")
             .args(["-p", &format!("./output/{}/logs/", self.target)])
@@ -111,6 +112,14 @@ impl Fuzz {
                 .stderr(process::Stdio::piped())
                 .spawn()?
                 .wait()?;
+
+            // We create an initial corpus file, so that AFL++ starts-up properly
+            let mut initial_corpus = File::create(self.corpus_shared() + "/init")?;
+            writeln!(
+                &mut initial_corpus,
+                "00000000000000000000********0000########111111111111111111111111"
+            )?;
+            drop(initial_corpus);
         }
 
         // We create an initial corpus file, so that AFL++ starts-up properly if corpus is empty
@@ -266,9 +275,9 @@ impl Fuzz {
                     }
                     _ => String::new(),
                 };
-                // A quarter of secondary fuzzers have the MOpt mutator enabled
-                let mopt_mutator = match job_num % 4 {
-                    1 => "-L0",
+                // 10% of secondary fuzzers have the MOpt mutator enabled
+                let mopt_mutator = match job_num % 10 {
+                    9 => "-L0",
                     _ => "",
                 };
                 // Power schedule
@@ -277,13 +286,15 @@ impl Fuzz {
                     .unwrap_or(&"fast");
                 // Old queue cycling
                 let old_queue_cycling = match job_num % 10 {
-                    9 => "-Z",
+                    8 => "-Z",
                     _ => "",
                 };
-                // Only cmplog for the first two instances
+                // Only few instances do cmplog
                 let cmplog_options = match job_num {
-                    0 => "-l2",
-                    1 => "-l2a",
+                    0 => "-l1",
+                    1 => "-l2",
+                    3 => "-l2a",
+                    22 => "-l3at",
                     _ => "-c-", // disable Cmplog, needs AFL++ 4.08a
                 };
                 // AFL timeout is in ms so we convert the value
@@ -305,8 +316,8 @@ impl Fuzz {
                     _ => process::Stdio::null(),
                 };
                 let final_sync = match job_num {
-                    0 => "1",
-                    _ => "0",
+                    0 => "AFL_FINAL_SYNC",
+                    _ => "_DUMMY_VAR",
                 };
 
                 fuzzer_handles.push(
@@ -343,7 +354,7 @@ impl Fuzz {
                         .env("AFL_NO_WARN_INSTABILITY", "1")
                         .env("AFL_FUZZER_STATS_UPDATE_INTERVAL", "10")
                         .env("AFL_IMPORT_FIRST", "1")
-                        .env("AFL_FINAL_SYNC", final_sync) // upcoming in v4.09c
+                        .env(final_sync, "1") // upcoming in v4.09c
                         .env("AFL_IGNORE_SEED_PROBLEMS", "1") // upcoming in v4.09c
                         .stdout(log_destination())
                         .stderr(log_destination())
@@ -498,14 +509,22 @@ impl Fuzz {
         Ok(())
     }
 
-    pub fn run_minimization(&self, output: &str, engine: FuzzingEngines) -> Result<()> {
+    pub fn run_minimization(&self, _output: &str, engine: FuzzingEngines) -> Result<()> {
         let term = Term::stdout();
 
-        let engine_str = match engine {
+        let _engine_str = match engine {
             FuzzingEngines::AFLPlusPlus => "AFL++",
             FuzzingEngines::Honggfuzz => "Honggfuzz",
         };
 
+        term.write_line(&format!(
+            "\n    {}",
+            &style("Running minimization DISABLED").magenta().bold()
+        ))?;
+
+        Ok(())
+
+        /*
         term.write_line(&format!(
             "\n    {}",
             &style(format!("Running {engine_str} minimization"))
@@ -515,6 +534,8 @@ impl Fuzz {
 
         let old_corpus_size = fs::read_dir(self.corpus_shared())
             .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
+
+        self.share_all_corpora()?;
 
         let output_corpus = &output.replace("{target_name}", &self.target);
 
@@ -553,6 +574,7 @@ impl Fuzz {
             }
         };
         Ok(())
+        */
     }
 
     pub fn print_stats(&self) {

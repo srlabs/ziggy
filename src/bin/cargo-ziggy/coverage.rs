@@ -1,45 +1,82 @@
 use crate::{find_target, Cover};
 use anyhow::{anyhow, Context, Result};
 use glob::glob;
-use std::{env, fs, process};
+use std::{env, fs, path::PathBuf, process};
 
 impl Cover {
     pub fn generate_coverage(&mut self) -> Result<(), anyhow::Error> {
         eprintln!("Generating coverage");
 
-        self.target = find_target(&self.target)?;
+        self.target =
+            find_target(&self.target).context("⚠️  couldn't find the target to start coverage")?;
 
         // The cargo executable
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
-        let coverage_rustflags = env::var("COVERAGE_RUSTFLAGS").unwrap_or_else(|_| String::from("-Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort"));
+        let coverage_rustflags = env::var("COVERAGE_RUSTFLAGS").unwrap_or_else(|_| String::from("--cfg=coverage -Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort"));
 
         // We build the runner with the appropriate flags for coverage
         process::Command::new(cargo)
             .args(["rustc", "--target-dir=target/coverage"])
             .env("RUSTFLAGS", coverage_rustflags)
-            .env("RUSTDOCFLAGS", "-Cpanic=abort")
+            .env("RUSTDOCFLAGS", "-Cpanic=unwind")
             .env("CARGO_INCREMENTAL", "0")
             .env("RUSTC_BOOTSTRAP", "1") // Trick to avoid forcing user to use rust nightly
-            .spawn()?
-            .wait()?;
+            .spawn()
+            .context("⚠️  couldn't spawn rustc for coverage")?
+            .wait()
+            .context("⚠️  couldn't wait for the rustc during coverage")?;
 
         // We remove the previous coverage files
         if let Ok(gcda_files) = glob("target/coverage/debug/deps/*.gcda") {
             for file in gcda_files.flatten() {
-                fs::remove_file(file)?;
+                let file_string = &file.display();
+                fs::remove_file(&file)
+                    .context(format!("⚠️  couldn't find {} during coverage", file_string))?;
             }
         }
 
-        // We run the target against the corpus
-        process::Command::new(format!("./target/coverage/debug/{}", &self.target))
-            .args([self
-                .corpus
+        let mut shared_corpus = PathBuf::new();
+
+        shared_corpus.push(
+            self.corpus
                 .display()
                 .to_string()
-                .replace("{target_name}", &self.target)])
-            .spawn()?
-            .wait()?;
+                .replace("{target_name}", &self.target)
+                .as_str(),
+        );
+
+        let mut afl_dir = PathBuf::new();
+        afl_dir.push(
+            shared_corpus
+                .display()
+                .to_string()
+                .replace("/shared_corpus", "/afl/mainaflfuzzer/queue")
+                .as_str(),
+        );
+
+        if afl_dir.is_dir() {
+            shared_corpus = afl_dir;
+        }
+
+        info!("Corpus directory is {}", shared_corpus.display());
+
+        // We run the target against the corpus
+        shared_corpus.canonicalize()?.read_dir()?.for_each(|input| {
+            let input = input.unwrap();
+            let input_path = input.path();
+
+            let result = process::Command::new(format!("./target/coverage/debug/{}", &self.target))
+                .args([input_path.as_os_str()])
+                .spawn()
+                .unwrap()
+                .wait_with_output()
+                .unwrap();
+
+            if !result.status.success() {
+                eprintln!("Coverage crashed on {}, continuing.", input_path.display())
+            }
+        });
 
         let source_or_workspace_root = match &self.source {
             Some(s) => s.display().to_string(),
@@ -87,8 +124,10 @@ impl Cover {
                 "--ignore-not-existing",
                 &format!("-o={output_dir}"),
             ])
-            .spawn()?
-            .wait()?;
+            .spawn()
+            .context("⚠️  cannot find grcov in your path, please install it")?
+            .wait()
+            .context("⚠️  couldn't wait for the grcov process")?;
 
         Ok(())
     }
