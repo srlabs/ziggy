@@ -39,6 +39,11 @@ impl AddSeeds {
                 .iter()
                 .filter(|a| a != &&""),
             )
+            .env("AFL_NO_STARTUP_CALIBRATION", "1")
+            .env("AFL_IGNORE_SEED_PROBLEMS", "1")
+            .env("AFL_NO_UI", "1")
+            .env("AFL_BENCH_JUST_ONE", "1")
+            .env("AFL_SYNC_TIME", "100")
             .spawn()?
             .wait()?;
         Ok(())
