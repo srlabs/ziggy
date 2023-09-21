@@ -14,39 +14,23 @@ use strip_ansi_escapes::strip_str;
 
 /// Main logic for managing fuzzers and the fuzzing process in ziggy.
 
-/// ## Minimization logic
+/// ## Initial minimization logic
 
-/// ### Initial minimization (AFL++)
-
-/// When launching fuzzers, if initial corpora exist, they are merged together and we minimize it for AFL++.
+/// When launching fuzzers, if initial corpora exist, they are merged together and we minimize it
+/// with both AFL++ and Honggfuzz.
 /// ```text
 /// # bash pseudocode
-/// mv all_afl_corpora/* corpus_afl/* corpus_honggfuzz/* corpus_shared/
+/// cp all_afl_corpora/* corpus_shared/* corpus_tmp/
 /// # run afl++ minimization
-/// afl++_minimization -i corpus_shared -o corpus_afl_tmp
-/// rm -r corpus_afl corpus_honggfuzz all_afl_corpora
-/// mv corpus_afl_tmp corpus_afl
+/// afl++_minimization -i corpus_tmp -o corpus_minimized
 /// # in parallel, run honggfuzz minimization
-/// honggfuzz_minimization -i corpus_shared -o corpus_honggfuzz_tmp
-/// mv corpus_honggfuzz_tmp corpus_honggfuzz
-/// afl++ -i corpus_afl -o all_afl_corpora &
-///   honggfuzz -i corpus_honggfuzz -o corpus_shared
+/// honggfuzz_minimization -i corpus_tmp -o corpus_minimized
+/// rm -rf corpus_shared corpus_tmp
+/// mv corpus_minimized corpus_shared
+/// afl++ -i corpus_shared -o all_afl_corpora &
+///   honggfuzz -i corpus_shared -o corpus_shared
 /// ```
 /// The `all_afl_corpora` directory corresponds to the `output/target_name/afl/**/queue/` directories.
-
-/// ### Fuzz-time minimization (Honggfuzz)
-
-/// During fuzzing, after a couple of hours (set this via the `-m` flag), Honggfuzz will shut down
-/// and ziggy will run a corpus minimization using the Honggfuzz engine. This will allow honggfuzz
-/// to benefit from what the other engines have found since this last happened.
-/// ```text
-/// # bash pseudocode
-/// cp all_afl_corpora/* corpus_shared/
-/// honggfuzz_minimization -i corpus_shared -o corpus_honggfuzz_tmp
-/// rm -r corpus_shared corpus_honggfuzz
-/// mv corpus_honggfuzz_tmp corpus_honggfuzz
-/// honggfuzz -i corpus_honggfuzz -o corpus_shared
-/// ```
 
 impl Fuzz {
     pub fn corpus_shared(&self) -> String {
@@ -56,12 +40,12 @@ impl Fuzz {
             .replace("{target_name}", &self.target)
     }
 
-    pub fn corpus_afl(&self) -> String {
-        format!("./output/{}/corpus_afl/", self.target)
+    pub fn corpus_tmp(&self) -> String {
+        format!("./output/{}/corpus_tmp/", self.target)
     }
 
-    pub fn corpus_honggfuzz(&self) -> String {
-        format!("./output/{}/corpus_honggfuzz/", self.target)
+    pub fn corpus_minimized(&self) -> String {
+        format!("./output/{}/corpus_minimized/", self.target)
     }
 
     // Manages the continuous running of fuzzers
@@ -81,11 +65,6 @@ impl Fuzz {
         let crash_dir = format!("./output/{}/crashes/{}/", self.target, time);
         let crash_path = Path::new(&crash_dir);
         fs::create_dir_all(crash_path)?;
-        fs::create_dir_all(Path::new(&self.corpus_afl()))?;
-        fs::create_dir_all(Path::new(&self.corpus_honggfuzz()))?;
-
-        // self.share_all_corpora()?;
-        info!("self.share_all_corpora is DISABLED!");
 
         let _ = process::Command::new("mkdir")
             .args(["-p", &format!("./output/{}/logs/", self.target)])
@@ -95,10 +74,19 @@ impl Fuzz {
 
         if Path::new(&self.corpus_shared()).exists() {
             if self.perform_initial_minimization {
-                self.move_corpora()?;
-                self.run_minimization(&self.corpus_shared())?;
-            } else {
-                self.copy_corpora()?;
+                fs::create_dir_all(&self.corpus_tmp())
+                    .context("Could not create temporary corpus")?;
+                self.copy_corpora()
+                    .context("Could not move all seeds to temporary corpus")?;
+                let _ = fs::remove_dir_all(&self.corpus_minimized());
+                self.run_minimization()
+                    .context("Failure while minimizing")?;
+                fs::remove_dir_all(&self.corpus_shared())
+                    .context("Could not remove shared corpus")?;
+                fs::rename(&self.corpus_minimized(), &self.corpus_shared())
+                    .context("Could not move minimized corpus over")?;
+                fs::remove_dir_all(&self.corpus_tmp())
+                    .context("Could not remove temporary corpus")?;
             }
         } else {
             let _ = process::Command::new("mkdir")
@@ -117,7 +105,7 @@ impl Fuzz {
         }
 
         // We create an initial corpus file, so that AFL++ starts-up properly if corpus is empty
-        let mut initial_corpus = File::create(self.corpus_afl() + "/init")?;
+        let mut initial_corpus = File::create(self.corpus_shared() + "/init")?;
         writeln!(&mut initial_corpus, "00000000")?;
         drop(initial_corpus);
 
@@ -314,7 +302,7 @@ impl Fuzz {
                                 "afl",
                                 "fuzz",
                                 &fuzzer_name,
-                                &format!("-i{}", self.corpus_afl()),
+                                &format!("-i{}", self.corpus_shared()),
                                 &format!("-p{power_schedule}"),
                                 &format!("-ooutput/{}/afl", self.target),
                                 &format!("-g{}", self.min_length),
@@ -384,7 +372,7 @@ impl Fuzz {
                         "HFUZZ_RUN_ARGS",
                         format!(
                             "-i{} -o{} -n{honggfuzz_jobs} -F{} {timeout_option} {dictionary_option}",
-                            &self.corpus_honggfuzz(),
+                            &self.corpus_shared(),
                             &self.corpus_shared(),
                             self.max_length,
                         ),
@@ -442,14 +430,8 @@ impl Fuzz {
         Ok(glob(&format!("./output/{}/afl/*/queue/*", self.target))
             .map_err(|_| anyhow!("Failed to read AFL++ queue glob pattern"))?
             .chain(
-                glob(&format!("{}/*", self.corpus_honggfuzz()))
+                glob(&format!("{}/*", self.corpus_shared()))
                     .map_err(|_| anyhow!("Failed to read Honggfuzz corpus glob pattern"))?,
-            )
-            // In theory this can be removed, but I want to account for the case where the AFL++
-            // queues have not been fully populated.
-            .chain(
-                glob(&format!("{}/*", self.corpus_afl()))
-                    .map_err(|_| anyhow!("Failed to read AFL++ corpus glob pattern"))?,
             )
             .flatten()
             .filter(|f| f.is_file())
@@ -463,7 +445,7 @@ impl Fuzz {
                 s.to_str().unwrap_or_default(),
                 format!(
                     "{}/{}",
-                    &self.corpus_shared(),
+                    &self.corpus_tmp(),
                     s.file_name()
                         .unwrap_or_default()
                         .to_str()
@@ -474,25 +456,7 @@ impl Fuzz {
         Ok(())
     }
 
-    // Move all corpora into `corpus_shared`
-    pub fn move_corpora(&self) -> Result<()> {
-        self.all_seeds()?.iter().for_each(|s| {
-            let _ = fs::rename(
-                s.to_str().unwrap_or_default(),
-                format!(
-                    "{}/{}",
-                    &self.corpus_shared(),
-                    s.file_name()
-                        .unwrap_or_default()
-                        .to_str()
-                        .unwrap_or_default(),
-                ),
-            );
-        });
-        Ok(())
-    }
-
-    pub fn run_minimization(&self, output: &str) -> Result<()> {
+    pub fn run_minimization(&self) -> Result<()> {
         let term = Term::stdout();
 
         term.write_line(&format!(
@@ -500,19 +464,15 @@ impl Fuzz {
             &style("Running minimization").magenta().bold()
         ))?;
 
-        let old_corpus_size = fs::read_dir(self.corpus_shared())
+        let input_corpus = &self.corpus_tmp();
+        let output_corpus = &self.corpus_minimized();
+
+        let old_corpus_size = fs::read_dir(input_corpus)
             .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
-
-        let output_corpus = &output.replace("{target_name}", &self.target);
-
-        process::Command::new("rm")
-            .args(["-r", output_corpus])
-            .output()
-            .map_err(|_| anyhow!("Could not remove minimization output corpus directory"))?;
 
         let mut minimization_args = Minimize {
             target: self.target.clone(),
-            input_corpus: PathBuf::from(&self.corpus_shared()),
+            input_corpus: PathBuf::from(input_corpus),
             output_corpus: PathBuf::from(output_corpus),
             jobs: self.jobs,
             engine: FuzzingEngines::All,
@@ -525,7 +485,7 @@ impl Fuzz {
                 term.move_cursor_up(1)?;
 
                 if new_corpus_size == *"err" || new_corpus_size == *"0" {
-                    term.write_line("error during minimization... please check the logs and make sure the right version of the fuzzers are installed")?;
+                    return Err(anyhow!("Please check the logs and make sure the right version of the fuzzers are installed"));
                 } else {
                     term.write_line(&format!(
                         "{} the corpus ({} -> {} files)             \n",
@@ -536,7 +496,7 @@ impl Fuzz {
                 }
             }
             Err(_) => {
-                term.write_line("error running minimization... probably a memory error")?;
+                return Err(anyhow!("Please check the logs, this might be an oom error"));
             }
         };
         Ok(())
