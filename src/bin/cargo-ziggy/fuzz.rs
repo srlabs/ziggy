@@ -6,7 +6,7 @@ use std::{
     env,
     fs::{self, File},
     io::Write,
-    path::Path,
+    path::{Path, PathBuf},
     process, thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -95,8 +95,10 @@ impl Fuzz {
 
         if Path::new(&self.corpus_shared()).exists() {
             if self.perform_initial_minimization {
-                // self.move_all_corpora()?;
-                self.run_minimization(&self.corpus_shared(), FuzzingEngines::AFLPlusPlus)?;
+                self.move_corpora()?;
+                self.run_minimization(&self.corpus_shared())?;
+            } else {
+                self.copy_corpora()?;
             }
         } else {
             let _ = process::Command::new("mkdir")
@@ -445,33 +447,8 @@ impl Fuzz {
         Ok(fuzzer_handles)
     }
 
-    // Copy all corpora into `corpus_shared`
-    pub fn _copy_corpora(&self) -> Result<()> {
-        for path in glob(&format!("./output/{}/afl/*/queue/*", self.target))
-            .map_err(|_| anyhow!("Failed to read AFL++ queue glob pattern"))?
-            .flatten()
-        {
-            if path.is_file() {
-                fs::copy(
-                    path.to_str()
-                        .ok_or_else(|| anyhow!("Could not parse input path"))?,
-                    format!(
-                        "{}/{}",
-                        &self.corpus_shared(),
-                        path.file_name()
-                            .ok_or_else(|| anyhow!("Could not parse input file name"))?
-                            .to_str()
-                            .ok_or_else(|| anyhow!("Could not parse input file name path"))?
-                    ),
-                )?;
-            }
-        }
-        Ok(())
-    }
-
-    // Move all corpora into `corpus_shared`
-    fn _move_all_corpora(&self) -> Result<()> {
-        for path in glob(&format!("./output/{}/afl/*/queue/*", self.target))
+    fn all_seeds(&self) -> Result<Vec<PathBuf>> {
+        Ok(glob(&format!("./output/{}/afl/*/queue/*", self.target))
             .map_err(|_| anyhow!("Failed to read AFL++ queue glob pattern"))?
             .chain(
                 glob(&format!("{}/*", self.corpus_honggfuzz()))
@@ -484,52 +461,56 @@ impl Fuzz {
                     .map_err(|_| anyhow!("Failed to read AFL++ corpus glob pattern"))?,
             )
             .flatten()
-        {
-            if path.is_file() {
-                fs::rename(
-                    path.to_str()
-                        .ok_or_else(|| anyhow!("Could not parse input path"))?,
-                    format!(
-                        "{}/{}",
-                        &self.corpus_shared(),
-                        path.file_name()
-                            .ok_or_else(|| anyhow!("Could not parse input file name"))?
-                            .to_str()
-                            .ok_or_else(|| anyhow!("Could not parse input file name path"))?
-                    ),
-                )?;
-            }
-        }
+            .filter(|f| f.is_file())
+            .collect())
+    }
+
+    // Copy all corpora into `corpus_shared`
+    pub fn copy_corpora(&self) -> Result<()> {
+        self.all_seeds()?.iter().for_each(|s| {
+            let _ = fs::copy(
+                s.to_str().unwrap_or_default(),
+                format!(
+                    "{}/{}",
+                    &self.corpus_shared(),
+                    s.file_name()
+                        .unwrap_or_default()
+                        .to_str()
+                        .unwrap_or_default(),
+                ),
+            );
+        });
         Ok(())
     }
 
-    pub fn run_minimization(&self, _output: &str, engine: FuzzingEngines) -> Result<()> {
+    // Move all corpora into `corpus_shared`
+    pub fn move_corpora(&self) -> Result<()> {
+        self.all_seeds()?.iter().for_each(|s| {
+            let _ = fs::rename(
+                s.to_str().unwrap_or_default(),
+                format!(
+                    "{}/{}",
+                    &self.corpus_shared(),
+                    s.file_name()
+                        .unwrap_or_default()
+                        .to_str()
+                        .unwrap_or_default(),
+                ),
+            );
+        });
+        Ok(())
+    }
+
+    pub fn run_minimization(&self, output: &str) -> Result<()> {
         let term = Term::stdout();
 
-        let _engine_str = match engine {
-            FuzzingEngines::AFLPlusPlus => "AFL++",
-            FuzzingEngines::Honggfuzz => "Honggfuzz",
-        };
-
         term.write_line(&format!(
             "\n    {}",
-            &style("Running minimization DISABLED").magenta().bold()
-        ))?;
-
-        Ok(())
-
-        /*
-        term.write_line(&format!(
-            "\n    {}",
-            &style(format!("Running {engine_str} minimization"))
-                .magenta()
-                .bold()
+            &style("Running minimization").magenta().bold()
         ))?;
 
         let old_corpus_size = fs::read_dir(self.corpus_shared())
             .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
-
-        self.share_all_corpora()?;
 
         let output_corpus = &output.replace("{target_name}", &self.target);
 
@@ -543,7 +524,7 @@ impl Fuzz {
             input_corpus: PathBuf::from(&self.corpus_shared()),
             output_corpus: PathBuf::from(output_corpus),
             jobs: self.jobs,
-            engine,
+            engine: FuzzingEngines::All,
         };
         match minimization_args.minimize() {
             Ok(_) => {
@@ -568,7 +549,6 @@ impl Fuzz {
             }
         };
         Ok(())
-        */
     }
 
     pub fn print_stats(&self) {
