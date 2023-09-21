@@ -129,56 +129,47 @@ impl Fuzz {
 
             self.print_stats();
 
-            // TODO Check if afl-whatsup also might provide us with this info?
-            if
-            /* TODO Other heuristic */
-            true {
-                if let Ok(afl_log) =
-                    fs::read_to_string(format!("./output/{}/logs/afl.log", self.target))
-                {
-                    if afl_log.contains("echo core >/proc/sys/kernel/core_pattern") {
-                        stop_fuzzers(&mut processes)?;
-                        eprintln!("AFL++ needs you to run the following command before it can start fuzzing:\n");
-                        eprintln!("    echo core >/proc/sys/kernel/core_pattern\n");
-                        return Ok(());
-                    }
-                    if afl_log.contains("cd /sys/devices/system/cpu") {
-                        stop_fuzzers(&mut processes)?;
-                        eprintln!("AFL++ needs you to run the following commands before it can start fuzzing:\n");
-                        eprintln!("    cd /sys/devices/system/cpu");
-                        eprintln!("    echo performance | tee cpu*/cpufreq/scaling_governor\n");
-                        return Ok(());
-                    }
+            if let Ok(afl_log) =
+                fs::read_to_string(format!("./output/{}/logs/afl.log", self.target))
+            {
+                if afl_log.contains("echo core >/proc/sys/kernel/core_pattern") {
+                    stop_fuzzers(&mut processes)?;
+                    eprintln!("AFL++ needs you to run the following command before it can start fuzzing:\n");
+                    eprintln!("    echo core >/proc/sys/kernel/core_pattern\n");
+                    return Ok(());
+                }
+                if afl_log.contains("cd /sys/devices/system/cpu") {
+                    stop_fuzzers(&mut processes)?;
+                    eprintln!("AFL++ needs you to run the following commands before it can start fuzzing:\n");
+                    eprintln!("    cd /sys/devices/system/cpu");
+                    eprintln!("    echo performance | tee cpu*/cpufreq/scaling_governor\n");
+                    return Ok(());
                 }
             }
 
-            // We only start checking for crashes after AFL++ has started responding to us
-            if
-            /* TODO Other heuristic */
-            true {
-                // We check AFL++ and Honggfuzz's outputs for crash files
-                let crash_dirs = glob(&format!("./output/{}/afl/*/crashes", self.target))
-                    .map_err(|_| anyhow!("Failed to read crashes glob pattern"))?
-                    .flatten()
-                    .chain(vec![format!(
-                        "./output/{}/honggfuzz/{}",
-                        self.target, self.target
-                    )
-                    .into()]);
+            // We check AFL++ and Honggfuzz's outputs for crash files and copy them over to
+            // our own crashes directory
+            let crash_dirs = glob(&format!("./output/{}/afl/*/crashes", self.target))
+                .map_err(|_| anyhow!("Failed to read crashes glob pattern"))?
+                .flatten()
+                .chain(vec![format!(
+                    "./output/{}/honggfuzz/{}",
+                    self.target, self.target
+                )
+                .into()]);
 
-                for crash_dir in crash_dirs {
-                    if let Ok(crashes) = fs::read_dir(crash_dir) {
-                        for crash_input in crashes.flatten() {
-                            let file_name = crash_input.file_name();
-                            let to_path = crash_path.join(&file_name);
-                            if to_path.exists()
-                                || ["", "README.txt", "HONGGFUZZ.REPORT.TXT", "input"]
-                                    .contains(&file_name.to_str().unwrap_or_default())
-                            {
-                                continue;
-                            }
-                            fs::copy(crash_input.path(), to_path)?;
+            for crash_dir in crash_dirs {
+                if let Ok(crashes) = fs::read_dir(crash_dir) {
+                    for crash_input in crashes.flatten() {
+                        let file_name = crash_input.file_name();
+                        let to_path = crash_path.join(&file_name);
+                        if to_path.exists()
+                            || ["", "README.txt", "HONGGFUZZ.REPORT.TXT", "input"]
+                                .contains(&file_name.to_str().unwrap_or_default())
+                        {
+                            continue;
                         }
+                        fs::copy(crash_input.path(), to_path)?;
                     }
                 }
             }
@@ -430,7 +421,7 @@ impl Fuzz {
         }
         if honggfuzz_jobs > 0 {
             eprintln!(
-                "  {}\n",
+                "  {}",
                 style(format!(
                     "tail -f ./output/{}/logs/honggfuzz.log",
                     self.target
@@ -438,7 +429,7 @@ impl Fuzz {
                 .bold()
             );
         }
-        eprintln!("\n\n");
+        eprintln!("\n\n\n");
         eprintln!("   Waiting for fuzzers to");
         eprintln!("   finish executing the");
         eprintln!("   existing corpus once");
@@ -553,7 +544,7 @@ impl Fuzz {
 
     pub fn print_stats(&self) {
         // First step: execute afl-whatsup
-        let mut afl_status = String::from("running ");
+        let mut afl_status = String::from("running ─");
         let mut afl_total_run_time = String::new();
         let mut afl_total_execs = String::new();
         let mut afl_instances = String::new();
@@ -602,7 +593,7 @@ impl Fuzz {
         }
 
         // Second step: Get stats from honggfuzz logs
-        let mut hf_status = String::from("running");
+        let mut hf_status = String::from("running ─");
         let mut hf_minimization_in = String::new();
         let mut hf_total_execs = String::new();
         let mut hf_threads = String::new();
@@ -611,7 +602,7 @@ impl Fuzz {
         let mut hf_crashes = String::new();
         let mut hf_new_finds = String::new();
 
-        if self.no_honggfuzz {
+        if self.no_honggfuzz || (self.jobs == 1 && !self.no_afl) {
             hf_status = String::from("disabled ");
         } else {
             let hf_stats_process = process::Command::new("tail")
@@ -693,9 +684,9 @@ impl Fuzz {
         // TODO Colors, of course!
         // Move 9 lines up and clear line
         eprint!("\x1B[9A\x1B[K");
-        eprintln!("┌── afl++ {afl_status:0}────────────────────┬─ honggfuzz {hf_status:0} ─────────────────┐");
+        eprintln!("┌── afl++ {afl_status:0}───────────────────┬─ honggfuzz {hf_status:0}────────────────┐");
         eprint!("\x1B[K");
-        eprintln!("│  total run time : {afl_total_run_time:17} │ minimization in : {hf_minimization_in:17} │");
+        eprintln!("│  total run time : {afl_total_run_time:17} │        run time : {hf_minimization_in:17} │");
         eprint!("\x1B[K");
         eprintln!(
             "│     total execs : {afl_total_execs:17} │     total execs : {hf_total_execs:17} │"
