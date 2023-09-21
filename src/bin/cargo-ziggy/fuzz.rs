@@ -75,128 +75,130 @@ impl Fuzz {
 
         let mut crash_has_been_found = false;
 
-        // loop {
-        let sleep_duration = Duration::from_millis(1000);
-        thread::sleep(sleep_duration);
+        loop {
+            let sleep_duration = Duration::from_millis(1000);
+            thread::sleep(sleep_duration);
 
-        // We retrieve the stats from the fuzzer_stats file
-        if let Ok(file) = File::open(fuzzer_stats_file.clone()) {
-            let lines = BufReader::new(file).lines();
-            for line in lines.flatten() {
-                match &line[..20] {
-                    "execs_ps_last_min : " => exec_speed = String::from(&line[20..]),
-                    "execs_done        : " => execs_done = String::from(&line[20..]),
-                    "edges_found       : " => edges_found = String::from(&line[20..]),
-                    "total_edges       : " => total_edges = String::from(&line[20..]),
-                    "saved_crashes     : " => saved_crashes = String::from(&line[20..]),
-                    _ => {}
+            // We retrieve the stats from the fuzzer_stats file
+            if let Ok(file) = File::open(fuzzer_stats_file.clone()) {
+                let lines = BufReader::new(file).lines();
+                for line in lines.flatten() {
+                    match &line[..20] {
+                        "execs_ps_last_min : " => exec_speed = String::from(&line[20..]),
+                        "execs_done        : " => execs_done = String::from(&line[20..]),
+                        "edges_found       : " => edges_found = String::from(&line[20..]),
+                        "total_edges       : " => total_edges = String::from(&line[20..]),
+                        "saved_crashes     : " => saved_crashes = String::from(&line[20..]),
+                        _ => {}
+                    }
+                }
+                if saved_crashes.trim() != "0" && !saved_crashes.trim().is_empty() {
+                    crash_has_been_found = true;
                 }
             }
-            if saved_crashes.trim() != "0" && !saved_crashes.trim().is_empty() {
-                crash_has_been_found = true;
-            }
-        }
 
-        if exec_speed.is_empty() || exec_speed == "0.00" {
-            if let Ok(afl_log) =
-                fs::read_to_string(format!("./output/{}/logs/afl.log", self.target))
-            {
-                if afl_log.contains("echo core >/proc/sys/kernel/core_pattern") {
-                    stop_fuzzers(&mut processes)?;
-                    eprintln!("AFL++ needs you to run the following command before it can start fuzzing:\n");
-                    eprintln!("    echo core >/proc/sys/kernel/core_pattern\n");
-                    return Ok(());
-                }
-                if afl_log.contains("cd /sys/devices/system/cpu") {
-                    stop_fuzzers(&mut processes)?;
-                    eprintln!("AFL++ needs you to run the following commands before it can start fuzzing:\n");
-                    eprintln!("    cd /sys/devices/system/cpu");
-                    eprintln!("    echo performance | tee cpu*/cpufreq/scaling_governor\n");
-                    return Ok(());
-                }
-            }
-        }
-
-        // We print the new values
-        term.move_cursor_up(7)?;
-        let exec_speed_formated = match exec_speed.as_str() {
-            "0.00" | "" => String::from("..."),
-            _ => utils::stringify_integer(exec_speed.parse::<f64>().unwrap_or_default() as u64),
-        };
-        term.write_line(&format!(
-            "{} {}/sec  ",
-            style("          exec speed :").dim(),
-            exec_speed_formated,
-        ))?;
-        term.write_line(&format!(
-            "{} {}      ",
-            style("          execs done :").dim(),
-            utils::stringify_integer(execs_done.parse().unwrap_or_default()),
-        ))?;
-        let edges_percentage = 100f64 * edges_found.parse::<f64>().unwrap_or_default()
-            / total_edges.parse::<f64>().unwrap_or(1f64);
-        term.write_line(&format!(
-            "{} {} ({:.2}%)          ",
-            style("         edges found :").dim(),
-            utils::stringify_integer(edges_found.parse().unwrap_or_default()),
-            &edges_percentage
-        ))?;
-        term.write_line(&format!(
-            "{} {}         ",
-            style("       saved crashes :").dim(),
-            utils::stringify_integer(saved_crashes.parse().unwrap_or_default()),
-        ))?;
-        if crash_has_been_found {
-            term.write_line("\nCrashes have been found       ")?;
-        } else {
-            term.write_line("\nNo crash has been found so far")?;
-        }
-        term.write_line("")?;
-
-        // We only start checking for crashes after AFL++ has started responding to us
-        if !exec_speed.is_empty() || exec_speed == "0.00" {
-            // We check AFL++ and Honggfuzz's outputs for crash files
-            //let afl_crash_dir = format!("./output/{}/afl/mainaflfuzzer/crashes/", self.target);
-
-            let crash_dirs = glob(&format!("./output/{}/afl/*/crashes", self.target))
-                .map_err(|_| anyhow!("Failed to read crashes glob pattern"))?
-                .flatten()
-                .chain(vec![format!(
-                    "./output/{}/honggfuzz/{}/",
-                    self.target, self.target
-                )
-                .into()]);
-
-            for crash_dir in crash_dirs {
-                if let Ok(crashes) = fs::read_dir(crash_dir) {
-                    for crash_input in crashes.flatten() {
-                        let file_name = crash_input.file_name();
-                        let to_path = ziggy_crash_path.join(&file_name);
-                        if to_path.exists()
-                            || ["", "README.txt", "HONGGFUZZ.REPORT.TXT", "input"]
-                                .contains(&file_name.to_str().unwrap_or_default())
-                        {
-                            continue;
-                        }
-                        crash_has_been_found = true;
-                        fs::copy(crash_input.path(), to_path)?;
+            if exec_speed.is_empty() || exec_speed == "0.00" {
+                if let Ok(afl_log) =
+                    fs::read_to_string(format!("./output/{}/logs/afl.log", self.target))
+                {
+                    if afl_log.contains("echo core >/proc/sys/kernel/core_pattern") {
+                        stop_fuzzers(&mut processes)?;
+                        eprintln!("AFL++ needs you to run the following command before it can start fuzzing:\n");
+                        eprintln!("    echo core >/proc/sys/kernel/core_pattern\n");
+                        return Ok(());
+                    }
+                    if afl_log.contains("cd /sys/devices/system/cpu") {
+                        stop_fuzzers(&mut processes)?;
+                        eprintln!("AFL++ needs you to run the following commands before it can start fuzzing:\n");
+                        eprintln!("    cd /sys/devices/system/cpu");
+                        eprintln!("    echo performance | tee cpu*/cpufreq/scaling_governor\n");
+                        return Ok(());
                     }
                 }
             }
+
+            // We print the new values
+            term.move_cursor_up(7)?;
+            let exec_speed_formated = match exec_speed.as_str() {
+                "0.00" | "" => String::from("..."),
+                _ => utils::stringify_integer(exec_speed.parse::<f64>().unwrap_or_default() as u64),
+            };
+            term.write_line(&format!(
+                "{} {}/sec  ",
+                style("          exec speed :").dim(),
+                exec_speed_formated,
+            ))?;
+            term.write_line(&format!(
+                "{} {}      ",
+                style("          execs done :").dim(),
+                utils::stringify_integer(execs_done.parse().unwrap_or_default()),
+            ))?;
+            let edges_percentage = 100f64 * edges_found.parse::<f64>().unwrap_or_default()
+                / total_edges.parse::<f64>().unwrap_or(1f64);
+            term.write_line(&format!(
+                "{} {} ({:.2}%)          ",
+                style("         edges found :").dim(),
+                utils::stringify_integer(edges_found.parse().unwrap_or_default()),
+                &edges_percentage
+            ))?;
+            term.write_line(&format!(
+                "{} {}         ",
+                style("       saved crashes :").dim(),
+                utils::stringify_integer(saved_crashes.parse().unwrap_or_default()),
+            ))?;
+            if crash_has_been_found {
+                term.write_line("\nCrashes have been found       ")?;
+            } else {
+                term.write_line("\nNo crash has been found so far")?;
+            }
+            term.write_line("")?;
+
+            // We only start checking for crashes after AFL++ has started responding to us
+            if !exec_speed.is_empty() || exec_speed == "0.00" {
+                // We check AFL++ and Honggfuzz's outputs for crash files
+                //let afl_crash_dir = format!("./output/{}/afl/mainaflfuzzer/crashes/", self.target);
+
+                let crash_dirs = glob(&format!("./output/{}/afl/*/crashes", self.target))
+                    .map_err(|_| anyhow!("Failed to read crashes glob pattern"))?
+                    .flatten()
+                    .chain(vec![format!(
+                        "./output/{}/honggfuzz/{}/",
+                        self.target, self.target
+                    )
+                    .into()]);
+
+                for crash_dir in crash_dirs {
+                    if let Ok(crashes) = fs::read_dir(crash_dir) {
+                        for crash_input in crashes.flatten() {
+                            let file_name = crash_input.file_name();
+                            let to_path = ziggy_crash_path.join(&file_name);
+                            if to_path.exists()
+                                || ["", "README.txt", "HONGGFUZZ.REPORT.TXT", "input"]
+                                    .contains(&file_name.to_str().unwrap_or_default())
+                            {
+                                continue;
+                            }
+                            crash_has_been_found = true;
+                            fs::copy(crash_input.path(), to_path)?;
+                        }
+                    }
+                }
+            }
+
+            if processes
+                .iter_mut()
+                .all(|p| p.try_wait().unwrap_or(None).is_some())
+            {
+                stop_fuzzers(&mut processes)?;
+
+                //self.run_minimization()?;
+                //processes = self.spawn_new_fuzzers()?;
+
+                // Louis: this is weirdly not reached:
+                warn!("Fuzzers stopped, check for errors!");
+                return Ok(());
+            }
         }
-
-        if processes
-            .iter_mut()
-            .all(|p| p.try_wait().unwrap_or(None).is_some())
-        {
-            stop_fuzzers(&mut processes)?;
-
-            //self.run_minimization()?;
-            //processes = self.spawn_new_fuzzers()?;
-
-            warn!("Fuzzers stopped, check for errors!");
-        }
-        // }
         Ok(())
     }
 
