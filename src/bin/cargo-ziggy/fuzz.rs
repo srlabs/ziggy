@@ -190,11 +190,6 @@ impl Fuzz {
                 .all(|p| p.try_wait().unwrap_or(None).is_some())
             {
                 stop_fuzzers(&mut processes)?;
-
-                //self.run_minimization()?;
-                //processes = self.spawn_new_fuzzers()?;
-
-                // Louis: this is weirdly not reached:
                 warn!("Fuzzers stopped, check for errors!");
                 return Ok(());
             }
