@@ -26,9 +26,9 @@ log = { version = "0.4.20", optional = true }
 env_logger = { version = "0.10.0", optional = true }
 rand = "0.8"
 libc = "0.2.147"
-tokio = { version = "1", features = ["full"] }
-async-std = "1.10"
+tokio = { version = "1", features = ["full"], optional = true }
+async-std = { version = "1.10", optional = true }
 
 [features]
 default = ["cli"]
-cli = ["clap", "console", "glob", "toml", "anyhow", "serde_json", "log", "env_logger"]
+cli = ["clap", "console", "glob", "toml", "anyhow", "serde_json", "log", "env_logger", "tokio", "async-std"]

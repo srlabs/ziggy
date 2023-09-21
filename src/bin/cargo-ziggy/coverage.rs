@@ -105,7 +105,7 @@ impl Cover {
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
         // Set rustc flags
-        let coverage_rustflags = env::var("COVERAGE_RUSTFLAGS").unwrap_or_else(|_| String::from("--cfg=coverage -Zinstrument-coverage -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort"));
+        let coverage_rustflags = env::var("COVERAGE_RUSTFLAGS").unwrap_or_else(|_| String::from("--cfg=coverage -Cinstrument-coverage -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort"));
 
         // We build the runner with the appropriate flags for coverage
         process::Command::new(cargo)
