@@ -6,7 +6,7 @@ use std::{
     env,
     fs::{self, File},
     io::{BufRead, BufReader, Write},
-    path::{Path, PathBuf},
+    path::Path,
     process, thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -190,16 +190,10 @@ impl Fuzz {
                 .all(|p| p.try_wait().unwrap_or(None).is_some())
             {
                 stop_fuzzers(&mut processes)?;
-
-                //self.run_minimization()?;
-                //processes = self.spawn_new_fuzzers()?;
-
-                // Louis: this is weirdly not reached:
                 warn!("Fuzzers stopped, check for errors!");
                 return Ok(());
             }
         }
-        Ok(())
     }
 
     // Spawns new fuzzers
@@ -493,8 +487,8 @@ impl Fuzz {
             &style("Running minimization DISABLED").magenta().bold()
         ))?;
 
-        return Ok(());
-
+        Ok(())
+        /*
         self.share_all_corpora()?;
 
         let old_corpus_size = fs::read_dir(self.parsed_corpus())
@@ -539,6 +533,7 @@ impl Fuzz {
             }
         };
         Ok(())
+        */
     }
 
     pub fn parsed_corpus(&self) -> String {

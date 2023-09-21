@@ -52,9 +52,6 @@ pub const DEFAULT_CRASHES_DIR: &str = "./output/{target_name}/crashes/";
 
 pub const DEFAULT_TRIAGE_DIR: &str = "./output/{target_name}/triage/";
 
-// We want to make sure we don't mistake a minimization kill for a found crash
-const SECONDS_TO_WAIT_AFTER_KILL: u32 = 5;
-
 #[derive(Parser)]
 #[clap(name = "cargo")]
 #[clap(bin_name = "cargo")]
