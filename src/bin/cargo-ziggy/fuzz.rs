@@ -6,7 +6,7 @@ use std::{
     env,
     fs::{self, File},
     io::{BufRead, BufReader, Write},
-    path::{Path, PathBuf},
+    path::Path,
     process, thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -52,7 +52,7 @@ impl Fuzz {
             .wait()?;
 
         if Path::new(&self.parsed_corpus()).exists() {
-            if !self.skip_initial_minimization {
+            if self.perform_initial_minimization {
                 self.run_minimization()?;
             }
         } else {
@@ -185,17 +185,13 @@ impl Fuzz {
                 }
             }
 
-            // Every DEFAULT_MINIMIZATION_TIMEOUT, the fuzzers will stop and we will minimize the
-            // shared corpus, before launching the fuzzers again
             if processes
                 .iter_mut()
                 .all(|p| p.try_wait().unwrap_or(None).is_some())
             {
                 stop_fuzzers(&mut processes)?;
-
-                self.run_minimization()?;
-
-                processes = self.spawn_new_fuzzers()?;
+                warn!("Fuzzers stopped, check for errors!");
+                return Ok(());
             }
         }
     }
@@ -242,7 +238,10 @@ impl Fuzz {
                 .wait()?;
 
             // https://aflplus.plus/docs/fuzzing_in_depth/#c-using-multiple-cores
-            let afl_modes = ["fast", "explore", "coe", "lin", "quad", "exploit", "rare"];
+            let afl_modes = [
+                "explore", "fast", "coe", "lin", "quad", "exploit", "rare", "explore", "fast",
+                "mmopt",
+            ];
 
             for job_num in 0..afl_jobs {
                 // We set the fuzzer name, and if it's the main or a secondary fuzzer
@@ -276,9 +275,9 @@ impl Fuzz {
                 };
                 // Only few instances do cmplog
                 let cmplog_options = match job_num {
-                    0 => "-l1",
-                    1 => "-l2",
-                    3 => "-l2a",
+                    1 => "-l2a",
+                    3 => "-l1",
+                    14 => "-l2a",
                     22 => "-l3at",
                     _ => "-c-", // disable Cmplog, needs AFL++ 4.08a
                 };
@@ -291,6 +290,17 @@ impl Fuzz {
                     Some(d) => format!("-x{}", &d.display().to_string()),
                     None => String::new(),
                 };
+                let mutation_option = match job_num / 5 {
+                    0..=1 => "-P600",
+                    2..=3 => "-Pexplore",
+                    _ => "-Pexploit",
+                };
+                /* wait for afl crate update
+                let mutation_option = match job_num / 2 {
+                    0 => "-abinary",
+                    _ => "-adefault",
+                };
+                */
                 let log_destination = || match job_num {
                     0 => File::create(format!("output/{}/logs/afl.log", self.target))
                         .unwrap()
@@ -318,14 +328,12 @@ impl Fuzz {
                                 &format!("-g{}", self.min_length),
                                 &format!("-G{}", self.max_length),
                                 &use_shared_corpus,
+                                // &format!("-V{}", self.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL, &use_initial_corpus_dir),
                                 &use_initial_corpus_dir,
-                                &format!(
-                                    "-V{}",
-                                    self.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL
-                                ),
                                 old_queue_cycling,
                                 cmplog_options,
                                 mopt_mutator,
+                                mutation_option,
                                 &timeout_option_afl,
                                 &dictionary_option,
                                 &format!("./target/afl/debug/{}", self.target),
@@ -383,8 +391,9 @@ impl Fuzz {
                     .env(
                         "HFUZZ_RUN_ARGS",
                         format!(
-                            "--run_time={} -i{} -n{} -F{} {timeout_option} {dictionary_option}",
-                            self.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL,
+                            "-i{} -n{} -F{} {timeout_option} {dictionary_option}",
+                            // "--run_time={} -i{} -n{} -F{} {timeout_option} {dictionary_option}",
+                            // self.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL,
                             &self.parsed_corpus(),
                             honggfuzz_jobs,
                             self.max_length,
@@ -478,8 +487,8 @@ impl Fuzz {
             &style("Running minimization DISABLED").magenta().bold()
         ))?;
 
-        return Ok(());
-
+        Ok(())
+        /*
         self.share_all_corpora()?;
 
         let old_corpus_size = fs::read_dir(self.parsed_corpus())
@@ -524,6 +533,7 @@ impl Fuzz {
             }
         };
         Ok(())
+        */
     }
 
     pub fn parsed_corpus(&self) -> String {

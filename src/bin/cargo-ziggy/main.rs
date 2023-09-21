@@ -8,6 +8,7 @@ mod fuzz;
 mod minimize;
 mod plot;
 mod run;
+mod triage;
 mod utils;
 
 #[cfg(feature = "cli")]
@@ -47,8 +48,9 @@ pub const DEFAULT_MINIMIZATION_CORPUS: &str = "./output/{target_name}/minimized_
 
 pub const DEFAULT_PLOT_DIR: &str = "./output/{target_name}/plot/";
 
-// We want to make sure we don't mistake a minimization kill for a found crash
-const SECONDS_TO_WAIT_AFTER_KILL: u32 = 5;
+pub const DEFAULT_CRASHES_DIR: &str = "./output/{target_name}/crashes/";
+
+pub const DEFAULT_TRIAGE_DIR: &str = "./output/{target_name}/triage/";
 
 #[derive(Parser)]
 #[clap(name = "cargo")]
@@ -85,6 +87,9 @@ pub enum Ziggy {
 
     /// Add seeds to the running AFL fuzzers
     AddSeeds(AddSeeds),
+
+    /// Triage crashes found with casr - currently only works for AFL++
+    Triage(Triage),
 }
 
 #[derive(Args)]
@@ -144,9 +149,13 @@ pub struct Fuzz {
     #[clap(long = "no-honggfuzz", action)]
     no_honggfuzz: bool,
 
-    /// Skip initial minimization
+    /// Skip initial minimization - NOT USED ANYMORE!
     #[clap(long = "skip-initial-minimization", action)]
     skip_initial_minimization: bool,
+
+    /// Perform initial minimization - not active yet!
+    #[clap(long = "perform-initial-minimization", action, default_value_t = false)]
+    perform_initial_minimization: bool,
 }
 
 #[derive(Args)]
@@ -213,6 +222,24 @@ pub struct Plot {
 }
 
 #[derive(Args)]
+pub struct Triage {
+    /// Target to use
+    #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
+    target: String,
+    /// Triage output directory to be written to (must be empty or not exist)
+    #[clap(short, long, value_name = "TARGET", default_value = DEFAULT_TRIAGE_DIR)]
+    output: String,
+    /// Number of concurent fuzzing jobs
+    #[clap(short, long, value_name = "NUM", default_value_t = 1)]
+    jobs: u32,
+    /* future feature, wait for casr
+    /// Crash directory to be sourced from
+    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CRASHES_DIR)]
+    input: PathBuf,
+    */
+}
+
+#[derive(Args)]
 pub struct AddSeeds {
     /// Target to use
     #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
@@ -240,6 +267,9 @@ fn main() -> Result<(), anyhow::Error> {
             .context("Failure generating coverage"),
         Ziggy::Plot(mut args) => args.generate_plot().context("Failure generating plot"),
         Ziggy::AddSeeds(mut args) => args.add_seeds().context("Failure addings seeds to AFL"),
+        Ziggy::Triage(mut args) => args
+            .triage()
+            .context("Triaging with casr failed, try \"cargo install casr\""),
     }
 }
 

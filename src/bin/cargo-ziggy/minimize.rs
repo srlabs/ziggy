@@ -1,6 +1,6 @@
 use crate::{find_target, Minimize};
 use anyhow::{Context, Result};
-use std::{env, fs::File, process};
+// use std::{env, fs::File, process};
 
 impl Minimize {
     pub fn minimize(&mut self) -> Result<(), anyhow::Error> {
@@ -9,8 +9,8 @@ impl Minimize {
 
         info!("Minimizing corpus IS DISABLED");
 
-        return Ok(());
-
+        Ok(())
+        /*
         // The cargo executable
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
@@ -54,7 +54,7 @@ impl Minimize {
             .context("⚠️  couldn't spawn afl cmin")?
             .wait()
             .context("⚠️  couldn't spawn afl cmin")?;
-
+        */
         /*
         // HONGGFUZZ minimization
         process::Command::new(cargo)
@@ -86,6 +86,6 @@ impl Minimize {
             .wait()?;
         */
 
-        Ok(())
+        // Ok(())
     }
 }
