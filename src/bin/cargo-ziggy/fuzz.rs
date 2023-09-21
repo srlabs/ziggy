@@ -446,7 +446,7 @@ impl Fuzz {
     }
 
     // Copy all corpora into `corpus_shared`
-    pub fn copy_corpora(&self) -> Result<()> {
+    pub fn _copy_corpora(&self) -> Result<()> {
         for path in glob(&format!("./output/{}/afl/*/queue/*", self.target))
             .map_err(|_| anyhow!("Failed to read AFL++ queue glob pattern"))?
             .flatten()
@@ -470,7 +470,7 @@ impl Fuzz {
     }
 
     // Move all corpora into `corpus_shared`
-    fn move_all_corpora(&self) -> Result<()> {
+    fn _move_all_corpora(&self) -> Result<()> {
         for path in glob(&format!("./output/{}/afl/*/queue/*", self.target))
             .map_err(|_| anyhow!("Failed to read AFL++ queue glob pattern"))?
             .chain(
