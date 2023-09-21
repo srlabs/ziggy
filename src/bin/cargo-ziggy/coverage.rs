@@ -1,7 +1,7 @@
 use crate::{find_target, Cover};
 use anyhow::{anyhow, Context, Result};
 use async_std::stream::StreamExt;
-use std::{env, fs, io::Write, path::PathBuf, process, sync::Arc};
+use std::{env, fs, /*io::Write,*/ path::PathBuf, process, sync::Arc};
 use tokio::{runtime, sync::Semaphore};
 
 impl Cover {
@@ -76,16 +76,39 @@ impl Cover {
 
     pub fn generate_coverage(&mut self) -> Result<(), anyhow::Error> {
         eprintln!("Generating coverage");
+        eprintln!();
 
+        Self::check_program("grcov");
+        /*
         Self::check_program("llvm-profdata");
         Self::check_program("llvm-cov");
+        */
 
         self.target =
             find_target(&self.target).context("⚠️  couldn't find the target to start coverage")?;
 
+        let source_or_workspace_root = match &self.source {
+            Some(s) => s.display().to_string(),
+            None => {
+                let metadata_output = std::process::Command::new("cargo")
+                    .arg("metadata")
+                    .output()
+                    .context("Failed to run cargo metadata")?;
+                let stdout =
+                    String::from_utf8(metadata_output.stdout).context("Failed to read stdout")?;
+                let metadata: serde_json::Value =
+                    serde_json::from_str(&stdout).context("Failed to parse JSON")?;
+                metadata["workspace_root"]
+                    .as_str()
+                    .context("Failed to get workspace root")?
+                    .to_string()
+            }
+        };
+
         // The cargo executable
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
+        // Set rustc flags
         let coverage_rustflags = env::var("COVERAGE_RUSTFLAGS").unwrap_or_else(|_| String::from("--cfg=coverage -Zinstrument-coverage -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort"));
 
         // We build the runner with the appropriate flags for coverage
@@ -145,6 +168,7 @@ impl Cover {
             profile_format,
         ));
 
+        /*
         // the profile data is saved to prof_dir, for the next step these
         // files have to be written into a text file.
         println!();
@@ -164,6 +188,8 @@ impl Cover {
         }
         let _ = fd.flush();
 
+        if self.jobs == 1 { self.jobs = 0; }
+
         // now we merge the profile data
         println!("Merging profile data ...");
         let prof_merged = format!("{}/merged.profdata", &prof_dir);
@@ -174,13 +200,16 @@ impl Cover {
                 &prof_merged,
                 "-f",
                 &prof_collection,
+                "--sparse",
                 &format!("--num-threads={}", self.jobs),
             ])
             .spawn()
             .context("⚠️  cannot find llvm-profdata in your path, please install it")?
             .wait()
             .context("⚠️  couldn't wait for the llvm-profdata process")?;
+        */
 
+        println!();
         println!("Generating coverage report ...");
 
         let output_dir = self
@@ -197,10 +226,12 @@ impl Cover {
             }
         };
 
+        /*
         process::Command::new("llvm-cov")
             .args([
                 "show",
                 "-format=html",
+                &format!("--threads={}", self.jobs),
                 &format!("-output-dir={}", &output_dir),
                 &cmd,
                 &format!("-instr-profile={}", &prof_merged),
@@ -209,6 +240,26 @@ impl Cover {
             .context("⚠️  cannot find llvm-profdata in your path, please install it")?
             .wait()
             .context("⚠️  couldn't wait for the llvm-profdata process")?;
+        */
+
+        process::Command::new("grcov")
+            .args([
+                ".",
+                &format!("-b=./target/coverage/debug/{}", self.target),
+                &format!("-s={}", source_or_workspace_root),
+                "-t=html",
+                "--llvm",
+                "--branch",
+                "--ignore-not-existing",
+                "--threads",
+                &format!("{}", self.jobs),
+                "--guess-directory-when-missing",
+                &format!("-o={}", output_dir),
+            ])
+            .spawn()
+            .context("⚠️  cannot find grcov in your path, please install it")?
+            .wait()
+            .context("⚠️  couldn't wait for the grcov process")?;
 
         println!();
         println!("Coverage report is ready at {}", output_dir);
