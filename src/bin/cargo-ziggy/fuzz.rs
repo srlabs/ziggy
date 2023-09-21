@@ -6,7 +6,7 @@ use std::{
     env,
     fs::{self, File},
     io::{BufRead, BufReader, Write},
-    path::{Path, PathBuf},
+    path::Path,
     process, thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -199,7 +199,6 @@ impl Fuzz {
                 return Ok(());
             }
         }
-        Ok(())
     }
 
     // Spawns new fuzzers
@@ -493,8 +492,8 @@ impl Fuzz {
             &style("Running minimization DISABLED").magenta().bold()
         ))?;
 
-        return Ok(());
-
+        Ok(())
+        /*
         self.share_all_corpora()?;
 
         let old_corpus_size = fs::read_dir(self.parsed_corpus())
@@ -539,6 +538,7 @@ impl Fuzz {
             }
         };
         Ok(())
+        */
     }
 
     pub fn parsed_corpus(&self) -> String {
