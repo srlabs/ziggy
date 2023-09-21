@@ -206,6 +206,9 @@ pub struct Cover {
     /// Source directory of covered code
     #[clap(short, long, value_parser, value_name = "DIR")]
     source: Option<PathBuf>,
+    /// Number of concurent coverage jobs
+    #[clap(short, long, value_name = "NUM", default_value_t = 1)]
+    jobs: usize,
 }
 
 #[derive(Args)]
