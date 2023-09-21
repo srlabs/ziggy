@@ -447,9 +447,7 @@ impl Fuzz {
                 .to_string()
         );
         eprintln!();
-        eprintln!("   Waiting for afl++ to");
-        eprintln!("   finish executing the");
-        eprintln!("   existing corpus once");
+        eprintln!("   Waiting for afl++ to finish executing the existing corpus once");
         eprintln!("\n\n");
 
         Ok(fuzzer_handles)
