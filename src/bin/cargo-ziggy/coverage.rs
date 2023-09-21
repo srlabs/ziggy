@@ -168,7 +168,14 @@ impl Cover {
         println!("Merging profile data ...");
         let prof_merged = format!("{}/merged.profdata", &prof_dir);
         process::Command::new("llvm-profdata")
-            .args(["merge", "-o", &prof_merged, "-f", &prof_collection])
+            .args([
+                "merge",
+                "-o",
+                &prof_merged,
+                "-f",
+                &prof_collection,
+                &format!("--num-threads={}", self.jobs),
+            ])
             .spawn()
             .context("⚠️  cannot find llvm-profdata in your path, please install it")?
             .wait()
