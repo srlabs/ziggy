@@ -188,7 +188,7 @@ pub struct Minimize {
     output_corpus: PathBuf,
 
     /// Number of concurent minimizing jobs
-    #[clap(short, long, value_name = "NUM", default_value_t = 1)]
+    #[clap(short, long, value_name = "NUM", default_value_t = 8)]
     jobs: u32,
 }
 
@@ -207,7 +207,7 @@ pub struct Cover {
     #[clap(short, long, value_parser, value_name = "DIR")]
     source: Option<PathBuf>,
     /// Number of concurent coverage jobs
-    #[clap(short, long, value_name = "NUM", default_value_t = 1)]
+    #[clap(short, long, value_name = "NUM", default_value_t = 8)]
     jobs: usize,
 }
 

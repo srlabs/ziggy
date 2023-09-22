@@ -1,7 +1,7 @@
 use crate::{find_target, Cover};
 use anyhow::{anyhow, Context, Result};
 use async_std::stream::StreamExt;
-use std::{env, fs, path::PathBuf, process, sync::Arc};
+use std::{env, fs, io::Write, path::PathBuf, process, sync::Arc};
 use tokio::{runtime, sync::Semaphore};
 
 impl Cover {
@@ -79,6 +79,8 @@ impl Cover {
         eprintln!();
 
         Self::check_program("grcov");
+        Self::check_program("llvm-profdata");
+        Self::check_program("llvm-cov");
 
         self.target =
             find_target(&self.target).context("⚠️  couldn't find the target to start coverage")?;
@@ -120,13 +122,16 @@ impl Cover {
             .context("⚠️  couldn't wait for the rustc during coverage")?;
 
         let prof_dir = format!("output/{}/profdata", &self.target);
+        let prof_dir_tmp = format!("output/{}/profdata.tmp", &self.target);
         fs::remove_dir_all(&prof_dir).unwrap_or_default();
-        if fs::metadata(&prof_dir)
+        fs::remove_dir_all(&prof_dir_tmp).unwrap_or_default();
+        if fs::metadata(&prof_dir_tmp)
             .map(|meta| meta.is_dir())
             .unwrap_or(false)
         {
-            panic!("Please remove {:?} first", prof_dir);
+            panic!("Please remove {:?} first", prof_dir_tmp);
         }
+        fs::create_dir(&prof_dir).unwrap();
 
         let mut shared_corpus = PathBuf::new();
 
@@ -155,7 +160,7 @@ impl Cover {
 
         // parallel execution of the coverage target with the inputs
         let cmd = format!("./target/coverage/debug/{}", &self.target);
-        let profile_format = format!("{}/coverage-%p.profraw", &prof_dir);
+        let profile_format = format!("{}/coverage-%p.profraw", &prof_dir_tmp);
         let runtime = runtime::Runtime::new().unwrap();
         runtime.block_on(Self::async_coverage(
             self.jobs,
@@ -165,6 +170,44 @@ impl Cover {
         ));
 
         println!();
+        println!("Collecting profile files ...");
+        let mut prof_files: Vec<String> = vec![];
+        let prof_directory: PathBuf = (&prof_dir_tmp).into();
+        prof_directory
+            .canonicalize()?
+            .read_dir()?
+            .for_each(|input| {
+                prof_files.push(input.unwrap().path().display().to_string());
+            });
+        let prof_collection = format!("{}/files.txt", &prof_dir_tmp);
+        let mut fd = fs::File::create(&prof_collection)?;
+        for line in &prof_files {
+            writeln!(fd, "{}", line)?;
+        }
+        let _ = fd.flush();
+
+        let llvm_threads: usize = if self.jobs < 8 { 0 } else { self.jobs };
+
+        println!("Merging profile data ...");
+        let prof_merged = format!("{}/merged.profdata", &prof_dir);
+        process::Command::new("llvm-profdata")
+            .args([
+                "merge",
+                "-o",
+                &prof_merged,
+                "-f",
+                &prof_collection,
+                "--sparse",
+                &format!("--num-threads={}", &llvm_threads),
+            ])
+            .spawn()
+            .context("⚠️  cannot find llvm-profdata in your path, please install it")?
+            .wait()
+            .context("⚠️  couldn't wait for the llvm-profdata process")?;
+
+        // We need to remove the single prof files as grcov takes ages otjerwise
+        fs::remove_dir_all(&prof_dir_tmp).unwrap_or_default();
+
         println!("Generating coverage report ...");
 
         let output_dir = self
