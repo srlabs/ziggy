@@ -9,7 +9,6 @@ mod minimize;
 mod plot;
 mod run;
 mod triage;
-mod utils;
 
 #[cfg(feature = "cli")]
 use anyhow::{anyhow, Context, Result};
