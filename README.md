@@ -7,18 +7,17 @@
 
 ## Feature set
 
-- 🤹 handling of different fuzzing processes in parallel (honggfuzz, AFL++)
+- 🤹 handling of different fuzzing processes in parallel ([honggfuzz](https://github.com/google/honggfuzz), [AFL++](https://github.com/aflplusplus/aflplusplus))
 - 🗃️ one shared corpus for all fuzzers
-- 🤏 regular corpus minimization
+- 🤏 effortless corpus minimization
 - 📊 insightful monitoring
 - 🎯 easy coverage report generation
 - 😶‍🌫️ Arbitrary trait support
 
 Features will also include:
 
-- 🐇 LibAFL integration
-- 📨 notification of new crashes via a simple email hook (limited to 1/day to avoid spamming)
-- ⬇️ auto-pull of latest target project version
+- 🐇 [LibAFL](https://github.com/aflplusplus/libafl) integration
+- 📨 notification of new crashes via bash hook
 
 ## Usage example
 
