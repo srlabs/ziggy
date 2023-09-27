@@ -1,5 +1,6 @@
 use crate::*;
 use anyhow::{anyhow, Context, Result};
+use cargo_metadata::MetadataCommand;
 use console::{style, Term};
 use glob::glob;
 use std::{
@@ -209,8 +210,6 @@ impl Fuzz {
 
         // The cargo executable
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
-
-        use cargo_metadata::MetadataCommand;
 
         let metadata = MetadataCommand::new()
             .manifest_path("./Cargo.toml")

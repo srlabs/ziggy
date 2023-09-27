@@ -1,5 +1,6 @@
 use crate::{find_target, Run};
 use anyhow::{anyhow, Context, Result};
+use cargo_metadata::MetadataCommand;
 use console::style;
 use std::{env, process};
 
@@ -14,8 +15,7 @@ impl Run {
 
         // We run the compilation command
         let run = process::Command::new(cargo)
-            .args(["rustc", "--target-dir=target/runner"])
-            .env("RUSTFLAGS", "")
+            .arg("rustc")
             .spawn()
             .context("⚠️  couldn't spawn runner compilation")?
             .wait()
@@ -36,7 +36,14 @@ impl Run {
             .map(|x| x.display().to_string().replace("{target_name}", &target))
             .collect();
 
-        process::Command::new(format!("./target/runner/debug/{}", target))
+        let metadata = MetadataCommand::new()
+            .manifest_path("./Cargo.toml")
+            .exec()
+            .context("error while running cargo metadata command")?;
+
+        let target_directory = metadata.target_directory;
+
+        process::Command::new(format!("{target_directory}/debug/{}", target))
             .args(run_args)
             .env("RUST_BACKTRACE", "full")
             .spawn()
