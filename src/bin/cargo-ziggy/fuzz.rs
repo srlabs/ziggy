@@ -210,6 +210,15 @@ impl Fuzz {
         // The cargo executable
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
+        use cargo_metadata::MetadataCommand;
+
+        let metadata = MetadataCommand::new()
+            .manifest_path("./Cargo.toml")
+            .exec()
+            .context("error while running cargo metadata command")?;
+
+        let target_directory = metadata.target_directory;
+
         let (afl_jobs, honggfuzz_jobs) = {
             if self.no_afl {
                 (0, self.jobs)
@@ -336,7 +345,7 @@ impl Fuzz {
                                 mutation_option,
                                 &timeout_option_afl,
                                 &dictionary_option,
-                                &format!("./target/afl/debug/{}", self.target),
+                                &format!("{target_directory}/debug/{}", self.target),
                             ]
                             .iter()
                             .filter(|a| a != &&""),
@@ -383,7 +392,7 @@ impl Fuzz {
                         "/dev/null",
                     ])
                     .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
-                    .env("CARGO_TARGET_DIR", "./target/honggfuzz")
+                    .env("CARGO_TARGET_DIR", target_directory)
                     .env(
                         "HFUZZ_WORKSPACE",
                         format!("./output/{}/honggfuzz", self.target),

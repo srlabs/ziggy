@@ -24,9 +24,11 @@ honggfuzz = { version = "0.5.55", optional = true }
 serde_json = { version = "1.0.105", optional = true }
 log = { version = "0.4.20", optional = true }
 env_logger = { version = "0.10.0", optional = true }
+cargo_metadata = { version = "0.18.0", optional = true }
+pathdiff = { version = "0.2.1", optional = true }
 rand = "0.8"
 libc = "0.2.147"
 
 [features]
 default = ["cli"]
-cli = ["clap", "console", "glob", "toml", "anyhow", "serde_json", "log", "env_logger"]
+cli = ["clap", "console", "glob", "toml", "anyhow", "serde_json", "log", "env_logger", "cargo_metadata", "pathdiff"]

@@ -20,12 +20,7 @@ impl Build {
 
             // Second fuzzer we build: AFL++
             let run = process::Command::new(cargo.clone())
-                .args([
-                    "afl",
-                    "build",
-                    "--features=ziggy/afl",
-                    "--target-dir=target/afl",
-                ])
+                .args(["afl", "build", "--features=ziggy/afl"])
                 .env("AFL_QUIET", "1")
                 .spawn()?
                 .wait()
@@ -44,10 +39,21 @@ impl Build {
         if !self.no_honggfuzz {
             eprintln!("    {} honggfuzz", style("Building").red().bold());
 
+            use cargo_metadata::MetadataCommand;
+
+            let metadata = MetadataCommand::new()
+                .manifest_path("./Cargo.toml")
+                .exec()
+                .context("Error while running cargo metadata command")?;
+
+            let target_directory =
+                pathdiff::diff_paths(metadata.target_directory, env::current_dir()?)
+                    .ok_or(anyhow!("could not compute relative target directory"))?;
+
             // Third fuzzer we build: Honggfuzz
             let run = process::Command::new(cargo)
                 .args(["hfuzz", "build"])
-                .env("CARGO_TARGET_DIR", "./target/honggfuzz")
+                .env("CARGO_TARGET_DIR", target_directory)
                 .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
                 .stdout(process::Stdio::piped())
                 .spawn()?
