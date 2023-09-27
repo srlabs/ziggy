@@ -1,5 +1,16 @@
 # Changes
 
+## 0.6.8 - 2023-09-11
+
+- Fix bug with add-seeds determinism
+- Fix temporary corpus bug
+
+## 0.6.7 - 2023-08-31
+
+- Add new command - `cargo ziggy add-seeds`
+- Tweak AFL++ flags for better performance
+- Coverage now continues running after finding crash
+
 ## 0.6.6 - 2023-08-29
 
 - Add CLI pointer to second AFL++ fuzzer log
