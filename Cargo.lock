@@ -285,17 +285,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "honggfuzz"
-version = "0.5.55"
-source = "git+https://github.com/vanhauser-thc/honggfuzz-rs.git#deca5fe621f770d4de13b6214a127152bb12ef88"
-dependencies = [
- "arbitrary",
- "lazy_static",
- "memmap2",
- "rustc_version",
-]
-
-[[package]]
 name = "humantime"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -888,7 +877,7 @@ checksum = "213b7324336b53d2414b2db8537e56544d981803139155afa84f76eeebb7a546"
 
 [[package]]
 name = "ziggy"
-version = "0.6.8"
+version = "0.7.0"
 dependencies = [
  "afl",
  "anyhow",
@@ -896,7 +885,6 @@ dependencies = [
  "console",
  "env_logger",
  "glob",
- "honggfuzz",
  "libc",
  "log",
  "rand",
@@ -904,4 +892,17 @@ dependencies = [
  "strip-ansi-escapes",
  "time-humanize",
  "toml",
+ "ziggy-honggfuzz",
+]
+
+[[package]]
+name = "ziggy-honggfuzz"
+version = "0.5.55"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d08702c50928b84f73d51fd838376484914f490d9b8acb4d7c63184fa1b02e0"
+dependencies = [
+ "arbitrary",
+ "lazy_static",
+ "memmap2",
+ "rustc_version",
 ]

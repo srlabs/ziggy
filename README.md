@@ -42,7 +42,8 @@ Commands:
   minimize   Minimize the input corpus using the given fuzzing target
   cover      Generate code coverage information using the existing corpus
   plot       Plot AFL++ data using afl-plot
-  add-seeds  Add seeds to the running AFL fuzzers
+  add-seeds  Add seeds to the running AFL++ fuzzers
+  triage     Triage crashes found with casr - currently only works for AFL++
   help       Print this message or the help of the given subcommand(s)
 
 Options:

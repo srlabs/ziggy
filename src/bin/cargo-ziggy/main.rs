@@ -91,7 +91,7 @@ pub enum Ziggy {
     /// Plot AFL++ data using afl-plot
     Plot(Plot),
 
-    /// Add seeds to the running AFL fuzzers
+    /// Add seeds to the running AFL++ fuzzers
     AddSeeds(AddSeeds),
 
     /// Triage crashes found with casr - currently only works for AFL++

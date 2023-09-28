@@ -1,5 +1,15 @@
 # Changes
 
+## 0.7.0 - 2023-09-28
+
+- Revamp CLI output
+- Make honggfuzz learn from AFL++ seeds on the fly
+- Remove initial minimization by default
+- Fix bug with add-seeds secondary fuzzer name
+- Improve AFL++ flags for more fuzzing diversity
+- Add coverage feature to the harness
+- Add casr triage functionality
+
 ## 0.6.8 - 2023-09-11
 
 - Fix bug with add-seeds determinism
