@@ -162,6 +162,10 @@ pub struct Fuzz {
     /// Perform initial minimization - not active yet!
     #[clap(long = "perform-initial-minimization", action, default_value_t = false)]
     perform_initial_minimization: bool,
+
+    // This value helps us create a global timer for our display
+    #[clap(skip=std::time::Instant::now())]
+    start_time: std::time::Instant,
 }
 
 #[derive(Args)]

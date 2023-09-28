@@ -114,6 +114,8 @@ impl Fuzz {
 
         let mut processes = self.spawn_new_fuzzers(false)?;
 
+        self.start_time = Instant::now();
+
         let mut last_synced_queue_id: u32 = 0;
         let mut last_sync_time = Instant::now();
 
@@ -469,7 +471,7 @@ impl Fuzz {
                 .bold()
             );
         }
-        eprintln!("\n\n\n");
+        eprintln!("\n\n\n\n\n");
         eprintln!("   Waiting for fuzzers to");
         eprintln!("   finish executing the");
         eprintln!("   existing corpus once");
@@ -557,13 +559,13 @@ impl Fuzz {
     pub fn print_stats(&self) {
         // First step: execute afl-whatsup
         let mut afl_status = String::from("running ─");
-        let mut afl_total_run_time = String::new();
         let mut afl_total_execs = String::new();
         let mut afl_instances = String::new();
         let mut afl_speed = String::new();
         let mut afl_coverage = String::new();
         let mut afl_crashes = String::new();
         let mut afl_new_finds = String::new();
+        let mut afl_faves = String::new();
 
         if self.no_afl {
             afl_status = String::from("disabled ")
@@ -583,10 +585,7 @@ impl Fuzz {
 
                 for mut line in s.split('\n') {
                     line = line.trim();
-                    if let Some(total_run_time) = line.strip_prefix("Total run time : ") {
-                        afl_total_run_time =
-                            String::from(total_run_time.split(',').next().unwrap_or_default());
-                    } else if let Some(total_execs) = line.strip_prefix("Total execs : ") {
+                    if let Some(total_execs) = line.strip_prefix("Total execs : ") {
                         afl_total_execs =
                             String::from(total_execs.split(',').next().unwrap_or_default());
                     } else if let Some(instances) = line.strip_prefix("Fuzzers alive : ") {
@@ -599,6 +598,15 @@ impl Fuzz {
                         afl_crashes = String::from(crashes);
                     } else if let Some(new_finds) = line.strip_prefix("Time without finds : ") {
                         afl_new_finds = String::from(new_finds);
+                    } else if let Some(pending_items) = line.strip_prefix("Pending items : ") {
+                        afl_faves = String::from(
+                            pending_items
+                                .split(',')
+                                .next()
+                                .unwrap_or_default()
+                                .strip_suffix(" faves")
+                                .unwrap_or_default(),
+                        );
                     }
                 }
             }
@@ -606,7 +614,6 @@ impl Fuzz {
 
         // Second step: Get stats from honggfuzz logs
         let mut hf_status = String::from("running ─");
-        let mut hf_minimization_in = String::new();
         let mut hf_total_execs = String::new();
         let mut hf_threads = String::new();
         let mut hf_speed = String::new();
@@ -628,20 +635,7 @@ impl Fuzz {
                 for raw_line in s.split('\n') {
                     let stripped_line = strip_str(raw_line);
                     let line = stripped_line.trim();
-                    if let Some(minimization_in) = line.strip_prefix("------------------------[ ") {
-                        hf_minimization_in = String::from(
-                            minimization_in.split(']').next().unwrap_or_default().trim(),
-                        );
-                        hf_minimization_in = String::from(
-                            hf_minimization_in
-                                .strip_prefix("0 days")
-                                .unwrap_or(&hf_minimization_in)
-                                .trim(),
-                        );
-                        hf_minimization_in =
-                            String::from(hf_minimization_in.split(" mins").next().unwrap_or("0"))
-                                + " mins";
-                    } else if let Some(total_execs) = line.strip_prefix("Iterations : ") {
+                    if let Some(total_execs) = line.strip_prefix("Iterations : ") {
                         hf_total_execs =
                             String::from(total_execs.split(' ').next().unwrap_or_default());
                     } else if let Some(threads) = line.strip_prefix("Threads : ") {
@@ -692,13 +686,28 @@ impl Fuzz {
             }
         }
 
-        // Third step: Print stats
+        // Third step: Get global stats
+        let mut total_run_time = time_humanize::HumanTime::from(self.start_time.elapsed())
+            .to_text_en(
+                time_humanize::Accuracy::Rough,
+                time_humanize::Tense::Present,
+            );
+        if total_run_time == "now" {
+            total_run_time = String::from("...");
+        }
+
+        // Fourth step: Print stats
         // TODO Colors, of course!
-        // Move 9 lines up and clear line
-        eprint!("\x1B[9A\x1B[K");
-        eprintln!("┌── afl++ {afl_status:0}───────────────────┬── honggfuzz {hf_status:0}───────────────┐");
+        // Move 11 lines up and clear line
+        eprint!("\x1B[11A\x1B[K");
         eprint!("\x1B[K");
-        eprintln!("│  total run time : {afl_total_run_time:17} │        run time : {hf_minimization_in:17} │");
+        eprintln!("┌── ziggy rocking ──────────────────────────────────────────────────────────┐");
+        eprint!("\x1B[K");
+        eprintln!(
+            "│        run time : {total_run_time:17}                                       │"
+        );
+        eprint!("\x1B[K");
+        eprintln!("├── afl++ {afl_status:0}───────────────────┬── honggfuzz {hf_status:0}───────────────┤");
         eprint!("\x1B[K");
         eprintln!(
             "│     total execs : {afl_total_execs:17} │     total execs : {hf_total_execs:17} │"
@@ -712,7 +721,9 @@ impl Fuzz {
         eprint!("\x1B[K");
         eprintln!("│   crashes saved : {afl_crashes:17} │   crashes saved : {hf_crashes:17} │");
         eprint!("\x1B[K");
-        eprintln!("│ no new find for : {afl_new_finds:17} │ no new find for : {hf_new_finds:17} │");
+        eprintln!("│     no find for : {afl_new_finds:17} │     no find for : {hf_new_finds:17} │");
+        eprint!("\x1B[K");
+        eprintln!("│ top inputs todo : {afl_faves:17} │                                     │");
         eprint!("\x1B[K");
         eprintln!("└─────────────────────────────────────┴─────────────────────────────────────┘");
     }
