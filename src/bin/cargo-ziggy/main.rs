@@ -123,10 +123,6 @@ pub struct Fuzz {
     #[clap(short, long, value_parser, value_name = "DIR")]
     initial_corpus: Option<PathBuf>,
 
-    /// Timeout before shared corpus minimization (temporarily stops honggfuzz)
-    #[clap(short, long, value_name = "SECS", default_value_t = DEFAULT_MINIMIZATION_TIMEOUT)]
-    minimization_timeout: u32,
-
     /// Number of concurent fuzzing jobs
     #[clap(short, long, value_name = "NUM", default_value_t = 1)]
     jobs: u32,
@@ -154,10 +150,6 @@ pub struct Fuzz {
     /// No honggfuzz (Fuzz only with AFL++)
     #[clap(long = "no-honggfuzz", action)]
     no_honggfuzz: bool,
-
-    /// Skip initial minimization - NOT USED ANYMORE!
-    #[clap(long = "skip-initial-minimization", action)]
-    skip_initial_minimization: bool,
 
     /// Perform initial minimization - not active yet!
     #[clap(long = "perform-initial-minimization", action, default_value_t = false)]
