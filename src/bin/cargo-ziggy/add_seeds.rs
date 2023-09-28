@@ -14,12 +14,6 @@ impl AddSeeds {
             .to_string()
             .replace("{target_name}", &self.target);
 
-        // AFL timeout is in ms so we convert the value
-        let timeout_option = match self.timeout {
-            Some(t) => format!("-t{}", t * 1000),
-            None => String::new(),
-        };
-
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
         let mut rng = rand::thread_rng();
         process::Command::new(cargo.clone())
@@ -33,7 +27,6 @@ impl AddSeeds {
                     "-V1",
                     "-c-",
                     &format!("-Sadd{:x}", rng.gen::<u64>()),
-                    &timeout_option,
                     &format!("./target/afl/debug/{}", self.target),
                 ]
                 .iter()

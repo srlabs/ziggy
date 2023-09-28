@@ -258,11 +258,8 @@ pub struct AddSeeds {
     #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
     target: String,
     /// Seeds directory to be added
-    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CORPUS)]
+    #[clap(short, long, value_parser, value_name = "DIR")]
     input: PathBuf,
-    /// Timeout for a single run
-    #[clap(short, long, value_name = "SECS")]
-    timeout: Option<u32>,
 }
 
 #[cfg(feature = "cli")]
