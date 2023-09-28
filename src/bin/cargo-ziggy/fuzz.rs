@@ -5,13 +5,49 @@ use glob::glob;
 use std::{
     env,
     fs::{self, File},
-    io::{BufRead, BufReader, Write},
-    path::Path,
+    io::Write,
+    path::{Path, PathBuf},
     process, thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+use strip_ansi_escapes::strip_str;
+
+/// Main logic for managing fuzzers and the fuzzing process in ziggy.
+
+/// ## Initial minimization logic
+
+/// When launching fuzzers, if initial corpora exist, they are merged together and we minimize it
+/// with both AFL++ and Honggfuzz.
+/// ```text
+/// # bash pseudocode
+/// cp all_afl_corpora/* corpus/* corpus_tmp/
+/// # run afl++ minimization
+/// afl++_minimization -i corpus_tmp -o corpus_minimized
+/// # in parallel, run honggfuzz minimization
+/// honggfuzz_minimization -i corpus_tmp -o corpus_minimized
+/// rm -rf corpus corpus_tmp
+/// mv corpus_minimized corpus
+/// afl++ -i corpus -o all_afl_corpora &
+///   honggfuzz -i corpus -o corpus
+/// ```
+/// The `all_afl_corpora` directory corresponds to the `output/target_name/afl/**/queue/` directories.
 
 impl Fuzz {
+    pub fn corpus(&self) -> String {
+        self.corpus
+            .display()
+            .to_string()
+            .replace("{target_name}", &self.target)
+    }
+
+    pub fn corpus_tmp(&self) -> String {
+        format!("./output/{}/corpus_tmp/", self.target)
+    }
+
+    pub fn corpus_minimized(&self) -> String {
+        format!("./output/{}/corpus_minimized/", self.target)
+    }
+
     // Manages the continuous running of fuzzers
     pub fn fuzz(&mut self) -> Result<(), anyhow::Error> {
         let build = Build {
@@ -24,46 +60,46 @@ impl Fuzz {
 
         self.target = find_target(&self.target).context("⚠️  couldn't find target when fuzzing")?;
 
-        let fuzzer_stats_file = format!("./output/{}/afl/mainaflfuzzer/fuzzer_stats", self.target);
-
-        let term = Term::stdout();
-
-        // Variables for stats printing
-        let mut exec_speed = String::new();
-        let mut execs_done = String::new();
-        let mut edges_found = String::new();
-        let mut total_edges = String::new();
-        let mut saved_crashes = String::new();
-
         let time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
 
-        let ziggy_crash_dir = format!("./output/{}/crashes/{}/", self.target, time);
-        let ziggy_crash_path = Path::new(&ziggy_crash_dir);
-
-        fs::create_dir_all(ziggy_crash_path)?;
-
-        // self.share_all_corpora()?;
-        info!("self.share_all_corpora is DISABLED!");
+        let crash_dir = format!("./output/{}/crashes/{}/", self.target, time);
+        let crash_path = Path::new(&crash_dir);
+        fs::create_dir_all(crash_path)?;
 
         let _ = process::Command::new("mkdir")
-            .args(["-p", &format!("./output/{}/logs/", self.target)])
+            .args([
+                "-p",
+                &format!("./output/{}/logs/", self.target),
+                &format!("./output/{}/queue/", self.target),
+            ])
             .stderr(process::Stdio::piped())
             .spawn()?
             .wait()?;
 
-        if Path::new(&self.parsed_corpus()).exists() {
+        if Path::new(&self.corpus()).exists() {
             if self.perform_initial_minimization {
-                self.run_minimization()?;
+                fs::create_dir_all(&self.corpus_tmp())
+                    .context("Could not create temporary corpus")?;
+                self.copy_corpora()
+                    .context("Could not move all seeds to temporary corpus")?;
+                let _ = fs::remove_dir_all(&self.corpus_minimized());
+                self.run_minimization()
+                    .context("Failure while minimizing")?;
+                fs::remove_dir_all(&self.corpus()).context("Could not remove shared corpus")?;
+                fs::rename(&self.corpus_minimized(), &self.corpus())
+                    .context("Could not move minimized corpus over")?;
+                fs::remove_dir_all(&self.corpus_tmp())
+                    .context("Could not remove temporary corpus")?;
             }
         } else {
             let _ = process::Command::new("mkdir")
-                .args(["-p", &self.parsed_corpus()])
+                .args(["-p", &self.corpus()])
                 .stderr(process::Stdio::piped())
                 .spawn()?
                 .wait()?;
 
             // We create an initial corpus file, so that AFL++ starts-up properly
-            let mut initial_corpus = File::create(self.parsed_corpus() + "/init")?;
+            let mut initial_corpus = File::create(self.corpus() + "/init")?;
             writeln!(
                 &mut initial_corpus,
                 "00000000000000000000********0000########111111111111111111111111"
@@ -71,118 +107,93 @@ impl Fuzz {
             drop(initial_corpus);
         }
 
-        let mut processes = self.spawn_new_fuzzers()?;
+        // We create an initial corpus file, so that AFL++ starts-up properly if corpus is empty
+        let mut initial_corpus = File::create(self.corpus() + "/init")?;
+        writeln!(&mut initial_corpus, "00000000")?;
+        drop(initial_corpus);
 
-        let mut crash_has_been_found = false;
+        let mut processes = self.spawn_new_fuzzers(false)?;
+
+        self.start_time = Instant::now();
+
+        let mut last_synced_queue_id: u32 = 0;
+        let mut last_sync_time = Instant::now();
 
         loop {
-            let sleep_duration = Duration::from_millis(1000);
+            let sleep_duration = Duration::from_secs(1);
             thread::sleep(sleep_duration);
 
-            // We retrieve the stats from the fuzzer_stats file
-            if let Ok(file) = File::open(fuzzer_stats_file.clone()) {
-                let lines = BufReader::new(file).lines();
-                for line in lines.flatten() {
-                    match &line[..20] {
-                        "execs_ps_last_min : " => exec_speed = String::from(&line[20..]),
-                        "execs_done        : " => execs_done = String::from(&line[20..]),
-                        "edges_found       : " => edges_found = String::from(&line[20..]),
-                        "total_edges       : " => total_edges = String::from(&line[20..]),
-                        "saved_crashes     : " => saved_crashes = String::from(&line[20..]),
-                        _ => {}
-                    }
-                }
-                if saved_crashes.trim() != "0" && !saved_crashes.trim().is_empty() {
-                    crash_has_been_found = true;
-                }
-            }
+            self.print_stats();
 
-            if exec_speed.is_empty() || exec_speed == "0.00" {
-                if let Ok(afl_log) =
-                    fs::read_to_string(format!("./output/{}/logs/afl.log", self.target))
-                {
-                    if afl_log.contains("echo core >/proc/sys/kernel/core_pattern") {
-                        stop_fuzzers(&mut processes)?;
-                        eprintln!("AFL++ needs you to run the following command before it can start fuzzing:\n");
-                        eprintln!("    echo core >/proc/sys/kernel/core_pattern\n");
-                        return Ok(());
-                    }
-                    if afl_log.contains("cd /sys/devices/system/cpu") {
-                        stop_fuzzers(&mut processes)?;
-                        eprintln!("AFL++ needs you to run the following commands before it can start fuzzing:\n");
-                        eprintln!("    cd /sys/devices/system/cpu");
-                        eprintln!("    echo performance | tee cpu*/cpufreq/scaling_governor\n");
-                        return Ok(());
-                    }
+            if let Ok(afl_log) =
+                fs::read_to_string(format!("./output/{}/logs/afl.log", self.target))
+            {
+                if afl_log.contains("echo core >/proc/sys/kernel/core_pattern") {
+                    stop_fuzzers(&mut processes)?;
+                    eprintln!("AFL++ needs you to run the following command before it can start fuzzing:\n");
+                    eprintln!("    echo core >/proc/sys/kernel/core_pattern\n");
+                    return Ok(());
+                }
+                if afl_log.contains("cd /sys/devices/system/cpu") {
+                    stop_fuzzers(&mut processes)?;
+                    eprintln!("AFL++ needs you to run the following commands before it can start fuzzing:\n");
+                    eprintln!("    cd /sys/devices/system/cpu");
+                    eprintln!("    echo performance | tee cpu*/cpufreq/scaling_governor\n");
+                    return Ok(());
                 }
             }
 
-            // We print the new values
-            term.move_cursor_up(7)?;
-            let exec_speed_formated = match exec_speed.as_str() {
-                "0.00" | "" => String::from("..."),
-                _ => utils::stringify_integer(exec_speed.parse::<f64>().unwrap_or_default() as u64),
-            };
-            term.write_line(&format!(
-                "{} {}/sec  ",
-                style("          exec speed :").dim(),
-                exec_speed_formated,
-            ))?;
-            term.write_line(&format!(
-                "{} {}      ",
-                style("          execs done :").dim(),
-                utils::stringify_integer(execs_done.parse().unwrap_or_default()),
-            ))?;
-            let edges_percentage = 100f64 * edges_found.parse::<f64>().unwrap_or_default()
-                / total_edges.parse::<f64>().unwrap_or(1f64);
-            term.write_line(&format!(
-                "{} {} ({:.2}%)          ",
-                style("         edges found :").dim(),
-                utils::stringify_integer(edges_found.parse().unwrap_or_default()),
-                &edges_percentage
-            ))?;
-            term.write_line(&format!(
-                "{} {}         ",
-                style("       saved crashes :").dim(),
-                utils::stringify_integer(saved_crashes.parse().unwrap_or_default()),
-            ))?;
-            if crash_has_been_found {
-                term.write_line("\nCrashes have been found       ")?;
-            } else {
-                term.write_line("\nNo crash has been found so far")?;
+            // We check AFL++ and Honggfuzz's outputs for crash files and copy them over to
+            // our own crashes directory
+            let crash_dirs = glob(&format!("./output/{}/afl/*/crashes", self.target))
+                .map_err(|_| anyhow!("Failed to read crashes glob pattern"))?
+                .flatten()
+                .chain(vec![format!(
+                    "./output/{}/honggfuzz/{}",
+                    self.target, self.target
+                )
+                .into()]);
+
+            for crash_dir in crash_dirs {
+                if let Ok(crashes) = fs::read_dir(crash_dir) {
+                    for crash_input in crashes.flatten() {
+                        let file_name = crash_input.file_name();
+                        let to_path = crash_path.join(&file_name);
+                        if to_path.exists()
+                            || ["", "README.txt", "HONGGFUZZ.REPORT.TXT", "input"]
+                                .contains(&file_name.to_str().unwrap_or_default())
+                        {
+                            continue;
+                        }
+                        fs::copy(crash_input.path(), to_path)?;
+                    }
+                }
             }
-            term.write_line("")?;
 
-            // We only start checking for crashes after AFL++ has started responding to us
-            if !exec_speed.is_empty() || exec_speed == "0.00" {
-                // We check AFL++ and Honggfuzz's outputs for crash files
-                //let afl_crash_dir = format!("./output/{}/afl/mainaflfuzzer/crashes/", self.target);
-
-                let crash_dirs = glob(&format!("./output/{}/afl/*/crashes", self.target))
-                    .map_err(|_| anyhow!("Failed to read crashes glob pattern"))?
-                    .flatten()
-                    .chain(vec![format!(
-                        "./output/{}/honggfuzz/{}/",
-                        self.target, self.target
-                    )
-                    .into()]);
-
-                for crash_dir in crash_dirs {
-                    if let Ok(crashes) = fs::read_dir(crash_dir) {
-                        for crash_input in crashes.flatten() {
-                            let file_name = crash_input.file_name();
-                            let to_path = ziggy_crash_path.join(&file_name);
-                            if to_path.exists()
-                                || ["", "README.txt", "HONGGFUZZ.REPORT.TXT", "input"]
-                                    .contains(&file_name.to_str().unwrap_or_default())
-                            {
-                                continue;
-                            }
-                            crash_has_been_found = true;
-                            fs::copy(crash_input.path(), to_path)?;
+            // If both fuzzers are running, we copy over AFL++'s queue for consumption by Honggfuzz
+            // We do this every 10 seconds
+            if !self.no_afl
+                && !self.no_honggfuzz
+                && self.jobs > 1
+                && last_sync_time.elapsed().as_secs() > 10
+            {
+                let afl_corpus = glob(&format!(
+                    "./output/{}/afl/mainaflfuzzer/queue/*",
+                    self.target
+                ))?
+                .flatten();
+                for file in afl_corpus {
+                    if let Some((file_id, file_name)) = extract_file_id(&file) {
+                        if file_id > last_synced_queue_id {
+                            let _ = fs::copy(
+                                &file,
+                                format!("./output/{}/queue/{file_name}", self.target),
+                            );
+                            last_synced_queue_id = file_id;
                         }
                     }
                 }
+                last_sync_time = Instant::now();
             }
 
             if processes
@@ -197,7 +208,10 @@ impl Fuzz {
     }
 
     // Spawns new fuzzers
-    pub fn spawn_new_fuzzers(&self) -> Result<Vec<process::Child>, anyhow::Error> {
+    pub fn spawn_new_fuzzers(
+        &self,
+        only_honggfuzz: bool,
+    ) -> Result<Vec<process::Child>, anyhow::Error> {
         // No fuzzers for you
         if self.no_afl && self.no_honggfuzz {
             return Err(anyhow!("Pick at least one fuzzer"));
@@ -230,7 +244,7 @@ impl Fuzz {
             eprintln!("Warning: running more honggfuzz jobs than 4 is not effective");
         }
 
-        if !self.no_afl && afl_jobs > 0 {
+        if !self.no_afl && !only_honggfuzz && afl_jobs > 0 {
             let _ = process::Command::new("mkdir")
                 .args(["-p", &format!("./output/{}/afl", self.target)])
                 .stderr(process::Stdio::piped())
@@ -250,7 +264,7 @@ impl Fuzz {
                     n => format!("-Ssecondaryfuzzer{n}"),
                 };
                 let use_shared_corpus = match job_num {
-                    0 => format!("-F{}", &self.parsed_corpus()),
+                    0 => format!("-F{}", &self.corpus()),
                     _ => String::new(),
                 };
                 let use_initial_corpus_dir = match (&self.initial_corpus, job_num) {
@@ -322,7 +336,7 @@ impl Fuzz {
                                 "afl",
                                 "fuzz",
                                 &fuzzer_name,
-                                &format!("-i{}", &self.parsed_corpus()),
+                                &format!("-i{}", self.corpus()),
                                 &format!("-p{power_schedule}"),
                                 &format!("-ooutput/{}/afl", self.target),
                                 &format!("-g{}", self.min_length),
@@ -362,6 +376,25 @@ impl Fuzz {
         }
 
         if !self.no_honggfuzz && honggfuzz_jobs > 0 {
+            let hfuzz_help = process::Command::new(&cargo)
+                .args(["hfuzz", "run", &self.target])
+                .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
+                .env("CARGO_TARGET_DIR", "./target/honggfuzz")
+                .env(
+                    "HFUZZ_WORKSPACE",
+                    format!("./output/{}/honggfuzz", self.target),
+                )
+                .env("HFUZZ_RUN_ARGS", "--help")
+                .output()
+                .context("could not run `cargo hfuzz run --help`")?;
+
+            if !std::str::from_utf8(hfuzz_help.stderr.as_slice())
+                .unwrap_or_default()
+                .contains("dynamic_input")
+            {
+                panic!("Outdated version of honggfuzz, please update the ziggy version in your Cargo.toml or rebuild the project");
+            }
+
             let dictionary_option = match &self.dictionary {
                 Some(d) => format!("-w{}", &d.display().to_string()),
                 None => String::new(),
@@ -391,12 +424,11 @@ impl Fuzz {
                     .env(
                         "HFUZZ_RUN_ARGS",
                         format!(
-                            "-i{} -n{} -F{} {timeout_option} {dictionary_option}",
-                            // "--run_time={} -i{} -n{} -F{} {timeout_option} {dictionary_option}",
-                            // self.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL,
-                            &self.parsed_corpus(),
-                            honggfuzz_jobs,
+                            "--input={} -o{} -n{honggfuzz_jobs} -F{} --dynamic_input=output/{}/queue {timeout_option} {dictionary_option}",
+                            &self.corpus(),
+                            &self.corpus(),
                             self.max_length,
+                            self.target,
                         ),
                     )
                     .stdin(std::process::Stdio::null())
@@ -416,22 +448,22 @@ impl Fuzz {
             );
         }
 
-        eprintln!("\nSee live information by running:\n");
+        eprintln!("\nSee live information by running:");
         if afl_jobs > 0 {
             eprintln!(
-                "  {}\n",
+                "  {}",
                 style(format!("tail -f ./output/{}/logs/afl.log", self.target)).bold()
             );
         }
         if afl_jobs > 1 {
             eprintln!(
-                "  {}\n",
+                "  {}",
                 style(format!("tail -f ./output/{}/logs/afl_1.log", self.target)).bold()
             );
         }
         if honggfuzz_jobs > 0 {
             eprintln!(
-                "  {}\n",
+                "  {}",
                 style(format!(
                     "tail -f ./output/{}/logs/honggfuzz.log",
                     self.target
@@ -439,15 +471,8 @@ impl Fuzz {
                 .bold()
             );
         }
-        eprintln!(
-            "{}",
-            &style("    AFL++ main process stats")
-                .yellow()
-                .bold()
-                .to_string()
-        );
-        eprintln!();
-        eprintln!("   Waiting for afl++ to");
+        eprintln!("\n\n\n\n\n");
+        eprintln!("   Waiting for fuzzers to");
         eprintln!("   finish executing the");
         eprintln!("   existing corpus once");
         eprintln!("\n\n");
@@ -455,27 +480,33 @@ impl Fuzz {
         Ok(fuzzer_handles)
     }
 
-    // Share AFL++ corpora in the shared_corpus directory
-    pub fn share_all_corpora(&self) -> Result<()> {
-        for path in glob(&format!("./output/{}/afl/*/queue/*", self.target))
-            .map_err(|_| anyhow!("Failed to read glob pattern"))?
+    fn all_seeds(&self) -> Result<Vec<PathBuf>> {
+        Ok(glob(&format!("./output/{}/afl/*/queue/*", self.target))
+            .map_err(|_| anyhow!("Failed to read AFL++ queue glob pattern"))?
+            .chain(
+                glob(&format!("{}/*", self.corpus()))
+                    .map_err(|_| anyhow!("Failed to read Honggfuzz corpus glob pattern"))?,
+            )
             .flatten()
-        {
-            if path.is_file() {
-                fs::copy(
-                    path.to_str()
-                        .ok_or_else(|| anyhow!("Could not parse input path"))?,
-                    format!(
-                        "{}/{}",
-                        &self.parsed_corpus(),
-                        path.file_name()
-                            .ok_or_else(|| anyhow!("Could not parse input file name"))?
-                            .to_str()
-                            .ok_or_else(|| anyhow!("Could not parse input file name path"))?
-                    ),
-                )?;
-            }
-        }
+            .filter(|f| f.is_file())
+            .collect())
+    }
+
+    // Copy all corpora into `corpus`
+    pub fn copy_corpora(&self) -> Result<()> {
+        self.all_seeds()?.iter().for_each(|s| {
+            let _ = fs::copy(
+                s.to_str().unwrap_or_default(),
+                format!(
+                    "{}/{}",
+                    &self.corpus_tmp(),
+                    s.file_name()
+                        .unwrap_or_default()
+                        .to_str()
+                        .unwrap_or_default(),
+                ),
+            );
+        });
         Ok(())
     }
 
@@ -484,38 +515,31 @@ impl Fuzz {
 
         term.write_line(&format!(
             "\n    {}",
-            &style("Running minimization DISABLED").magenta().bold()
+            &style("Running minimization").magenta().bold()
         ))?;
 
-        Ok(())
-        /*
-        self.share_all_corpora()?;
+        let input_corpus = &self.corpus_tmp();
+        let output_corpus = &self.corpus_minimized();
 
-        let old_corpus_size = fs::read_dir(self.parsed_corpus())
+        let old_corpus_size = fs::read_dir(input_corpus)
             .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
-
-        let minimized_corpus = DEFAULT_MINIMIZATION_CORPUS.replace("{target_name}", &self.target);
-
-        process::Command::new("rm")
-            .args(["-r", &minimized_corpus])
-            .output()
-            .map_err(|_| anyhow!("Could not remove minimized corpus directory"))?;
 
         let mut minimization_args = Minimize {
             target: self.target.clone(),
-            input_corpus: PathBuf::from(&self.parsed_corpus()),
-            output_corpus: PathBuf::from(&minimized_corpus),
+            input_corpus: PathBuf::from(input_corpus),
+            output_corpus: PathBuf::from(output_corpus),
             jobs: self.jobs,
+            engine: FuzzingEngines::All,
         };
         match minimization_args.minimize() {
             Ok(_) => {
-                let new_corpus_size = fs::read_dir(&minimized_corpus)
+                let new_corpus_size = fs::read_dir(output_corpus)
                     .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
 
                 term.move_cursor_up(1)?;
 
                 if new_corpus_size == *"err" || new_corpus_size == *"0" {
-                    term.write_line("error during minimization... please check the logs and make sure the right version of the fuzzers are installed")?;
+                    return Err(anyhow!("Please check the logs and make sure the right version of the fuzzers are installed"));
                 } else {
                     term.write_line(&format!(
                         "{} the corpus ({} -> {} files)             \n",
@@ -523,24 +547,185 @@ impl Fuzz {
                         old_corpus_size,
                         new_corpus_size
                     ))?;
-
-                    fs::remove_dir_all(self.parsed_corpus())?;
-                    fs::rename(minimized_corpus, self.parsed_corpus())?;
                 }
             }
             Err(_) => {
-                term.write_line("error running minimization... probably a memory error")?;
+                return Err(anyhow!("Please check the logs, this might be an oom error"));
             }
         };
         Ok(())
-        */
     }
 
-    pub fn parsed_corpus(&self) -> String {
-        self.corpus
-            .display()
-            .to_string()
-            .replace("{target_name}", &self.target)
+    pub fn print_stats(&self) {
+        // First step: execute afl-whatsup
+        let mut afl_status = String::from("running ─");
+        let mut afl_total_execs = String::new();
+        let mut afl_instances = String::new();
+        let mut afl_speed = String::new();
+        let mut afl_coverage = String::new();
+        let mut afl_crashes = String::new();
+        let mut afl_new_finds = String::new();
+        let mut afl_faves = String::new();
+
+        if self.no_afl {
+            afl_status = String::from("disabled ")
+        } else {
+            let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
+            let afl_stats_process = process::Command::new(cargo)
+                .args([
+                    "afl",
+                    "whatsup",
+                    "-s",
+                    &format!("output/{}/afl", self.target),
+                ])
+                .output();
+
+            if let Ok(process) = afl_stats_process {
+                let s = std::str::from_utf8(&process.stdout).unwrap_or_default();
+
+                for mut line in s.split('\n') {
+                    line = line.trim();
+                    if let Some(total_execs) = line.strip_prefix("Total execs : ") {
+                        afl_total_execs =
+                            String::from(total_execs.split(',').next().unwrap_or_default());
+                    } else if let Some(instances) = line.strip_prefix("Fuzzers alive : ") {
+                        afl_instances = String::from(instances);
+                    } else if let Some(speed) = line.strip_prefix("Cumulative speed : ") {
+                        afl_speed = String::from(speed);
+                    } else if let Some(coverage) = line.strip_prefix("Coverage reached : ") {
+                        afl_coverage = String::from(coverage);
+                    } else if let Some(crashes) = line.strip_prefix("Crashes saved : ") {
+                        afl_crashes = String::from(crashes);
+                    } else if let Some(new_finds) = line.strip_prefix("Time without finds : ") {
+                        afl_new_finds = String::from(new_finds);
+                    } else if let Some(pending_items) = line.strip_prefix("Pending items : ") {
+                        afl_faves = String::from(
+                            pending_items
+                                .split(',')
+                                .next()
+                                .unwrap_or_default()
+                                .strip_suffix(" faves")
+                                .unwrap_or_default(),
+                        );
+                    }
+                }
+            }
+        }
+
+        // Second step: Get stats from honggfuzz logs
+        let mut hf_status = String::from("running ─");
+        let mut hf_total_execs = String::new();
+        let mut hf_threads = String::new();
+        let mut hf_speed = String::new();
+        let mut hf_coverage = String::new();
+        let mut hf_crashes = String::new();
+        let mut hf_new_finds = String::new();
+
+        if self.no_honggfuzz || (self.jobs == 1 && !self.no_afl) {
+            hf_status = String::from("disabled ");
+        } else {
+            let hf_stats_process = process::Command::new("tail")
+                .args([
+                    "-n50",
+                    &format!("./output/{}/logs/honggfuzz.log", self.target),
+                ])
+                .output();
+            if let Ok(process) = hf_stats_process {
+                let s = std::str::from_utf8(&process.stdout).unwrap_or_default();
+                for raw_line in s.split('\n') {
+                    let stripped_line = strip_str(raw_line);
+                    let line = stripped_line.trim();
+                    if let Some(total_execs) = line.strip_prefix("Iterations : ") {
+                        hf_total_execs =
+                            String::from(total_execs.split(' ').next().unwrap_or_default());
+                    } else if let Some(threads) = line.strip_prefix("Threads : ") {
+                        hf_threads = String::from(threads.split(',').next().unwrap_or_default());
+                    } else if let Some(speed) = line.strip_prefix("Speed : ") {
+                        hf_speed = String::from(
+                            speed
+                                .split("[avg: ")
+                                .nth(1)
+                                .unwrap_or_default()
+                                .strip_suffix(']')
+                                .unwrap_or_default(),
+                        ) + "/sec";
+                    } else if let Some(coverage) = line.strip_prefix("Coverage : ") {
+                        hf_coverage = String::from(
+                            coverage
+                                .split('[')
+                                .nth(1)
+                                .unwrap_or_default()
+                                .split(']')
+                                .next()
+                                .unwrap_or_default(),
+                        );
+                    } else if let Some(crashes) = line.strip_prefix("Crashes : ") {
+                        hf_crashes = String::from(crashes.split(' ').next().unwrap_or_default());
+                    } else if let Some(new_finds) = line.strip_prefix("Cov Update : ") {
+                        hf_new_finds = String::from(new_finds.trim());
+                        hf_new_finds = String::from(
+                            hf_new_finds
+                                .strip_prefix("0 days ")
+                                .unwrap_or(&hf_new_finds),
+                        );
+                        hf_new_finds = String::from(
+                            hf_new_finds
+                                .strip_prefix("00 hrs ")
+                                .unwrap_or(&hf_new_finds),
+                        );
+                        hf_new_finds = String::from(
+                            hf_new_finds
+                                .strip_prefix("00 mins ")
+                                .unwrap_or(&hf_new_finds),
+                        );
+                        hf_new_finds = String::from(
+                            hf_new_finds.strip_suffix(" ago").unwrap_or(&hf_new_finds),
+                        );
+                    }
+                }
+            }
+        }
+
+        // Third step: Get global stats
+        let mut total_run_time = time_humanize::HumanTime::from(self.start_time.elapsed())
+            .to_text_en(
+                time_humanize::Accuracy::Rough,
+                time_humanize::Tense::Present,
+            );
+        if total_run_time == "now" {
+            total_run_time = String::from("...");
+        }
+
+        // Fourth step: Print stats
+        // TODO Colors, of course!
+        // Move 11 lines up and clear line
+        eprint!("\x1B[11A\x1B[K");
+        eprint!("\x1B[K");
+        eprintln!("┌── ziggy rocking ──────────────────────────────────────────────────────────┐");
+        eprint!("\x1B[K");
+        eprintln!(
+            "│        run time : {total_run_time:17}                                       │"
+        );
+        eprint!("\x1B[K");
+        eprintln!("├── afl++ {afl_status:0}───────────────────┬── honggfuzz {hf_status:0}───────────────┤");
+        eprint!("\x1B[K");
+        eprintln!(
+            "│     total execs : {afl_total_execs:17} │     total execs : {hf_total_execs:17} │"
+        );
+        eprint!("\x1B[K");
+        eprintln!("│       instances : {afl_instances:17} │         threads : {hf_threads:17} │");
+        eprint!("\x1B[K");
+        eprintln!("│cumulative speed : {afl_speed:17} │   average Speed : {hf_speed:17} │");
+        eprint!("\x1B[K");
+        eprintln!("│   best coverage : {afl_coverage:17} │        coverage : {hf_coverage:17} │");
+        eprint!("\x1B[K");
+        eprintln!("│   crashes saved : {afl_crashes:17} │   crashes saved : {hf_crashes:17} │");
+        eprint!("\x1B[K");
+        eprintln!("│     no find for : {afl_new_finds:17} │     no find for : {hf_new_finds:17} │");
+        eprint!("\x1B[K");
+        eprintln!("│ top inputs todo : {afl_faves:17} │                                     │");
+        eprint!("\x1B[K");
+        eprintln!("└─────────────────────────────────────┴─────────────────────────────────────┘");
     }
 }
 
@@ -575,4 +760,15 @@ pub fn stop_fuzzers(processes: &mut Vec<process::Child>) -> Result<(), anyhow::E
         info!("Process wait: {:?}", process.wait());
     }
     Ok(())
+}
+
+pub fn extract_file_id(file: &Path) -> Option<(u32, String)> {
+    let file_name = file.file_name()?.to_str()?;
+    if file_name.len() < 9 {
+        return None;
+    }
+    let (id_part, _) = file_name.split_at(9);
+    let str_id = id_part.strip_prefix("id:")?;
+    let file_id = str_id.parse::<u32>().ok()?;
+    Some((file_id, String::from(file_name)))
 }

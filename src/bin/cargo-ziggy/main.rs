@@ -9,12 +9,11 @@ mod minimize;
 mod plot;
 mod run;
 mod triage;
-mod utils;
 
 #[cfg(feature = "cli")]
 use anyhow::{anyhow, Context, Result};
 #[cfg(feature = "cli")]
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 #[cfg(feature = "cli")]
 use std::{fs, path::PathBuf};
 
@@ -23,6 +22,13 @@ use std::{fs, path::PathBuf};
 extern crate log;
 
 pub const DEFAULT_UNMODIFIED_TARGET: &str = "automatically guessed";
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum FuzzingEngines {
+    All,
+    AFLPlusPlus,
+    Honggfuzz,
+}
 
 // Default time after which we share the corpora between the fuzzer instances and re-launch the fuzzers
 // This is work in progress
@@ -40,11 +46,11 @@ pub const _DEFAULT_FUZZ_TIMEOUT: u32 = 8400;
 // actually improving the fuzzing?
 pub const DEFAULT_MINIMIZATION_TIMEOUT: u32 = 22 * 60 * 60;
 
-pub const DEFAULT_CORPUS: &str = "./output/{target_name}/shared_corpus/";
+pub const DEFAULT_CORPUS: &str = "./output/{target_name}/corpus/";
 
 pub const DEFAULT_COVERAGE_DIR: &str = "./output/{target_name}/coverage/";
 
-pub const DEFAULT_MINIMIZATION_CORPUS: &str = "./output/{target_name}/minimized_corpus/";
+pub const DEFAULT_MINIMIZATION_CORPUS: &str = "./output/{target_name}/corpus_minimized/";
 
 pub const DEFAULT_PLOT_DIR: &str = "./output/{target_name}/plot/";
 
@@ -117,7 +123,7 @@ pub struct Fuzz {
     #[clap(short, long, value_parser, value_name = "DIR")]
     initial_corpus: Option<PathBuf>,
 
-    /// Timeout before shared corpus minimization
+    /// Timeout before shared corpus minimization (temporarily stops honggfuzz)
     #[clap(short, long, value_name = "SECS", default_value_t = DEFAULT_MINIMIZATION_TIMEOUT)]
     minimization_timeout: u32,
 
@@ -129,7 +135,7 @@ pub struct Fuzz {
     #[clap(short, long, value_name = "SECS")]
     timeout: Option<u32>,
 
-    /// Dictionary file (format:http://llvm.org/docs/LibFuzzer.html#dictionaries)
+    /// Dictionary file (format:<http://llvm.org/docs/LibFuzzer.html#dictionaries>)
     #[clap(short = 'x', long = "dict", value_name = "FILE")]
     dictionary: Option<PathBuf>,
 
@@ -156,6 +162,10 @@ pub struct Fuzz {
     /// Perform initial minimization - not active yet!
     #[clap(long = "perform-initial-minimization", action, default_value_t = false)]
     perform_initial_minimization: bool,
+
+    // This value helps us create a global timer for our display
+    #[clap(skip=std::time::Instant::now())]
+    start_time: std::time::Instant,
 }
 
 #[derive(Args)]
@@ -173,7 +183,7 @@ pub struct Run {
     inputs: Vec<PathBuf>,
 }
 
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct Minimize {
     /// Target to use
     #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
@@ -187,9 +197,12 @@ pub struct Minimize {
     #[clap(short, long, default_value = DEFAULT_MINIMIZATION_CORPUS)]
     output_corpus: PathBuf,
 
-    /// Number of concurent minimizing jobs
+    /// Number of concurent minimizing jobs (AFL++ only)
     #[clap(short, long, value_name = "NUM", default_value_t = 1)]
     jobs: u32,
+
+    #[clap(short, long, value_enum, default_value_t = FuzzingEngines::All)]
+    engine: FuzzingEngines,
 }
 
 #[derive(Args)]
@@ -276,7 +289,7 @@ fn main() -> Result<(), anyhow::Error> {
 pub fn find_target(target: &String) -> Result<String, anyhow::Error> {
     // If the target is already set, we're done here
     if target != DEFAULT_UNMODIFIED_TARGET {
-        eprintln!("    Using given target {target}");
+        info!("    Using given target {target}");
         return Ok(target.into());
     }
 
@@ -285,7 +298,7 @@ pub fn find_target(target: &String) -> Result<String, anyhow::Error> {
     let new_target_result = guess_target();
 
     if let Ok(ref new_target) = new_target_result {
-        eprintln!("    Using target {new_target}");
+        info!("    Using target {new_target}");
     }
 
     new_target_result.context("Target is not obvious")
