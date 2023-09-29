@@ -37,15 +37,20 @@ impl Fuzz {
         self.corpus
             .display()
             .to_string()
+            .replace("{output}", &self.output.display().to_string())
             .replace("{target_name}", &self.target)
     }
 
     pub fn corpus_tmp(&self) -> String {
-        format!("./output/{}/corpus_tmp/", self.target)
+        format!("{}/corpus_tmp/", self.output_target())
     }
 
     pub fn corpus_minimized(&self) -> String {
-        format!("./output/{}/corpus_minimized/", self.target)
+        format!("{}/corpus_minimized/", self.output_target(),)
+    }
+
+    pub fn output_target(&self) -> String {
+        format!("{}/{}", self.output.display(), self.target)
     }
 
     // Manages the continuous running of fuzzers
@@ -62,15 +67,15 @@ impl Fuzz {
 
         let time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
 
-        let crash_dir = format!("./output/{}/crashes/{}/", self.target, time);
+        let crash_dir = format!("{}/crashes/{}/", self.output_target(), time);
         let crash_path = Path::new(&crash_dir);
         fs::create_dir_all(crash_path)?;
 
         let _ = process::Command::new("mkdir")
             .args([
                 "-p",
-                &format!("./output/{}/logs/", self.target),
-                &format!("./output/{}/queue/", self.target),
+                &format!("{}/logs/", self.output_target()),
+                &format!("{}/queue/", self.output_target()),
             ])
             .stderr(process::Stdio::piped())
             .spawn()?
@@ -126,7 +131,7 @@ impl Fuzz {
             self.print_stats();
 
             if let Ok(afl_log) =
-                fs::read_to_string(format!("./output/{}/logs/afl.log", self.target))
+                fs::read_to_string(format!("{}/logs/afl.log", self.output_target()))
             {
                 if afl_log.contains("echo core >/proc/sys/kernel/core_pattern") {
                     stop_fuzzers(&mut processes)?;
@@ -145,12 +150,13 @@ impl Fuzz {
 
             // We check AFL++ and Honggfuzz's outputs for crash files and copy them over to
             // our own crashes directory
-            let crash_dirs = glob(&format!("./output/{}/afl/*/crashes", self.target))
+            let crash_dirs = glob(&format!("{}/afl/*/crashes", self.output_target()))
                 .map_err(|_| anyhow!("Failed to read crashes glob pattern"))?
                 .flatten()
                 .chain(vec![format!(
-                    "./output/{}/honggfuzz/{}",
-                    self.target, self.target
+                    "{}/honggfuzz/{}",
+                    self.output_target(),
+                    self.target
                 )
                 .into()]);
 
@@ -178,8 +184,8 @@ impl Fuzz {
                 && last_sync_time.elapsed().as_secs() > 10
             {
                 let afl_corpus = glob(&format!(
-                    "./output/{}/afl/mainaflfuzzer/queue/*",
-                    self.target
+                    "{}/afl/mainaflfuzzer/queue/*",
+                    self.output_target(),
                 ))?
                 .flatten();
                 for file in afl_corpus {
@@ -187,7 +193,7 @@ impl Fuzz {
                         if file_id > last_synced_queue_id {
                             let _ = fs::copy(
                                 &file,
-                                format!("./output/{}/queue/{file_name}", self.target),
+                                format!("{}/queue/{file_name}", self.output_target()),
                             );
                             last_synced_queue_id = file_id;
                         }
@@ -246,7 +252,7 @@ impl Fuzz {
 
         if !self.no_afl && !only_honggfuzz && afl_jobs > 0 {
             let _ = process::Command::new("mkdir")
-                .args(["-p", &format!("./output/{}/afl", self.target)])
+                .args(["-p", &format!("{}/afl", self.output_target())])
                 .stderr(process::Stdio::piped())
                 .spawn()?
                 .wait()?;
@@ -316,10 +322,10 @@ impl Fuzz {
                 };
                 */
                 let log_destination = || match job_num {
-                    0 => File::create(format!("output/{}/logs/afl.log", self.target))
+                    0 => File::create(format!("{}/logs/afl.log", self.output_target()))
                         .unwrap()
                         .into(),
-                    1 => File::create(format!("output/{}/logs/afl_1.log", self.target))
+                    1 => File::create(format!("{}/logs/afl_1.log", self.output_target()))
                         .unwrap()
                         .into(),
                     _ => process::Stdio::null(),
@@ -338,7 +344,7 @@ impl Fuzz {
                                 &fuzzer_name,
                                 &format!("-i{}", self.corpus()),
                                 &format!("-p{power_schedule}"),
-                                &format!("-ooutput/{}/afl", self.target),
+                                &format!("-o{}/afl", self.output_target()),
                                 &format!("-g{}", self.min_length),
                                 &format!("-G{}", self.max_length),
                                 &use_shared_corpus,
@@ -382,7 +388,7 @@ impl Fuzz {
                 .env("CARGO_TARGET_DIR", "./target/honggfuzz")
                 .env(
                     "HFUZZ_WORKSPACE",
-                    format!("./output/{}/honggfuzz", self.target),
+                    format!("{}/honggfuzz", self.output_target()),
                 )
                 .env("HFUZZ_RUN_ARGS", "--help")
                 .output()
@@ -419,26 +425,26 @@ impl Fuzz {
                     .env("CARGO_TARGET_DIR", "./target/honggfuzz")
                     .env(
                         "HFUZZ_WORKSPACE",
-                        format!("./output/{}/honggfuzz", self.target),
+                        format!("{}/honggfuzz", self.output_target()),
                     )
                     .env(
                         "HFUZZ_RUN_ARGS",
                         format!(
-                            "--input={} -o{} -n{honggfuzz_jobs} -F{} --dynamic_input=output/{}/queue {timeout_option} {dictionary_option}",
+                            "--input={} -o{} -n{honggfuzz_jobs} -F{} --dynamic_input={}/queue {timeout_option} {dictionary_option}",
                             &self.corpus(),
                             &self.corpus(),
                             self.max_length,
-                            self.target,
+                            self.output_target(),
                         ),
                     )
                     .stdin(std::process::Stdio::null())
                     .stderr(File::create(format!(
-                        "./output/{}/logs/honggfuzz.log",
-                        self.target
+                        "{}/logs/honggfuzz.log",
+                        self.output_target()
                     ))?)
                     .stdout(File::create(format!(
-                        "./output/{}/logs/honggfuzz.log",
-                        self.target
+                        "{}/logs/honggfuzz.log",
+                        self.output_target()
                     ))?)
                     .spawn()?,
             );
@@ -452,21 +458,21 @@ impl Fuzz {
         if afl_jobs > 0 {
             eprintln!(
                 "  {}",
-                style(format!("tail -f ./output/{}/logs/afl.log", self.target)).bold()
+                style(format!("tail -f {}/logs/afl.log", self.output_target())).bold()
             );
         }
         if afl_jobs > 1 {
             eprintln!(
                 "  {}",
-                style(format!("tail -f ./output/{}/logs/afl_1.log", self.target)).bold()
+                style(format!("tail -f {}/logs/afl_1.log", self.output_target())).bold()
             );
         }
         if honggfuzz_jobs > 0 {
             eprintln!(
                 "  {}",
                 style(format!(
-                    "tail -f ./output/{}/logs/honggfuzz.log",
-                    self.target
+                    "tail -f {}/logs/honggfuzz.log",
+                    self.output_target()
                 ))
                 .bold()
             );
@@ -481,7 +487,7 @@ impl Fuzz {
     }
 
     fn all_seeds(&self) -> Result<Vec<PathBuf>> {
-        Ok(glob(&format!("./output/{}/afl/*/queue/*", self.target))
+        Ok(glob(&format!("{}/afl/*/queue/*", self.output_target()))
             .map_err(|_| anyhow!("Failed to read AFL++ queue glob pattern"))?
             .chain(
                 glob(&format!("{}/*", self.corpus()))
@@ -519,7 +525,7 @@ impl Fuzz {
         ))?;
 
         let input_corpus = &self.corpus_tmp();
-        let output_corpus = &self.corpus_minimized();
+        let minimized_corpus = &self.corpus_minimized();
 
         let old_corpus_size = fs::read_dir(input_corpus)
             .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
@@ -527,13 +533,14 @@ impl Fuzz {
         let mut minimization_args = Minimize {
             target: self.target.clone(),
             input_corpus: PathBuf::from(input_corpus),
-            output_corpus: PathBuf::from(output_corpus),
+            minimized_corpus: PathBuf::from(minimized_corpus),
+            output: self.output.clone(),
             jobs: self.jobs,
             engine: FuzzingEngines::All,
         };
         match minimization_args.minimize() {
             Ok(_) => {
-                let new_corpus_size = fs::read_dir(output_corpus)
+                let new_corpus_size = fs::read_dir(minimized_corpus)
                     .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
 
                 term.move_cursor_up(1)?;
@@ -576,7 +583,7 @@ impl Fuzz {
                     "afl",
                     "whatsup",
                     "-s",
-                    &format!("output/{}/afl", self.target),
+                    &format!("{}/afl", self.output_target()),
                 ])
                 .output();
 
@@ -627,7 +634,7 @@ impl Fuzz {
             let hf_stats_process = process::Command::new("tail")
                 .args([
                     "-n50",
-                    &format!("./output/{}/logs/honggfuzz.log", self.target),
+                    &format!("{}/logs/honggfuzz.log", self.output_target()),
                 ])
                 .output();
             if let Ok(process) = hf_stats_process {

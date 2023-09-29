@@ -6,14 +6,15 @@ impl Triage {
         eprintln!("Running CASR triage on crashes");
 
         self.target = find_target(&self.target)?;
-        let input_dir = format!("output/{}/afl", self.target);
-        let output_dir = if self.output != DEFAULT_TRIAGE_DIR {
-            self.output.clone()
-        } else {
-            let tmp = format!("output/{}/triage", &self.target);
-            fs::remove_dir_all(&tmp).unwrap_or_default();
-            tmp
-        };
+        let input_dir = format!("{}/{}/afl", self.output.display(), self.target);
+
+        let triage_dir = self
+            .triage
+            .display()
+            .to_string()
+            .replace("{output}", &self.output.display().to_string())
+            .replace("{target_name}", &self.target);
+        fs::remove_dir_all(&triage_dir).unwrap_or_default();
 
         if !fs::metadata(&input_dir)
             .map(|meta| meta.is_dir())
@@ -23,11 +24,11 @@ impl Triage {
             return Ok(());
         }
 
-        if fs::metadata(&output_dir)
+        if fs::metadata(&triage_dir)
             .map(|meta| meta.is_dir())
             .unwrap_or(false)
         {
-            eprintln!("Please remove {:?} first", output_dir);
+            eprintln!("Please remove {:?} first", triage_dir);
             return Ok(());
         }
 
@@ -38,7 +39,7 @@ impl Triage {
                     "-i",
                     &input_dir,
                     "-o",
-                    &output_dir,
+                    &triage_dir,
                     &format!("-j{}", self.jobs),
                     // future: add option for crashes directory and use runner
                 ]

@@ -39,48 +39,37 @@ impl Cover {
         let mut shared_corpus = PathBuf::new();
 
         shared_corpus.push(
-            self.corpus
+            self.input
                 .display()
                 .to_string()
+                .replace("{output}", &self.output.display().to_string())
                 .replace("{target_name}", &self.target)
                 .as_str(),
         );
 
-        let mut afl_dir = PathBuf::new();
-        afl_dir.push(
-            shared_corpus
-                .display()
-                .to_string()
-                .replace("/shared_corpus", "/afl/mainaflfuzzer/queue")
-                .as_str(),
-        );
-
-        if afl_dir.is_dir() {
-            shared_corpus = afl_dir;
-        }
-
         info!("Corpus directory is {}", shared_corpus.display());
 
         // We run the target against the corpus
-        shared_corpus.canonicalize()?.read_dir()?.for_each(|input| {
-            let input = input.unwrap();
-            let input_path = input.path();
+        shared_corpus.canonicalize()?.read_dir()?.for_each(|item| {
+            let item = item.unwrap();
+            let item_path = item.path();
 
             let result = process::Command::new(format!("./target/coverage/debug/{}", &self.target))
-                .args([input_path.as_os_str()])
+                .args([item_path.as_os_str()])
                 .spawn()
                 .unwrap()
                 .wait_with_output()
                 .unwrap();
 
             if !result.status.success() {
-                eprintln!("Coverage crashed on {}, continuing.", input_path.display())
+                eprintln!("Coverage crashed on {}, continuing.", item_path.display())
             }
         });
 
         let source_or_workspace_root = match &self.source {
             Some(s) => s.display().to_string(),
             None => {
+                // TODO use cargo_metadata
                 let metadata_output = std::process::Command::new("cargo")
                     .arg("metadata")
                     .output()
@@ -98,14 +87,15 @@ impl Cover {
             }
         };
 
-        let output_dir = self
-            .output
+        let coverage_dir = self
+            .coverage
             .display()
             .to_string()
+            .replace("{output}", &self.output.display().to_string())
             .replace("{target_name}", &self.target);
 
         // We remove the previous coverage
-        if let Err(error) = fs::remove_dir_all(&output_dir) {
+        if let Err(error) = fs::remove_dir_all(&coverage_dir) {
             match error.kind() {
                 std::io::ErrorKind::NotFound => {}
                 e => return Err(anyhow!(e)),
@@ -122,7 +112,7 @@ impl Cover {
                 "--llvm",
                 "--branch",
                 "--ignore-not-existing",
-                &format!("-o={output_dir}"),
+                &format!("-o={coverage_dir}"),
             ])
             .spawn()
             .context("⚠️  cannot find grcov in your path, please install it")?
