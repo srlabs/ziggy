@@ -131,6 +131,10 @@ pub struct Fuzz {
     #[clap(short, long, value_name = "SECS")]
     timeout: Option<u32>,
 
+    /// Perform initial minimization
+    #[clap(short, long, action, default_value_t = false)]
+    minimize: bool,
+
     /// Dictionary file (format:<http://llvm.org/docs/LibFuzzer.html#dictionaries>)
     #[clap(short = 'x', long = "dict", value_name = "FILE")]
     dictionary: Option<PathBuf>,
@@ -150,10 +154,6 @@ pub struct Fuzz {
     /// No honggfuzz (Fuzz only with AFL++)
     #[clap(long = "no-honggfuzz", action)]
     no_honggfuzz: bool,
-
-    /// Perform initial minimization - not active yet!
-    #[clap(long = "perform-initial-minimization", action, default_value_t = false)]
-    perform_initial_minimization: bool,
 
     // This value helps us create a global timer for our display
     #[clap(skip=std::time::Instant::now())]

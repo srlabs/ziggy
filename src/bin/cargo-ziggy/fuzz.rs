@@ -77,7 +77,7 @@ impl Fuzz {
             .wait()?;
 
         if Path::new(&self.corpus()).exists() {
-            if self.perform_initial_minimization {
+            if self.minimize {
                 fs::create_dir_all(&self.corpus_tmp())
                     .context("Could not create temporary corpus")?;
                 self.copy_corpora()
