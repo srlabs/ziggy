@@ -82,7 +82,7 @@ impl Fuzz {
             .wait()?;
 
         if Path::new(&self.corpus()).exists() {
-            if self.perform_initial_minimization {
+            if self.minimize {
                 fs::create_dir_all(&self.corpus_tmp())
                     .context("Could not create temporary corpus")?;
                 self.copy_corpora()
@@ -530,13 +530,21 @@ impl Fuzz {
         let old_corpus_size = fs::read_dir(input_corpus)
             .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
 
+        let engine = match (self.no_afl, self.no_honggfuzz, self.jobs) {
+            (false, false, 1) => FuzzingEngines::AFLPlusPlus,
+            (false, false, _) => FuzzingEngines::All,
+            (false, true, _) => FuzzingEngines::AFLPlusPlus,
+            (true, false, _) => FuzzingEngines::Honggfuzz,
+            (true, true, _) => return Err(anyhow!("Pick at least one fuzzer")),
+        };
+
         let mut minimization_args = Minimize {
             target: self.target.clone(),
             input_corpus: PathBuf::from(input_corpus),
             minimized_corpus: PathBuf::from(minimized_corpus),
             output: self.output.clone(),
             jobs: self.jobs,
-            engine: FuzzingEngines::All,
+            engine,
         };
         match minimization_args.minimize() {
             Ok(_) => {

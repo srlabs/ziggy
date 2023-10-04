@@ -30,22 +30,6 @@ pub enum FuzzingEngines {
     Honggfuzz,
 }
 
-// Default time after which we share the corpora between the fuzzer instances and re-launch the fuzzers
-// This is work in progress
-// Set to 2 hour and 20 minutes, like in clusterfuzz
-// See https://github.com/google/clusterfuzz/blob/52f28f83a0422e9a7026a215732876859e4b267b/src/local/butler/scripts/setup.py#L52
-// marc: this makes only sense for honggfuzz. AFL++ can learn honggfuzz's
-// findings on the fly with the right command line parameter which is more
-// effective
-pub const _DEFAULT_FUZZ_TIMEOUT: u32 = 8400;
-
-// Default time after which we minimize the corpus and re-launch the fuzzers
-// Set to 22 hours, like in clusterfuzz
-// See https://github.com/google/clusterfuzz/blob/52f28f83a0422e9a7026a215732876859e4b267b/src/clusterfuzz/_internal/bot/tasks/corpus_pruning_task.py#L61
-// marc: another thing that is not a good idea IMHO. has anyone tested if this
-// actually improving the fuzzing?
-pub const DEFAULT_MINIMIZATION_TIMEOUT: u32 = 22 * 60 * 60;
-
 pub const DEFAULT_OUTPUT_DIR: &str = "./output";
 
 pub const DEFAULT_CORPUS_DIR: &str = "{output}/{target_name}/corpus/";
@@ -125,6 +109,7 @@ pub struct Fuzz {
     #[clap(short, long, value_parser, value_name = "DIR")]
     initial_corpus: Option<PathBuf>,
 
+<<<<<<< HEAD
     /// Fuzzers output directory
     #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_OUTPUT_DIR)]
     output: PathBuf,
@@ -133,6 +118,8 @@ pub struct Fuzz {
     #[clap(short, long, value_name = "SECS", default_value_t = DEFAULT_MINIMIZATION_TIMEOUT)]
     minimization_timeout: u32,
 
+=======
+>>>>>>> main
     /// Number of concurent fuzzing jobs
     #[clap(short, long, value_name = "NUM", default_value_t = 1)]
     jobs: u32,
@@ -140,6 +127,10 @@ pub struct Fuzz {
     /// Timeout for a single run
     #[clap(short, long, value_name = "SECS")]
     timeout: Option<u32>,
+
+    /// Perform initial minimization
+    #[clap(short, long, action, default_value_t = false)]
+    minimize: bool,
 
     /// Dictionary file (format:<http://llvm.org/docs/LibFuzzer.html#dictionaries>)
     #[clap(short = 'x', long = "dict", value_name = "FILE")]
@@ -160,14 +151,6 @@ pub struct Fuzz {
     /// No honggfuzz (Fuzz only with AFL++)
     #[clap(long = "no-honggfuzz", action)]
     no_honggfuzz: bool,
-
-    /// Skip initial minimization - NOT USED ANYMORE!
-    #[clap(long = "skip-initial-minimization", action)]
-    skip_initial_minimization: bool,
-
-    /// Perform initial minimization - not active yet!
-    #[clap(long = "perform-initial-minimization", action, default_value_t = false)]
-    perform_initial_minimization: bool,
 
     // This value helps us create a global timer for our display
     #[clap(skip=std::time::Instant::now())]
