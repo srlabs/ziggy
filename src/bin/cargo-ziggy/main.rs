@@ -109,17 +109,10 @@ pub struct Fuzz {
     #[clap(short, long, value_parser, value_name = "DIR")]
     initial_corpus: Option<PathBuf>,
 
-<<<<<<< HEAD
     /// Fuzzers output directory
     #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_OUTPUT_DIR)]
     output: PathBuf,
 
-    /// Timeout before shared corpus minimization (temporarily stops honggfuzz)
-    #[clap(short, long, value_name = "SECS", default_value_t = DEFAULT_MINIMIZATION_TIMEOUT)]
-    minimization_timeout: u32,
-
-=======
->>>>>>> main
     /// Number of concurent fuzzing jobs
     #[clap(short, long, value_name = "NUM", default_value_t = 1)]
     jobs: u32,
