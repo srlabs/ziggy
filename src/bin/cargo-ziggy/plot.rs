@@ -20,11 +20,13 @@ impl Plot {
         );
 
         let plot_dir = self
-            .output
+            .plot
             .display()
             .to_string()
             .replace("{output}", &self.output.display().to_string())
             .replace("{target_name}", &self.target);
+        println!("{plot_dir}");
+        println!("{}", self.target);
 
         // We run the afl-plot command
         process::Command::new(cargo)

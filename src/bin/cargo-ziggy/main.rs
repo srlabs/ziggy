@@ -110,7 +110,7 @@ pub struct Fuzz {
     initial_corpus: Option<PathBuf>,
 
     /// Fuzzers output directory
-    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_OUTPUT_DIR)]
+    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_OUTPUT_DIR, env="ZIGGY_OUTPUT_DIR")]
     output: PathBuf,
 
     /// Number of concurent fuzzing jobs
@@ -165,7 +165,7 @@ pub struct Run {
     inputs: Vec<PathBuf>,
 
     /// Fuzzers output directory
-    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_OUTPUT_DIR)]
+    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_OUTPUT_DIR, env="ZIGGY_OUTPUT_DIR")]
     output: PathBuf,
 }
 
@@ -184,7 +184,7 @@ pub struct Minimize {
     minimized_corpus: PathBuf,
 
     /// Fuzzers output directory
-    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_OUTPUT_DIR)]
+    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_OUTPUT_DIR, env="ZIGGY_OUTPUT_DIR")]
     output: PathBuf,
 
     /// Number of concurent minimizing jobs (AFL++ only)
@@ -207,7 +207,7 @@ pub struct Cover {
     #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CORPUS_DIR)]
     input: PathBuf,
     /// Fuzzers output directory
-    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_OUTPUT_DIR)]
+    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_OUTPUT_DIR, env="ZIGGY_OUTPUT_DIR")]
     output: PathBuf,
     /// Source directory of covered code
     #[clap(short, long, value_parser, value_name = "DIR")]
@@ -226,7 +226,7 @@ pub struct Plot {
     #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_PLOT_DIR)]
     plot: PathBuf,
     /// Fuzzers output directory
-    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_OUTPUT_DIR)]
+    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_OUTPUT_DIR, env="ZIGGY_OUTPUT_DIR")]
     output: PathBuf,
 }
 
@@ -242,7 +242,7 @@ pub struct Triage {
     #[clap(short, long, value_name = "NUM", default_value_t = 1)]
     jobs: u32,
     /// Fuzzers output directory
-    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_OUTPUT_DIR)]
+    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_OUTPUT_DIR, env="ZIGGY_OUTPUT_DIR")]
     output: PathBuf,
     /* future feature, wait for casr
     /// Crash directory to be sourced from
@@ -260,7 +260,7 @@ pub struct AddSeeds {
     #[clap(short, long, value_parser, value_name = "DIR")]
     input: PathBuf,
     /// Fuzzers output directory
-    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_OUTPUT_DIR)]
+    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_OUTPUT_DIR, env="ZIGGY_OUTPUT_DIR")]
     output: PathBuf,
 }
 
