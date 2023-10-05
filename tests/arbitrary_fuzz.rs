@@ -1,4 +1,9 @@
-use std::{env, fs, path::PathBuf, process, thread, time::Duration};
+use std::{
+    env, fs,
+    path::PathBuf,
+    process, thread,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 fn kill_subprocesses_recursively(pid: &str) {
     let subprocesses = process::Command::new("pgrep")
@@ -25,7 +30,14 @@ fn kill_subprocesses_recursively(pid: &str) {
 
 #[test]
 fn integration() {
-    let temp_dir_path = env::temp_dir();
+    let unix_time = format!(
+        "{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    );
+    let temp_dir_path = env::temp_dir().join(unix_time);
     let metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();
     let workspace_root: PathBuf = metadata.workspace_root.into();
     let target_directory: PathBuf = metadata.target_directory.into();
