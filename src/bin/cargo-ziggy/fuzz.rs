@@ -388,9 +388,12 @@ impl Fuzz {
                 .output()
                 .context("could not run `cargo hfuzz run --help`")?;
 
-            if !std::str::from_utf8(hfuzz_help.stderr.as_slice())
+            if !std::str::from_utf8(hfuzz_help.stdout.as_slice())
                 .unwrap_or_default()
                 .contains("dynamic_input")
+                && !std::str::from_utf8(hfuzz_help.stderr.as_slice())
+                    .unwrap_or_default()
+                    .contains("dynamic_input")
             {
                 panic!("Outdated version of honggfuzz, please update the ziggy version in your Cargo.toml or rebuild the project");
             }
