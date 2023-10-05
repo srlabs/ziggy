@@ -605,7 +605,8 @@ impl Fuzz {
                     } else if let Some(crashes) = line.strip_prefix("Crashes saved : ") {
                         afl_crashes = String::from(crashes);
                     } else if let Some(new_finds) = line.strip_prefix("Time without finds : ") {
-                        afl_new_finds = String::from(new_finds);
+                        afl_new_finds =
+                            String::from(new_finds.split(',').next().unwrap_or_default());
                     } else if let Some(pending_items) = line.strip_prefix("Pending items : ") {
                         afl_faves = String::from(
                             pending_items
@@ -634,7 +635,7 @@ impl Fuzz {
         } else {
             let hf_stats_process = process::Command::new("tail")
                 .args([
-                    "-n50",
+                    "-n300",
                     &format!("./output/{}/logs/honggfuzz.log", self.target),
                 ])
                 .output();
