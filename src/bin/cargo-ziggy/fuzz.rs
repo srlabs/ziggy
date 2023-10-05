@@ -732,7 +732,7 @@ impl Fuzz {
             if afl_crashes == "0" {
                 eprintln!("│{gray}cumulative speed :{reset} {afl_speed:17.17} │ {gray}crashes saved :{reset} {afl_crashes:11.11}  {blue}/{red}//{reset}    │");
             } else {
-                eprintln!("│{gray}cumulative speed :{reset} {afl_speed:17.17} │{gray}crashes saved :{reset} {red}{afl_crashes:11.11}{reset}   {blue}/{red}//{reset}    │");
+                eprintln!("│{gray}cumulative speed :{reset} {afl_speed:17.17} │ {gray}crashes saved :{reset} {red}{afl_crashes:11.11}{reset}  {blue}/{red}//{reset}    │");
             }
             eprintln!(
                 "│     {gray}total execs :{reset} {afl_total_execs:17.17} │{gray}timeouts saved :{reset} {afl_timeouts:17.17}   │"
