@@ -63,15 +63,18 @@ fn integration() {
         .join("mainaflfuzzer")
         .join("fuzzer_stats")
         .is_file());
-    assert!(fs::read_dir(
-        temp_dir_path
-            .join("arbitrary-fuzz")
-            .join("afl")
-            .join("mainaflfuzzer")
-            .join("crashes")
-    )
-    .unwrap()
-    .count() != 0);
+    assert!(
+        fs::read_dir(
+            temp_dir_path
+                .join("arbitrary-fuzz")
+                .join("afl")
+                .join("mainaflfuzzer")
+                .join("crashes")
+        )
+        .unwrap()
+        .count()
+            != 0
+    );
     assert!(temp_dir_path
         .join("arbitrary-fuzz")
         .join("honggfuzz")

@@ -1,5 +1,12 @@
 # Changes
 
+## 0.7.1 - 2023-10-05
+
+- Fix honggfuzz bug
+- Cleanup minimization logic
+- Check grcov is installed before running coverage
+- Fix CLI output glitches
+
 ## 0.7.0 - 2023-09-28
 
 - Revamp CLI output

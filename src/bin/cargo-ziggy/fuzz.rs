@@ -394,9 +394,12 @@ impl Fuzz {
                 .output()
                 .context("could not run `cargo hfuzz run --help`")?;
 
-            if !std::str::from_utf8(hfuzz_help.stderr.as_slice())
+            if !std::str::from_utf8(hfuzz_help.stdout.as_slice())
                 .unwrap_or_default()
                 .contains("dynamic_input")
+                && !std::str::from_utf8(hfuzz_help.stderr.as_slice())
+                    .unwrap_or_default()
+                    .contains("dynamic_input")
             {
                 panic!("Outdated version of honggfuzz, please update the ziggy version in your Cargo.toml or rebuild the project");
             }
@@ -612,7 +615,8 @@ impl Fuzz {
                     } else if let Some(crashes) = line.strip_prefix("Crashes saved : ") {
                         afl_crashes = String::from(crashes);
                     } else if let Some(new_finds) = line.strip_prefix("Time without finds : ") {
-                        afl_new_finds = String::from(new_finds);
+                        afl_new_finds =
+                            String::from(new_finds.split(',').next().unwrap_or_default());
                     } else if let Some(pending_items) = line.strip_prefix("Pending items : ") {
                         afl_faves = String::from(
                             pending_items
@@ -641,7 +645,7 @@ impl Fuzz {
         } else {
             let hf_stats_process = process::Command::new("tail")
                 .args([
-                    "-n50",
+                    "-n300",
                     &format!("{}/logs/honggfuzz.log", self.output_target()),
                 ])
                 .output();

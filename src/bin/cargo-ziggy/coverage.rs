@@ -5,6 +5,11 @@ use std::{env, fs, path::PathBuf, process};
 
 impl Cover {
     pub fn generate_coverage(&mut self) -> Result<(), anyhow::Error> {
+        process::Command::new("grcov")
+            .arg("--version")
+            .output()
+            .context("grcov not found - please install by running `cargo install grcov`")?;
+
         eprintln!("Generating coverage");
 
         self.target =
