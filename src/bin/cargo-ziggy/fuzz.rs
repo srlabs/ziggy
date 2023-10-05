@@ -563,6 +563,8 @@ impl Fuzz {
     }
 
     pub fn print_stats(&self) {
+        let fuzzer_name = format!(" {} ", self.target);
+
         let reset = "\x1b[0m";
         let gray = "\x1b[1;90m";
         let red = "\x1b[1;91m";
@@ -578,6 +580,7 @@ impl Fuzz {
         let mut afl_speed = String::new();
         let mut afl_coverage = String::new();
         let mut afl_crashes = String::new();
+        let mut afl_timeouts = String::new();
         let mut afl_new_finds = String::new();
         let mut afl_faves = String::new();
 
@@ -610,6 +613,8 @@ impl Fuzz {
                         afl_coverage = String::from(coverage);
                     } else if let Some(crashes) = line.strip_prefix("Crashes saved : ") {
                         afl_crashes = String::from(crashes);
+                    } else if let Some(timeouts) = line.strip_prefix("Hangs saved : ") {
+                        afl_timeouts = String::from(timeouts.split(' ').next().unwrap_or_default());
                     } else if let Some(new_finds) = line.strip_prefix("Time without finds : ") {
                         afl_new_finds =
                             String::from(new_finds.split(',').next().unwrap_or_default());
@@ -634,6 +639,7 @@ impl Fuzz {
         let mut hf_speed = String::new();
         let mut hf_coverage = String::new();
         let mut hf_crashes = String::new();
+        let mut hf_timeouts = String::new();
         let mut hf_new_finds = String::new();
 
         if self.no_honggfuzz || (self.jobs == 1 && !self.no_afl) {
@@ -676,6 +682,8 @@ impl Fuzz {
                         );
                     } else if let Some(crashes) = line.strip_prefix("Crashes : ") {
                         hf_crashes = String::from(crashes.split(' ').next().unwrap_or_default());
+                    } else if let Some(timeouts) = line.strip_prefix("Timeouts : ") {
+                        hf_timeouts = String::from(timeouts.split(' ').next().unwrap_or_default());
                     } else if let Some(new_finds) = line.strip_prefix("Cov Update : ") {
                         hf_new_finds = String::from(new_finds.trim());
                         hf_new_finds = String::from(
@@ -714,36 +722,37 @@ impl Fuzz {
         // Fourth step: Print stats
         // We start by clearing the screen
         eprint!("\x1B[1;1H\x1B[2J");
-        eprintln!("┌─ {blue}ziggy{reset} {purple}rocking{reset} ────────────────────────────────────────────────────{blue}/{red}///{reset}───┐");
+        eprintln!("┌─ {blue}ziggy{reset} {purple}rocking{reset} ─────────{fuzzer_name:─^25.25}──────────────────{blue}/{red}///{reset}───┐");
         eprintln!(
             "│{gray}run time :{reset} {total_run_time:17.17}                                       {blue}/{red}//////{reset} │"
         );
         eprintln!("├─ {blue}afl++{reset} {afl_status:0}────────────────────┬────────────────────────────────{blue}/{red}//{reset}──┤");
         if !afl_status.contains("disabled") {
-            eprintln!("│       {gray}instances :{reset} {afl_instances:17.17} │{gray}best coverage :{reset} {afl_coverage:8.8}       {blue}/{red}//{reset}   │");
+            eprintln!("│       {gray}instances :{reset} {afl_instances:17.17} │ {gray}best coverage :{reset} {afl_coverage:11.11}   {blue}/{red}//{reset}   │");
             if afl_crashes == "0" {
-                eprintln!("│{gray}cumulative speed :{reset} {afl_speed:17.17} │{gray}crashes saved :{reset} {afl_crashes:11.11}   {blue}/{red}//{reset}    │");
+                eprintln!("│{gray}cumulative speed :{reset} {afl_speed:17.17} │ {gray}crashes saved :{reset} {afl_crashes:11.11}  {blue}/{red}//{reset}    │");
             } else {
                 eprintln!("│{gray}cumulative speed :{reset} {afl_speed:17.17} │{gray}crashes saved :{reset} {red}{afl_crashes:11.11}{reset}   {blue}/{red}//{reset}    │");
             }
             eprintln!(
-                "│     {gray}total execs :{reset} {afl_total_execs:17.17} │  {gray}no find for :{reset} {afl_new_finds:17.17}    │"
+                "│     {gray}total execs :{reset} {afl_total_execs:17.17} │{gray}timeouts saved :{reset} {afl_timeouts:17.17}   │"
             );
-            eprintln!("│ {gray}top inputs todo :{reset} {afl_faves:17.17} │                                     │");
+            eprintln!("│ {gray}top inputs todo :{reset} {afl_faves:17.17} │   {gray}no find for :{reset} {afl_new_finds:17.17}   │");
         }
         eprintln!(
-            "├─ {blue}honggfuzz{reset} {hf_status:0}─────────────┬──┴───────────────────────────────┬─────┘"
+            "├─ {blue}honggfuzz{reset} {hf_status:0}─────────────┬──┴────────────────────────────────┬────┘"
         );
         if !hf_status.contains("disabled") {
-            eprintln!("│      {gray}threads :{reset} {hf_threads:17.17} │     {gray}coverage :{reset} {hf_coverage:17.17} │");
+            eprintln!("│      {gray}threads :{reset} {hf_threads:17.17} │      {gray}coverage :{reset} {hf_coverage:17.17} │");
             if hf_crashes == "0" {
-                eprintln!("│{gray}average Speed :{reset} {hf_speed:17.17} │{gray}crashes saved :{reset} {hf_crashes:17.17} │");
+                eprintln!("│{gray}average Speed :{reset} {hf_speed:17.17} │ {gray}crashes saved :{reset} {hf_crashes:17.17} │");
             } else {
-                eprintln!("│{gray}average Speed :{reset} {hf_speed:17.17} │{gray}crashes saved :{reset} {red}{hf_crashes:17.17}{reset} │");
+                eprintln!("│{gray}average Speed :{reset} {hf_speed:17.17} │ {gray}crashes saved :{reset} {red}{hf_crashes:17.17}{reset} │");
             }
-            eprintln!("│  {gray}total execs :{reset} {hf_total_execs:17.17} │  {gray}no find for :{reset} {hf_new_finds:17.17} │");
+            eprintln!("│  {gray}total execs :{reset} {hf_total_execs:17.17} │{gray}timeouts saved :{reset} {hf_timeouts:17.17} │");
+            eprintln!("│                                  │   {gray}no find for :{reset} {hf_new_finds:17.17} │");
         }
-        eprintln!("└──────────────────────────────────┴──────────────────────────────────┘");
+        eprintln!("└──────────────────────────────────┴───────────────────────────────────┘");
     }
 }
 
