@@ -63,6 +63,7 @@ fn integration() {
         .arg("-j2")
         .arg("-t5")
         .arg(format!("-o{}", temp_dir_path.display()))
+        .env("AFL_SKIP_CPUFREQ", "1")
         .current_dir(fuzzer_directory.clone())
         .spawn()
         .expect("failed to run `cargo ziggy fuzz`");
@@ -90,6 +91,7 @@ fn integration() {
         .arg("-j2")
         .arg("-t5")
         .arg(format!("-o{}", temp_dir_path.display()))
+        .env("AFL_SKIP_CPUFREQ", "1")
         .current_dir(fuzzer_directory)
         .spawn()
         .expect("failed to run `cargo ziggy fuzz`");
