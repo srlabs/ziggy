@@ -85,16 +85,31 @@ fn integration() {
 
     // We resume fuzzing
     // cargo ziggy fuzz -j 2 -t 5 -o temp_dir
-    let fuzzer = process::Command::new(cargo_ziggy)
+    let fuzzer = process::Command::new(cargo_ziggy.clone())
         .arg("ziggy")
         .arg("fuzz")
         .arg("-j2")
         .arg("-t5")
         .arg(format!("-o{}", temp_dir_path.display()))
         .env("AFL_SKIP_CPUFREQ", "1")
-        .current_dir(fuzzer_directory)
+        .current_dir(fuzzer_directory.clone())
         .spawn()
         .expect("failed to run `cargo ziggy fuzz`");
     thread::sleep(Duration::from_secs(10));
     kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
+
+    // We create a coverage report
+    let coverage = process::Command::new(cargo_ziggy)
+        .arg("ziggy")
+        .arg("cover")
+        .arg(format!("-o{}", temp_dir_path.display()))
+        .current_dir(fuzzer_directory)
+        .status()
+        .expect("failed to run `cargo ziggy cover`");
+
+    assert!(temp_dir_path
+        .join("url-fuzz")
+        .join("coverage")
+        .join("index.html")
+        .is_file());
 }
