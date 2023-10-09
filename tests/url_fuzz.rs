@@ -135,4 +135,20 @@ fn integration() {
         .join("coverage")
         .join("index.html")
         .is_file());
+
+    // cargo ziggy plot -o temp_dir
+    let plot = process::Command::new(&cargo_ziggy)
+        .arg("ziggy")
+        .arg("plot")
+        .arg(format!("-o{}", temp_dir_path.display()))
+        .current_dir(&fuzzer_directory)
+        .status()
+        .expect("failed to run `cargo ziggy plot`");
+
+    assert!(plot.success());
+    assert!(temp_dir_path
+        .join("url-fuzz")
+        .join("plot")
+        .join("index.html")
+        .is_file());
 }

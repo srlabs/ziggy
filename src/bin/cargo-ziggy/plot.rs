@@ -13,7 +13,7 @@ impl Plot {
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
         let fuzzer_data_dir = format!(
-            "./{}/{}/afl/{}/",
+            "{}/{}/afl/{}/",
             &self.output.display(),
             &self.target,
             &self.input
