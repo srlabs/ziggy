@@ -47,24 +47,24 @@ fn integration() {
     // TODO Custom target path
 
     // cargo ziggy build
-    let build_status = process::Command::new(cargo_ziggy.clone())
+    let build_status = process::Command::new(&cargo_ziggy)
         .arg("ziggy")
         .arg("build")
-        .current_dir(fuzzer_directory.clone())
+        .current_dir(&fuzzer_directory)
         .status()
         .expect("failed to run `cargo ziggy build`");
 
     assert!(build_status.success(), "`cargo ziggy build` failed");
 
     // cargo ziggy fuzz -j 2 -t 5 -o temp_dir
-    let fuzzer = process::Command::new(cargo_ziggy.clone())
+    let fuzzer = process::Command::new(&cargo_ziggy)
         .arg("ziggy")
         .arg("fuzz")
         .arg("-j2")
         .arg("-t5")
         .arg(format!("-o{}", temp_dir_path.display()))
         .env("AFL_SKIP_CPUFREQ", "1")
-        .current_dir(fuzzer_directory.clone())
+        .current_dir(&fuzzer_directory)
         .spawn()
         .expect("failed to run `cargo ziggy fuzz`");
     thread::sleep(Duration::from_secs(10));
@@ -85,28 +85,51 @@ fn integration() {
 
     // We resume fuzzing
     // cargo ziggy fuzz -j 2 -t 5 -o temp_dir
-    let fuzzer = process::Command::new(cargo_ziggy.clone())
+    let fuzzer = process::Command::new(&cargo_ziggy)
         .arg("ziggy")
         .arg("fuzz")
         .arg("-j2")
         .arg("-t5")
         .arg(format!("-o{}", temp_dir_path.display()))
         .env("AFL_SKIP_CPUFREQ", "1")
-        .current_dir(fuzzer_directory.clone())
+        .current_dir(&fuzzer_directory)
         .spawn()
         .expect("failed to run `cargo ziggy fuzz`");
     thread::sleep(Duration::from_secs(10));
     kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
 
-    // We create a coverage report
-    let coverage = process::Command::new(cargo_ziggy)
+    // cargo ziggy minimize -o temp_dir
+    let minimization = process::Command::new(&cargo_ziggy)
+        .arg("ziggy")
+        .arg("minimize")
+        .arg("-j2")
+        .arg(format!("-o{}", temp_dir_path.display()))
+        .current_dir(&fuzzer_directory)
+        .status()
+        .expect("failed to run `cargo ziggy minimize`");
+
+    assert!(minimization.success());
+    assert!(temp_dir_path
+        .join("url-fuzz")
+        .join("logs")
+        .join("minimization_afl.log")
+        .is_file());
+    assert!(temp_dir_path
+        .join("url-fuzz")
+        .join("logs")
+        .join("minimization_honggfuzz.log")
+        .is_file());
+
+    // cargo ziggy cover -o temp_dir
+    let coverage = process::Command::new(&cargo_ziggy)
         .arg("ziggy")
         .arg("cover")
         .arg(format!("-o{}", temp_dir_path.display()))
-        .current_dir(fuzzer_directory)
+        .current_dir(&fuzzer_directory)
         .status()
         .expect("failed to run `cargo ziggy cover`");
 
+    assert!(coverage.success());
     assert!(temp_dir_path
         .join("url-fuzz")
         .join("coverage")
