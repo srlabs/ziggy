@@ -27,6 +27,7 @@ impl Build {
                     "--target-dir=target/afl",
                 ])
                 .env("AFL_QUIET", "1")
+                .env("RUSTFLAGS", env::var("RUSTFLAGS").unwrap_or_default())
                 .spawn()?
                 .wait()
                 .context("Error spawning afl build command")?;
@@ -49,6 +50,7 @@ impl Build {
                 .args(["hfuzz", "build"])
                 .env("CARGO_TARGET_DIR", "./target/honggfuzz")
                 .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
+                .env("RUSTFLAGS", env::var("RUSTFLAGS").unwrap_or_default())
                 .stdout(process::Stdio::piped())
                 .spawn()?
                 .wait()
