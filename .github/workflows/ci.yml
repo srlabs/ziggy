@@ -8,6 +8,16 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Cargo sort
+        run: cargo install cargo-sort && cargo sort --check
+      - name: Format
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings 
   build_and_test:
     name: Rust project - latest
     runs-on: ubuntu-latest
