@@ -62,7 +62,7 @@ fn integration() {
         .arg("fuzz")
         .arg("-j2")
         .arg("-t5")
-        .arg(format!("-o{}", temp_dir_path.display()))
+        .env("ZIGGY_OUTPUT", format!("{}", temp_dir_path.display()))
         .env("AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES", "1")
         .env("AFL_SKIP_CPUFREQ", "1")
         .current_dir(fuzzer_directory)

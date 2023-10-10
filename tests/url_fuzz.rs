@@ -56,13 +56,13 @@ fn integration() {
 
     assert!(build_status.success(), "`cargo ziggy build` failed");
 
-    // cargo ziggy fuzz -j 2 -t 5 -o temp_dir
+    // cargo ziggy fuzz -j 2 -t 5 
     let fuzzer = process::Command::new(&cargo_ziggy)
         .arg("ziggy")
         .arg("fuzz")
         .arg("-j2")
         .arg("-t5")
-        .arg(format!("-o{}", temp_dir_path.display()))
+        .env("ZIGGY_OUTPUT", format!("{}", temp_dir_path.display()))
         .env("AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES", "1")
         .env("AFL_SKIP_CPUFREQ", "1")
         .current_dir(&fuzzer_directory)
@@ -85,13 +85,13 @@ fn integration() {
         .is_dir());
 
     // We resume fuzzing
-    // cargo ziggy fuzz -j 2 -t 5 -o temp_dir
+    // cargo ziggy fuzz -j 2 -t 5
     let fuzzer = process::Command::new(&cargo_ziggy)
         .arg("ziggy")
         .arg("fuzz")
         .arg("-j2")
         .arg("-t5")
-        .arg(format!("-o{}", temp_dir_path.display()))
+        .env("ZIGGY_OUTPUT", format!("{}", temp_dir_path.display()))
         .env("AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES", "1")
         .env("AFL_SKIP_CPUFREQ", "1")
         .current_dir(&fuzzer_directory)
@@ -100,12 +100,12 @@ fn integration() {
     thread::sleep(Duration::from_secs(10));
     kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
 
-    // cargo ziggy minimize -o temp_dir
+    // cargo ziggy minimize
     let minimization = process::Command::new(&cargo_ziggy)
         .arg("ziggy")
         .arg("minimize")
         .arg("-j2")
-        .arg(format!("-o{}", temp_dir_path.display()))
+        .env("ZIGGY_OUTPUT", format!("{}", temp_dir_path.display()))
         .current_dir(&fuzzer_directory)
         .status()
         .expect("failed to run `cargo ziggy minimize`");
@@ -122,11 +122,11 @@ fn integration() {
         .join("minimization_honggfuzz.log")
         .is_file());
 
-    // cargo ziggy cover -o temp_dir
+    // cargo ziggy cover
     let coverage = process::Command::new(&cargo_ziggy)
         .arg("ziggy")
         .arg("cover")
-        .arg(format!("-o{}", temp_dir_path.display()))
+        .env("ZIGGY_OUTPUT", format!("{}", temp_dir_path.display()))
         .current_dir(&fuzzer_directory)
         .status()
         .expect("failed to run `cargo ziggy cover`");
@@ -138,11 +138,11 @@ fn integration() {
         .join("index.html")
         .is_file());
 
-    // cargo ziggy plot -o temp_dir
+    // cargo ziggy plot
     let plot = process::Command::new(&cargo_ziggy)
         .arg("ziggy")
         .arg("plot")
-        .arg(format!("-o{}", temp_dir_path.display()))
+        .env("ZIGGY_OUTPUT", format!("{}", temp_dir_path.display()))
         .current_dir(&fuzzer_directory)
         .status()
         .expect("failed to run `cargo ziggy plot`");
