@@ -33,7 +33,12 @@ impl Run {
         let run_args: Vec<String> = self
             .inputs
             .iter()
-            .map(|x| x.display().to_string().replace("{target_name}", &target))
+            .map(|x| {
+                x.display()
+                    .to_string()
+                    .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
+                    .replace("{target_name}", &target)
+            })
             .collect();
 
         process::Command::new(format!("./target/runner/debug/{}", target))
