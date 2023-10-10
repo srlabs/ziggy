@@ -56,7 +56,7 @@ fn integration() {
 
     assert!(build_status.success(), "`cargo ziggy build` failed");
 
-    // cargo ziggy fuzz -j 2 -t 5 
+    // cargo ziggy fuzz -j 2 -t 5
     let fuzzer = process::Command::new(&cargo_ziggy)
         .arg("ziggy")
         .arg("fuzz")
