@@ -12,7 +12,7 @@ impl AddSeeds {
             .input
             .display()
             .to_string()
-            .replace("{output}", &self.output.display().to_string())
+            .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
             .replace("{target_name}", &self.target);
 
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
@@ -24,7 +24,7 @@ impl AddSeeds {
                     "fuzz",
                     "-i",
                     &input,
-                    &format!("-o{}/{}/afl", self.output.display(), self.target),
+                    &format!("-o{}/{}/afl", self.ziggy_output.display(), self.target),
                     "-V1",
                     "-c-",
                     &format!("-Sadd{:x}", rng.gen::<u64>()),

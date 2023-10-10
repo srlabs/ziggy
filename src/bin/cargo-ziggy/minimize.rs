@@ -56,14 +56,14 @@ impl Minimize {
                     .input_corpus
                     .display()
                     .to_string()
-                    .replace("{output}", &self.output.display().to_string())
+                    .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
                     .replace("{target_name}", &self.target),
                 "-o",
                 &self
-                    .minimized_corpus
+                    .output_corpus
                     .display()
                     .to_string()
-                    .replace("{output}", &self.output.display().to_string())
+                    .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
                     .replace("{target_name}", &self.target),
                 "-T",
                 &jobs_option,
@@ -72,12 +72,12 @@ impl Minimize {
             ])
             .stderr(File::create(format!(
                 "{}/{}/logs/minimization_afl.log",
-                &self.output.display(),
+                &self.ziggy_output.display(),
                 &self.target,
             ))?)
             .stdout(File::create(format!(
                 "{}/{}/logs/minimization_afl.log",
-                &self.output.display(),
+                &self.ziggy_output.display(),
                 &self.target,
             ))?)
             .spawn()?
@@ -97,7 +97,11 @@ impl Minimize {
             .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
             .env(
                 "HFUZZ_WORKSPACE",
-                format!("{}/{}/honggfuzz", &self.output.display(), &self.target),
+                format!(
+                    "{}/{}/honggfuzz",
+                    &self.ziggy_output.display(),
+                    &self.target
+                ),
             )
             .env(
                 "HFUZZ_RUN_ARGS",
@@ -106,23 +110,23 @@ impl Minimize {
                     self.input_corpus
                         .display()
                         .to_string()
-                        .replace("{output}", &self.output.display().to_string())
+                        .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
                         .replace("{target_name}", &self.target),
-                    self.minimized_corpus
+                    self.output_corpus
                         .display()
                         .to_string()
-                        .replace("{output}", &self.output.display().to_string())
+                        .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
                         .replace("{target_name}", &self.target),
                 ),
             )
             .stderr(File::create(format!(
                 "{}/{}/logs/minimization_honggfuzz.log",
-                &self.output.display(),
+                &self.ziggy_output.display(),
                 &self.target,
             ))?)
             .stdout(File::create(format!(
                 "{}/{}/logs/minimization_honggfuzz.log",
-                &self.output.display(),
+                &self.ziggy_output.display(),
                 &self.target,
             ))?)
             .spawn()?

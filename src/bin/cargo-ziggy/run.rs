@@ -36,7 +36,7 @@ impl Run {
             .map(|x| {
                 x.display()
                     .to_string()
-                    .replace("{output}", &self.output.display().to_string())
+                    .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
                     .replace("{target_name}", &target)
             })
             .collect();

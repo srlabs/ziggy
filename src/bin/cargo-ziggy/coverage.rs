@@ -49,7 +49,7 @@ impl Cover {
             self.input
                 .display()
                 .to_string()
-                .replace("{output}", &self.output.display().to_string())
+                .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
                 .replace("{target_name}", &self.target)
                 .as_str(),
         );
@@ -95,10 +95,10 @@ impl Cover {
         };
 
         let coverage_dir = self
-            .coverage
+            .output
             .display()
             .to_string()
-            .replace("{output}", &self.output.display().to_string())
+            .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
             .replace("{target_name}", &self.target);
 
         // We remove the previous coverage
