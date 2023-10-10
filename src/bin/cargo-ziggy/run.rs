@@ -15,7 +15,7 @@ impl Run {
         // We run the compilation command
         let run = process::Command::new(cargo)
             .args(["rustc", "--target-dir=target/runner"])
-            .env("RUSTFLAGS", "")
+            .env("RUSTFLAGS", env::var("RUSTFLAGS").unwrap_or_default())
             .spawn()
             .context("⚠️  couldn't spawn runner compilation")?
             .wait()

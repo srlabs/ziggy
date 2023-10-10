@@ -5,6 +5,11 @@ use std::{env, fs, path::PathBuf, process};
 
 impl Cover {
     pub fn generate_coverage(&mut self) -> Result<(), anyhow::Error> {
+        process::Command::new("grcov")
+            .arg("--version")
+            .output()
+            .context("grcov not found - please install by running `cargo install grcov`")?;
+
         eprintln!("Generating coverage");
 
         self.target =
@@ -13,7 +18,9 @@ impl Cover {
         // The cargo executable
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
-        let coverage_rustflags = env::var("COVERAGE_RUSTFLAGS").unwrap_or_else(|_| String::from("--cfg=coverage -Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort"));
+        let mut coverage_rustflags = env::var("COVERAGE_RUSTFLAGS")
+            .unwrap_or_else(|_| String::from("--cfg=coverage -Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort"));
+        coverage_rustflags.push_str(&env::var("RUSTFLAGS").unwrap_or_default());
 
         // We build the runner with the appropriate flags for coverage
         process::Command::new(cargo)
