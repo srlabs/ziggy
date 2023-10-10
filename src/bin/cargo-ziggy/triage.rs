@@ -6,13 +6,13 @@ impl Triage {
         eprintln!("Running CASR triage on crashes");
 
         self.target = find_target(&self.target)?;
-        let input_dir = format!("{}/{}/afl", self.output.display(), self.target);
+        let input_dir = format!("{}/{}/afl", self.ziggy_output.display(), self.target);
 
         let triage_dir = self
-            .triage
+            .output
             .display()
             .to_string()
-            .replace("{output}", &self.output.display().to_string())
+            .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
             .replace("{target_name}", &self.target);
         fs::remove_dir_all(&triage_dir).unwrap_or_default();
 

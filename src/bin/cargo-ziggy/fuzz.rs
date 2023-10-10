@@ -37,7 +37,7 @@ impl Fuzz {
         self.corpus
             .display()
             .to_string()
-            .replace("{output}", &self.output.display().to_string())
+            .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
             .replace("{target_name}", &self.target)
     }
 
@@ -50,7 +50,7 @@ impl Fuzz {
     }
 
     pub fn output_target(&self) -> String {
-        format!("{}/{}", self.output.display(), self.target)
+        format!("{}/{}", self.ziggy_output.display(), self.target)
     }
 
     // Manages the continuous running of fuzzers
@@ -544,8 +544,8 @@ impl Fuzz {
         let mut minimization_args = Minimize {
             target: self.target.clone(),
             input_corpus: PathBuf::from(input_corpus),
-            minimized_corpus: PathBuf::from(minimized_corpus),
-            output: self.output.clone(),
+            output_corpus: PathBuf::from(minimized_corpus),
+            ziggy_output: self.ziggy_output.clone(),
             jobs: self.jobs,
             engine,
         };

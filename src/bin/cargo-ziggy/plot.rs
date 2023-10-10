@@ -14,16 +14,16 @@ impl Plot {
 
         let fuzzer_data_dir = format!(
             "{}/{}/afl/{}/",
-            &self.output.display(),
+            &self.ziggy_output.display(),
             &self.target,
             &self.input
         );
 
         let plot_dir = self
-            .plot
+            .output
             .display()
             .to_string()
-            .replace("{output}", &self.output.display().to_string())
+            .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
             .replace("{target_name}", &self.target);
         println!("{plot_dir}");
         println!("{}", self.target);
