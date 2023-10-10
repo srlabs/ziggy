@@ -30,17 +30,19 @@ pub enum FuzzingEngines {
     Honggfuzz,
 }
 
-pub const DEFAULT_CORPUS: &str = "./output/{target_name}/corpus/";
+pub const DEFAULT_OUTPUT_DIR: &str = "./output";
 
-pub const DEFAULT_COVERAGE_DIR: &str = "./output/{target_name}/coverage/";
+pub const DEFAULT_CORPUS_DIR: &str = "{ziggy_output}/{target_name}/corpus/";
 
-pub const DEFAULT_MINIMIZATION_CORPUS: &str = "./output/{target_name}/corpus_minimized/";
+pub const DEFAULT_COVERAGE_DIR: &str = "{ziggy_output}/{target_name}/coverage/";
 
-pub const DEFAULT_PLOT_DIR: &str = "./output/{target_name}/plot/";
+pub const DEFAULT_MINIMIZATION_DIR: &str = "{ziggy_output}/{target_name}/corpus_minimized/";
 
-pub const DEFAULT_CRASHES_DIR: &str = "./output/{target_name}/crashes/";
+pub const DEFAULT_PLOT_DIR: &str = "{ziggy_output}/{target_name}/plot/";
 
-pub const DEFAULT_TRIAGE_DIR: &str = "./output/{target_name}/triage/";
+pub const DEFAULT_CRASHES_DIR: &str = "{ziggy_output}/{target_name}/crashes/";
+
+pub const DEFAULT_TRIAGE_DIR: &str = "{ziggy_output}/{target_name}/triage/";
 
 #[derive(Parser)]
 #[clap(name = "cargo")]
@@ -100,12 +102,16 @@ pub struct Fuzz {
     target: String,
 
     /// Shared corpus directory
-    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CORPUS)]
+    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CORPUS_DIR)]
     corpus: PathBuf,
 
     /// Initial corpus directory (will only be read)
     #[clap(short, long, value_parser, value_name = "DIR")]
     initial_corpus: Option<PathBuf>,
+
+    /// Fuzzers output directory
+    #[clap(short, long, env="ZIGGY_OUTPUT", value_parser, value_name = "DIR", default_value=DEFAULT_OUTPUT_DIR)]
+    ziggy_output: PathBuf,
 
     /// Number of concurent fuzzing jobs
     #[clap(short, long, value_name = "NUM", default_value_t = 1)]
@@ -155,8 +161,12 @@ pub struct Run {
     max_length: u64,
 
     /// Input directories and/or files to run
-    #[clap(short, long, value_name = "DIR", default_value = DEFAULT_CORPUS)]
+    #[clap(short, long, value_name = "DIR", default_value = DEFAULT_CORPUS_DIR)]
     inputs: Vec<PathBuf>,
+
+    /// Fuzzers output directory
+    #[clap(short, long, env="ZIGGY_OUTPUT", value_parser, value_name = "DIR", default_value=DEFAULT_OUTPUT_DIR)]
+    ziggy_output: PathBuf,
 }
 
 #[derive(Args, Clone)]
@@ -166,12 +176,16 @@ pub struct Minimize {
     target: String,
 
     /// Corpus directory to minimize
-    #[clap(short, long, default_value = DEFAULT_CORPUS)]
+    #[clap(short, long, default_value = DEFAULT_CORPUS_DIR)]
     input_corpus: PathBuf,
 
-    /// Output directory
-    #[clap(short, long, default_value = DEFAULT_MINIMIZATION_CORPUS)]
+    /// Minimized corpus output directory
+    #[clap(short, long, default_value = DEFAULT_MINIMIZATION_DIR)]
     output_corpus: PathBuf,
+
+    /// Fuzzers output directory
+    #[clap(short, long, env="ZIGGY_OUTPUT", value_parser, value_name = "DIR", default_value=DEFAULT_OUTPUT_DIR)]
+    ziggy_output: PathBuf,
 
     /// Number of concurent minimizing jobs (AFL++ only)
     #[clap(short, long, value_name = "NUM", default_value_t = 1)]
@@ -186,12 +200,19 @@ pub struct Cover {
     /// Target to generate coverage for
     #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
     target: String,
-    /// Corpus directory to run target on
-    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CORPUS)]
-    corpus: PathBuf,
+
     /// Output directory for code coverage report
     #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_COVERAGE_DIR)]
     output: PathBuf,
+
+    /// Input corpus directory to run target on
+    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CORPUS_DIR)]
+    input: PathBuf,
+
+    /// Fuzzers output directory
+    #[clap(short, long, env="ZIGGY_OUTPUT", value_parser, value_name = "DIR", default_value=DEFAULT_OUTPUT_DIR)]
+    ziggy_output: PathBuf,
+
     /// Source directory of covered code
     #[clap(short, long, value_parser, value_name = "DIR")]
     source: Option<PathBuf>,
@@ -202,12 +223,18 @@ pub struct Plot {
     /// Target to generate plot for
     #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
     target: String,
+
     /// Name of AFL++ fuzzer to use as data source
     #[clap(short, long, value_name = "NAME", default_value = "mainaflfuzzer")]
     input: String,
+
     /// Output directory for plot
     #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_PLOT_DIR)]
     output: PathBuf,
+
+    /// Fuzzers output directory
+    #[clap(short, long, env="ZIGGY_OUTPUT", value_parser, value_name = "DIR", default_value=DEFAULT_OUTPUT_DIR)]
+    ziggy_output: PathBuf,
 }
 
 #[derive(Args)]
@@ -215,12 +242,18 @@ pub struct Triage {
     /// Target to use
     #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
     target: String,
-    /// Triage output directory to be written to (must be empty or not exist)
-    #[clap(short, long, value_name = "TARGET", default_value = DEFAULT_TRIAGE_DIR)]
-    output: String,
+
+    /// Triage output directory to be written to (will be overwritten)
+    #[clap(short, long, value_name = "DIR", default_value = DEFAULT_TRIAGE_DIR)]
+    output: PathBuf,
+
     /// Number of concurent fuzzing jobs
     #[clap(short, long, value_name = "NUM", default_value_t = 1)]
     jobs: u32,
+
+    /// Fuzzers output directory
+    #[clap(short, long, env="ZIGGY_OUTPUT", value_parser, value_name = "DIR", default_value=DEFAULT_OUTPUT_DIR)]
+    ziggy_output: PathBuf,
     /* future feature, wait for casr
     /// Crash directory to be sourced from
     #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CRASHES_DIR)]
@@ -233,9 +266,14 @@ pub struct AddSeeds {
     /// Target to use
     #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
     target: String,
+
     /// Seeds directory to be added
     #[clap(short, long, value_parser, value_name = "DIR")]
     input: PathBuf,
+
+    /// Fuzzers output directory
+    #[clap(short, long, env="ZIGGY_OUTPUT", value_parser, value_name = "DIR", default_value=DEFAULT_OUTPUT_DIR)]
+    ziggy_output: PathBuf,
 }
 
 #[cfg(feature = "cli")]
