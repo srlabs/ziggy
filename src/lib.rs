@@ -1,3 +1,4 @@
+#![doc = include_str!("../README.md")]
 #[cfg(feature = "afl")]
 pub use afl::fuzz as afl_fuzz;
 #[cfg(feature = "honggfuzz")]
@@ -5,6 +6,7 @@ pub use honggfuzz::fuzz as honggfuzz_fuzz;
 
 // This is our inner harness handler function for the runner and for coverage.
 // We open the input file and feed the data to the harness closure.
+#[doc(hidden)]
 #[cfg(not(any(feature = "afl", feature = "honggfuzz")))]
 pub fn read_file_and_fuzz<F>(mut closure: F, file: String)
 where
@@ -32,6 +34,7 @@ where
 
 // This is our middle harness handler macro for the runner and for coverage.
 // We read input files and directories from the command line and run the inner harness `fuzz`.
+#[doc(hidden)]
 #[macro_export]
 #[cfg(not(any(feature = "afl", feature = "honggfuzz")))]
 macro_rules! read_args_and_fuzz {
@@ -60,8 +63,26 @@ macro_rules! read_args_and_fuzz {
     };
 }
 
-// This is our outer harness handler macro for the runner and for coverage.
-// It is used to handle different types of arguments for the harness closure, including Arbitrary.
+/// Fuzz a closure-like block of code by passing an object of arbitrary type.
+///
+/// It can handle different types of arguments for the harness closure, including Arbitrary.
+/// 
+/// See [our examples](https://github.com/srlabs/ziggy/tree/main/examples).
+///
+/// ```no_run
+/// fn main() {
+///     ziggy::fuzz!(|data: &[u8]| {
+///         if data.len() != 6 {return}
+///         if data[0] != b'q' {return}
+///         if data[1] != b'w' {return}
+///         if data[2] != b'e' {return}
+///         if data[3] != b'r' {return}
+///         if data[4] != b't' {return}
+///         if data[5] != b'y' {return}
+///         panic!("BOOM")
+///     });
+/// }
+/// ```
 #[macro_export]
 #[cfg(not(any(feature = "afl", feature = "honggfuzz")))]
 macro_rules! fuzz {
