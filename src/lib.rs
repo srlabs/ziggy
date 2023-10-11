@@ -70,7 +70,7 @@ macro_rules! read_args_and_fuzz {
 /// See [our examples](https://github.com/srlabs/ziggy/tree/main/examples).
 ///
 /// ```no_run
-/// fn main() {
+/// # fn main() {
 ///     ziggy::fuzz!(|data: &[u8]| {
 ///         if data.len() != 6 {return}
 ///         if data[0] != b'q' {return}
@@ -81,7 +81,7 @@ macro_rules! read_args_and_fuzz {
 ///         if data[5] != b'y' {return}
 ///         panic!("BOOM")
 ///     });
-/// }
+/// # }
 /// ```
 #[macro_export]
 #[cfg(not(any(feature = "afl", feature = "honggfuzz")))]

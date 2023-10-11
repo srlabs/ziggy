@@ -176,13 +176,10 @@ impl Fuzz {
                 }
             }
 
-            // If both fuzzers are running, we copy over AFL++'s queue for consumption by Honggfuzz
+            // If both fuzzers are running, we copy over AFL++'s queue for consumption by Honggfuzz.
+            // Otherwise, we copy AFL++'s queue to the global corpus.
             // We do this every 10 seconds
-            if !self.no_afl
-                && !self.no_honggfuzz
-                && self.jobs > 1
-                && last_sync_time.elapsed().as_secs() > 10
-            {
+            if !self.no_afl && last_sync_time.elapsed().as_secs() > 10 {
                 let afl_corpus = glob(&format!(
                     "{}/afl/mainaflfuzzer/queue/*",
                     self.output_target(),
@@ -191,10 +188,11 @@ impl Fuzz {
                 for file in afl_corpus {
                     if let Some((file_id, file_name)) = extract_file_id(&file) {
                         if file_id > last_synced_queue_id {
-                            let _ = fs::copy(
-                                &file,
-                                format!("{}/queue/{file_name}", self.output_target()),
-                            );
+                            let copy_destination = match !self.no_honggfuzz && (self.jobs > 1) {
+                                true => format!("{}/queue/{file_name}", self.output_target()),
+                                false => format!("{}/corpus/{file_name}", self.output_target()),
+                            };
+                            let _ = fs::copy(&file, copy_destination);
                             last_synced_queue_id = file_id;
                         }
                     }

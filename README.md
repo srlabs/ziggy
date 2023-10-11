@@ -53,6 +53,17 @@ Options:
 
 For an example fuzz project, see [the url example](./examples/url/).
 
+## The `output` directory
+
+After you've launched your fuzzer, you'll find a couple of items in the `output` directory:
+
+- the `corpus` directory containing the full corpus
+- the `crashes` directory containing any crashes detected by the fuzzers
+- the `logs` directory containing a fuzzer log files
+- the `afl` directory containing AFL++'s output
+- the `honggfuzz` directory containing Honggfuzz's output
+- the `queue` directory that is used by ziggy to pass items from AFL++ to Honggfuzz
+
 ## Note about coverage
 
 The `cargo cover` command will not generate coverage for the dependencies of your fuzzed project
