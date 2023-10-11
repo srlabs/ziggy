@@ -66,7 +66,7 @@ macro_rules! read_args_and_fuzz {
 /// Fuzz a closure-like block of code by passing an object of arbitrary type.
 ///
 /// It can handle different types of arguments for the harness closure, including Arbitrary.
-/// 
+///
 /// See [our examples](https://github.com/srlabs/ziggy/tree/main/examples).
 ///
 /// ```no_run
