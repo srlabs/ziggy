@@ -14,23 +14,38 @@ members = [
 ]
 
 [dependencies]
+afl = { version = "0.14.1", default-features = false, optional = true }
+anyhow = { version = "1.0.75", optional = true }
+cargo_metadata = { version = "0.18.0", optional = true }
 clap = { version = "4.4.6", features = ["cargo", "derive", "env"], optional = true }
 console = { version = "0.15.7", optional = true }
+env_logger = { version = "0.10.0", optional = true }
 glob = { version = "0.3.1", optional = true }
-toml = { version = "0.7.6", optional = true }
-anyhow = { version = "1.0.75", optional = true }
-afl = { version = "0.14.1", default-features = false, optional = true }
 # We use our own fork of honggfuzz to use the tool's latest release
 # https://github.com/rust-fuzz/honggfuzz-rs/pull/85
 honggfuzz = { package = "ziggy-honggfuzz-2", version = "0.5.55", optional = true }
-serde_json = { version = "1.0.105", optional = true }
-log = { version = "0.4.20", optional = true }
-env_logger = { version = "0.10.0", optional = true }
-strip-ansi-escapes = { version = "0.2.0", optional = true }
-rand = { version = "0.8", optional = true }
 libc = { version = "0.2.147", optional = true }
+log = { version = "0.4.20", optional = true }
+rand = { version = "0.8", optional = true }
+serde_json = { version = "1.0.105", optional = true }
+strip-ansi-escapes = { version = "0.2.0", optional = true }
 time-humanize = { version = "0.1.3", optional = true }
+toml = { version = "0.7.6", optional = true }
 
 [features]
 default = ["cli"]
-cli = ["clap", "console", "glob", "toml", "anyhow", "serde_json", "log", "env_logger", "strip-ansi-escapes", "rand", "libc", "time-humanize"]
+cli = [
+    "clap",
+    "console",
+    "glob",
+    "toml",
+    "anyhow",
+    "serde_json",
+    "log",
+    "env_logger",
+    "strip-ansi-escapes",
+    "rand",
+    "libc",
+    "time-humanize",
+    "cargo_metadata",
+]
