@@ -115,7 +115,23 @@ macro_rules! fuzz {
 #[macro_export]
 #[cfg(feature = "with_libafl")]
 macro_rules! fuzz {
-    ( $($x:tt)* ) => {
-        $crate::libafl_fuzz!($($x)*);
+    (|$buf:ident| $body:block) => {
+        $crate::libafl_fuzz!(|$buf| $body);
+    };
+    (|$buf:ident: &[u8]| $body:block) => {
+        $crate::libafl_fuzz!(|$buf| $body);
+    };
+    (|$buf:ident: $dty: ty| $body:block) => {
+        $crate::libafl_fuzz!(|$buf| {
+            let $buf: $dty = {
+                let mut data = ::arbitrary::Unstructured::new($buf);
+                if let Ok(d) = ::arbitrary::Arbitrary::arbitrary(&mut data).map_err(|_| "") {
+                    d
+                } else {
+                    return;
+                }
+            };
+            $body
+        });
     };
 }

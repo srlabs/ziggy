@@ -30,19 +30,15 @@ macro_rules! libafl_fuzz {
         use std::{env, path::PathBuf, ptr::write};
         use ziggy::libafl_targets::{EDGES_MAP, MAX_EDGES_NUM};
 
-        // The closure that we want to fuzz
-        let inner_harness = $($x)*;
-
         // The wrapped harness function, calling out to the LLVM-style harness
         let mut harness = |input: &BytesInput| {
             let target = input.target_bytes();
             let buf = target.as_slice();
+            // The closure that we want to fuzz
+            let inner_harness = $($x)*;
             inner_harness(buf);
             ExitKind::Ok
         };
-
-        // Create an observation channel using the signals map
-        // let observer = unsafe { StdMapObserver::from_mut_ptr("signals", SIGNALS_PTR, SIGNALS.len()) };
 
         // Create an observation channel using the coverage map
         let observer = unsafe {
