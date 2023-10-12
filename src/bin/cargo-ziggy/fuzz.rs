@@ -58,6 +58,7 @@ impl Fuzz {
         let build = Build {
             no_afl: self.no_afl,
             no_honggfuzz: self.no_honggfuzz,
+            no_libafl: true,
         };
         build.build().context("Failed to build the fuzzers")?;
 

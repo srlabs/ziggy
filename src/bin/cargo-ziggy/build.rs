@@ -42,6 +42,30 @@ impl Build {
             eprintln!("    {} afl", style("Finished").cyan().bold());
         }
 
+        if !self.no_libafl {
+            eprintln!("    {} libafl", style("Building").red().bold());
+
+            // Third fuzzer we build: LibAFL
+            let run = process::Command::new(&cargo)
+                .args(["build", "--features=ziggy/with_libafl ", "--target=x86_64-unknown-linux-gnu", "--release"])
+                .env("CARGO_TARGET_DIR", "./target/libafl")
+                .env("RUSTFLAGS", "-C passes=sancov-module -C llvm-args=-sanitizer-coverage-level=3 -C llvm-args=-sanitizer-coverage-trace-pc-guard --cfg fuzzing -Clink-arg=-fuse-ld=gold")
+                .env("LIBAFL_EDGES_MAP_SIZE", "500000")
+                .stdout(process::Stdio::piped())
+                .spawn()?
+                .wait()
+                .context("Error spawning hfuzz build command")?;
+
+            if !run.success() {
+                return Err(anyhow!(
+                    "Error building libafl fuzzer: Exited with {:?}",
+                    run.code()
+                ));
+            }
+
+            eprintln!("    {} libafl", style("Finished").cyan().bold());
+        }
+
         if !self.no_honggfuzz {
             eprintln!("    {} honggfuzz", style("Building").red().bold());
 
