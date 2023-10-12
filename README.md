@@ -23,13 +23,13 @@ Features will also include:
 
 First, install `ziggy` and its dependencies by running:
 
-```
+```bash
 cargo install --force ziggy cargo-afl honggfuzz grcov
 ```
 
 Here is the output of the tool's help:
 
-```
+```text
 $ cargo ziggy
 A multi-fuzzer management utility for all of your Rust fuzzing needs 🧑‍🎤
 
@@ -47,11 +47,22 @@ Commands:
   help       Print this message or the help of the given subcommand(s)
 
 Options:
-  -h, --help     Print help information
-  -V, --version  Print version information
+  -h, --help     Print help
+  -V, --version  Print version
 ```
 
 For an example fuzz project, see [the url example](./examples/url/).
+
+## The `output` directory
+
+After you've launched your fuzzer, you'll find a couple of items in the `output` directory:
+
+- the `corpus` directory containing the full corpus
+- the `crashes` directory containing any crashes detected by the fuzzers
+- the `logs` directory containing a fuzzer log files
+- the `afl` directory containing AFL++'s output
+- the `honggfuzz` directory containing Honggfuzz's output
+- the `queue` directory that is used by ziggy to pass items from AFL++ to Honggfuzz
 
 ## Note about coverage
 
@@ -59,7 +70,7 @@ The `cargo cover` command will not generate coverage for the dependencies of you
 by default.
 
 If this is something you would like to change, you can use the following trick:
-```
+```bash
 CARGO_HOME=.cargo cargo ziggy cover 
 ```
 

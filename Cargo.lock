@@ -1724,7 +1724,7 @@ checksum = "9828b178da53440fa9c766a3d2f73f7cf5d0ac1fe3980c1e5018d899fd19e07b"
 
 [[package]]
 name = "ziggy"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "afl",
  "anyhow",

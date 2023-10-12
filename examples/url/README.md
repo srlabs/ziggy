@@ -1,13 +1,12 @@
 # Ziggy example - URL
 
-In the root project directory, run:
+First, install the tooling:
 
 ```
-cargo install cargo-afl honggfuzz
-cargo install --force --path .
+cargo install cargo-afl honggfuzz ziggy
 ```
 
-Then, in the `examples/url` directory, run:
+Then, in this directory, run:
 
 ```
 cargo ziggy fuzz
