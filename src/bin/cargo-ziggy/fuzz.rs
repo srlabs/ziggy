@@ -53,11 +53,21 @@ impl Fuzz {
         format!("{}/{}", self.ziggy_output.display(), self.target)
     }
 
+    /// Returns true iff AFL++ is enabled
+    pub fn afl(&self) -> bool {
+        !self.no_afl
+    }
+
+    /// Returns true iff Honggfuzz is enabled
+    pub fn honggfuzz(&self) -> bool {
+        self.no_afl || (!self.no_honggfuzz && self.jobs > 1)
+    }
+
     // Manages the continuous running of fuzzers
     pub fn fuzz(&mut self) -> Result<(), anyhow::Error> {
         let build = Build {
-            no_afl: self.no_afl,
-            no_honggfuzz: self.no_honggfuzz,
+            no_afl: !self.afl(),
+            no_honggfuzz: !self.honggfuzz(),
         };
         build.build().context("Failed to build the fuzzers")?;
 
@@ -117,7 +127,7 @@ impl Fuzz {
         writeln!(&mut initial_corpus, "00000000")?;
         drop(initial_corpus);
 
-        let mut processes = self.spawn_new_fuzzers(false)?;
+        let mut processes = self.spawn_new_fuzzers()?;
 
         self.start_time = Instant::now();
 
@@ -177,9 +187,9 @@ impl Fuzz {
             }
 
             // If both fuzzers are running, we copy over AFL++'s queue for consumption by Honggfuzz.
-            // Otherwise, we copy AFL++'s queue to the global corpus.
+            // Otherwise, if only AFL++ is up we copy AFL++'s queue to the global corpus.
             // We do this every 10 seconds
-            if !self.no_afl && last_sync_time.elapsed().as_secs() > 10 {
+            if self.afl() && last_sync_time.elapsed().as_secs() > 10 {
                 let afl_corpus = glob(&format!(
                     "{}/afl/mainaflfuzzer/queue/*",
                     self.output_target(),
@@ -188,7 +198,7 @@ impl Fuzz {
                 for file in afl_corpus {
                     if let Some((file_id, file_name)) = extract_file_id(&file) {
                         if file_id > last_synced_queue_id {
-                            let copy_destination = match !self.no_honggfuzz && (self.jobs > 1) {
+                            let copy_destination = match self.honggfuzz() {
                                 true => format!("{}/queue/{file_name}", self.output_target()),
                                 false => format!("{}/corpus/{file_name}", self.output_target()),
                             };
@@ -212,10 +222,7 @@ impl Fuzz {
     }
 
     // Spawns new fuzzers
-    pub fn spawn_new_fuzzers(
-        &self,
-        only_honggfuzz: bool,
-    ) -> Result<Vec<process::Child>, anyhow::Error> {
+    pub fn spawn_new_fuzzers(&self) -> Result<Vec<process::Child>, anyhow::Error> {
         // No fuzzers for you
         if self.no_afl && self.no_honggfuzz {
             return Err(anyhow!("Pick at least one fuzzer"));
@@ -248,7 +255,7 @@ impl Fuzz {
             eprintln!("Warning: running more honggfuzz jobs than 4 is not effective");
         }
 
-        if !self.no_afl && !only_honggfuzz && afl_jobs > 0 {
+        if afl_jobs > 0 {
             let _ = process::Command::new("mkdir")
                 .args(["-p", &format!("{}/afl", self.output_target())])
                 .stderr(process::Stdio::piped())
@@ -379,7 +386,7 @@ impl Fuzz {
             eprintln!("{} afl           ", style("    Launched").green().bold());
         }
 
-        if !self.no_honggfuzz && honggfuzz_jobs > 0 {
+        if honggfuzz_jobs > 0 {
             let hfuzz_help = process::Command::new(&cargo)
                 .args(["hfuzz", "run", &self.target])
                 .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
@@ -583,7 +590,7 @@ impl Fuzz {
         let mut afl_new_finds = String::new();
         let mut afl_faves = String::new();
 
-        if self.no_afl {
+        if !self.afl() {
             afl_status = String::from("disabled ")
         } else {
             let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
@@ -638,7 +645,7 @@ impl Fuzz {
         let mut hf_crashes = String::new();
         let mut hf_new_finds = String::new();
 
-        if self.no_honggfuzz || (self.jobs == 1 && !self.no_afl) {
+        if !self.honggfuzz() {
             hf_status = String::from("disabled ");
         } else {
             let hf_stats_process = process::Command::new("tail")
