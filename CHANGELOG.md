@@ -1,5 +1,13 @@
 # Changes
 
+## 0.7.2 - 2023-10-12
+
+- Add `-z, --ziggy-output` flag and `ZIGGY_OUTPUT` environment variable to set ziggy's output directory
+- Fix a couple of misbehaviours when building the fuzzers
+- Improve populating of main corpus
+- Add CI and tests
+- Improve documentation
+
 ## 0.7.1 - 2023-10-05
 
 - Fix honggfuzz bug
