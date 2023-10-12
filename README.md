@@ -7,25 +7,24 @@
 
 ## Feature set
 
-- 🤹 handling of different fuzzing processes in parallel (honggfuzz, AFL++)
+- 🤹 handling of different fuzzing processes in parallel ([honggfuzz](https://github.com/google/honggfuzz), [AFL++](https://github.com/aflplusplus/aflplusplus))
 - 🗃️ one shared corpus for all fuzzers
-- 🤏 regular corpus minimization
+- 🤏 effortless corpus minimization
 - 📊 insightful monitoring
 - 🎯 easy coverage report generation
 - 😶‍🌫️ Arbitrary trait support
 
 Features will also include:
 
-- 🐇 LibAFL integration
-- 📨 notification of new crashes via a simple email hook (limited to 1/day to avoid spamming)
-- ⬇️ auto-pull of latest target project version
+- 🐇 [LibAFL](https://github.com/aflplusplus/libafl) integration
+- 📨 notification of new crashes via bash hook
 
 ## Usage example
 
 First, install `ziggy` and its dependencies by running:
 
 ```
-cargo install --force ziggy afl honggfuzz grcov
+cargo install --force ziggy cargo-afl honggfuzz grcov
 ```
 
 Here is the output of the tool's help:
@@ -37,13 +36,15 @@ A multi-fuzzer management utility for all of your Rust fuzzing needs 🧑‍🎤
 Usage: cargo ziggy <COMMAND>
 
 Commands:
-  build     Build the fuzzer and the runner binaries
-  fuzz      Fuzz targets using different fuzzers in parallel
-  run       Run a specific input or a directory of inputs to analyze backtrace
-  minimize  Minimize the input corpus using the given fuzzing target
-  cover     Generate code coverage information using the existing corpus
-  plot      Plot AFL++ data using afl-plot
-  help      Print this message or the help of the given subcommand(s)
+  build      Build the fuzzer and the runner binaries
+  fuzz       Fuzz targets using different fuzzers in parallel
+  run        Run a specific input or a directory of inputs to analyze backtrace
+  minimize   Minimize the input corpus using the given fuzzing target
+  cover      Generate code coverage information using the existing corpus
+  plot       Plot AFL++ data using afl-plot
+  add-seeds  Add seeds to the running AFL++ fuzzers
+  triage     Triage crashes found with casr - currently only works for AFL++
+  help       Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help     Print help information

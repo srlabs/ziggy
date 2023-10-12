@@ -1,25 +1,19 @@
 #[cfg(not(feature = "cli"))]
 fn main() {}
 
-#[cfg(feature = "cli")]
+mod add_seeds;
 mod build;
-#[cfg(feature = "cli")]
 mod coverage;
-#[cfg(feature = "cli")]
 mod fuzz;
-#[cfg(feature = "cli")]
 mod minimize;
-#[cfg(feature = "cli")]
 mod plot;
-#[cfg(feature = "cli")]
 mod run;
-#[cfg(feature = "cli")]
-mod utils;
+mod triage;
 
 #[cfg(feature = "cli")]
 use anyhow::{anyhow, Context, Result};
 #[cfg(feature = "cli")]
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 #[cfg(feature = "cli")]
 use std::{fs, path::PathBuf};
 
@@ -27,39 +21,29 @@ use std::{fs, path::PathBuf};
 #[macro_use]
 extern crate log;
 
-#[cfg(feature = "cli")]
 pub const DEFAULT_UNMODIFIED_TARGET: &str = "automatically guessed";
 
-// Default time after which we share the corpora between the fuzzer instances and re-launch the fuzzers
-// This is work in progress
-// Set to 2 hour and 20 minutes, like in clusterfuzz
-// See https://github.com/google/clusterfuzz/blob/52f28f83a0422e9a7026a215732876859e4b267b/src/local/butler/scripts/setup.py#L52
-#[cfg(feature = "cli")]
-pub const _DEFAULT_FUZZ_TIMEOUT: u32 = 8400;
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum FuzzingEngines {
+    All,
+    AFLPlusPlus,
+    Honggfuzz,
+}
 
-// Default time after which we minimize the corpus and re-launch the fuzzers
-// Set to 22 hours, like in clusterfuzz
-// See https://github.com/google/clusterfuzz/blob/52f28f83a0422e9a7026a215732876859e4b267b/src/clusterfuzz/_internal/bot/tasks/corpus_pruning_task.py#L61
-#[cfg(feature = "cli")]
-pub const DEFAULT_MINIMIZATION_TIMEOUT: u32 = 22 * 60 * 60;
+pub const DEFAULT_OUTPUT_DIR: &str = "./output";
 
-#[cfg(feature = "cli")]
-pub const DEFAULT_CORPUS: &str = "./output/{target_name}/shared_corpus/";
+pub const DEFAULT_CORPUS_DIR: &str = "{ziggy_output}/{target_name}/corpus/";
 
-#[cfg(feature = "cli")]
-pub const DEFAULT_COVERAGE_DIR: &str = "./output/{target_name}/coverage/";
+pub const DEFAULT_COVERAGE_DIR: &str = "{ziggy_output}/{target_name}/coverage/";
 
-#[cfg(feature = "cli")]
-pub const DEFAULT_MINIMIZATION_CORPUS: &str = "./output/{target_name}/minimized_corpus/";
+pub const DEFAULT_MINIMIZATION_DIR: &str = "{ziggy_output}/{target_name}/corpus_minimized/";
 
-#[cfg(feature = "cli")]
-pub const DEFAULT_PLOT_DIR: &str = "./output/{target_name}/plot/";
+pub const DEFAULT_PLOT_DIR: &str = "{ziggy_output}/{target_name}/plot/";
 
-// We want to make sure we don't mistake a minimization kill for a found crash
-#[cfg(feature = "cli")]
-const SECONDS_TO_WAIT_AFTER_KILL: u32 = 5;
+pub const DEFAULT_CRASHES_DIR: &str = "{ziggy_output}/{target_name}/crashes/";
 
-#[cfg(feature = "cli")]
+pub const DEFAULT_TRIAGE_DIR: &str = "{ziggy_output}/{target_name}/triage/";
+
 #[derive(Parser)]
 #[clap(name = "cargo")]
 #[clap(bin_name = "cargo")]
@@ -68,7 +52,6 @@ pub enum Cargo {
     Ziggy(Ziggy),
 }
 
-#[cfg(feature = "cli")]
 #[derive(Subcommand)]
 #[clap(
     author,
@@ -93,6 +76,12 @@ pub enum Ziggy {
 
     /// Plot AFL++ data using afl-plot
     Plot(Plot),
+
+    /// Add seeds to the running AFL++ fuzzers
+    AddSeeds(AddSeeds),
+
+    /// Triage crashes found with casr - currently only works for AFL++
+    Triage(Triage),
 }
 
 #[derive(Args)]
@@ -113,16 +102,16 @@ pub struct Fuzz {
     target: String,
 
     /// Shared corpus directory
-    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CORPUS)]
+    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CORPUS_DIR)]
     corpus: PathBuf,
 
     /// Initial corpus directory (will only be read)
     #[clap(short, long, value_parser, value_name = "DIR")]
     initial_corpus: Option<PathBuf>,
 
-    /// Timeout before shared corpus minimization
-    #[clap(short, long, value_name = "SECS", default_value_t = DEFAULT_MINIMIZATION_TIMEOUT)]
-    minimization_timeout: u32,
+    /// Fuzzers output directory
+    #[clap(short, long, env="ZIGGY_OUTPUT", value_parser, value_name = "DIR", default_value=DEFAULT_OUTPUT_DIR)]
+    ziggy_output: PathBuf,
 
     /// Number of concurent fuzzing jobs
     #[clap(short, long, value_name = "NUM", default_value_t = 1)]
@@ -132,7 +121,11 @@ pub struct Fuzz {
     #[clap(short, long, value_name = "SECS")]
     timeout: Option<u32>,
 
-    /// Dictionary file (format:http://llvm.org/docs/LibFuzzer.html#dictionaries)
+    /// Perform initial minimization
+    #[clap(short, long, action, default_value_t = false)]
+    minimize: bool,
+
+    /// Dictionary file (format:<http://llvm.org/docs/LibFuzzer.html#dictionaries>)
     #[clap(short = 'x', long = "dict", value_name = "FILE")]
     dictionary: Option<PathBuf>,
 
@@ -152,9 +145,9 @@ pub struct Fuzz {
     #[clap(long = "no-honggfuzz", action)]
     no_honggfuzz: bool,
 
-    /// Skip initial minimization
-    #[clap(long = "skip-initial-minimization", action)]
-    skip_initial_minimization: bool,
+    // This value helps us create a global timer for our display
+    #[clap(skip=std::time::Instant::now())]
+    start_time: std::time::Instant,
 }
 
 #[derive(Args)]
@@ -168,27 +161,38 @@ pub struct Run {
     max_length: u64,
 
     /// Input directories and/or files to run
-    #[clap(short, long, value_name = "DIR", default_value = DEFAULT_CORPUS)]
+    #[clap(short, long, value_name = "DIR", default_value = DEFAULT_CORPUS_DIR)]
     inputs: Vec<PathBuf>,
+
+    /// Fuzzers output directory
+    #[clap(short, long, env="ZIGGY_OUTPUT", value_parser, value_name = "DIR", default_value=DEFAULT_OUTPUT_DIR)]
+    ziggy_output: PathBuf,
 }
 
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct Minimize {
     /// Target to use
     #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
     target: String,
 
     /// Corpus directory to minimize
-    #[clap(short, long, default_value = DEFAULT_CORPUS)]
+    #[clap(short, long, default_value = DEFAULT_CORPUS_DIR)]
     input_corpus: PathBuf,
 
-    /// Output directory
-    #[clap(short, long, default_value = DEFAULT_MINIMIZATION_CORPUS)]
+    /// Minimized corpus output directory
+    #[clap(short, long, default_value = DEFAULT_MINIMIZATION_DIR)]
     output_corpus: PathBuf,
 
-    /// Number of concurent minimizing jobs
+    /// Fuzzers output directory
+    #[clap(short, long, env="ZIGGY_OUTPUT", value_parser, value_name = "DIR", default_value=DEFAULT_OUTPUT_DIR)]
+    ziggy_output: PathBuf,
+
+    /// Number of concurent minimizing jobs (AFL++ only)
     #[clap(short, long, value_name = "NUM", default_value_t = 1)]
     jobs: u32,
+
+    #[clap(short, long, value_enum, default_value_t = FuzzingEngines::All)]
+    engine: FuzzingEngines,
 }
 
 #[derive(Args)]
@@ -196,12 +200,19 @@ pub struct Cover {
     /// Target to generate coverage for
     #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
     target: String,
-    /// Corpus directory to run target on
-    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CORPUS)]
-    corpus: PathBuf,
+
     /// Output directory for code coverage report
     #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_COVERAGE_DIR)]
     output: PathBuf,
+
+    /// Input corpus directory to run target on
+    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CORPUS_DIR)]
+    input: PathBuf,
+
+    /// Fuzzers output directory
+    #[clap(short, long, env="ZIGGY_OUTPUT", value_parser, value_name = "DIR", default_value=DEFAULT_OUTPUT_DIR)]
+    ziggy_output: PathBuf,
+
     /// Source directory of covered code
     #[clap(short, long, value_parser, value_name = "DIR")]
     source: Option<PathBuf>,
@@ -212,111 +223,130 @@ pub struct Plot {
     /// Target to generate plot for
     #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
     target: String,
+
     /// Name of AFL++ fuzzer to use as data source
     #[clap(short, long, value_name = "NAME", default_value = "mainaflfuzzer")]
     input: String,
+
     /// Output directory for plot
     #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_PLOT_DIR)]
     output: PathBuf,
+
+    /// Fuzzers output directory
+    #[clap(short, long, env="ZIGGY_OUTPUT", value_parser, value_name = "DIR", default_value=DEFAULT_OUTPUT_DIR)]
+    ziggy_output: PathBuf,
+}
+
+#[derive(Args)]
+pub struct Triage {
+    /// Target to use
+    #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
+    target: String,
+
+    /// Triage output directory to be written to (will be overwritten)
+    #[clap(short, long, value_name = "DIR", default_value = DEFAULT_TRIAGE_DIR)]
+    output: PathBuf,
+
+    /// Number of concurent fuzzing jobs
+    #[clap(short, long, value_name = "NUM", default_value_t = 1)]
+    jobs: u32,
+
+    /// Fuzzers output directory
+    #[clap(short, long, env="ZIGGY_OUTPUT", value_parser, value_name = "DIR", default_value=DEFAULT_OUTPUT_DIR)]
+    ziggy_output: PathBuf,
+    /* future feature, wait for casr
+    /// Crash directory to be sourced from
+    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CRASHES_DIR)]
+    input: PathBuf,
+    */
+}
+
+#[derive(Args)]
+pub struct AddSeeds {
+    /// Target to use
+    #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
+    target: String,
+
+    /// Seeds directory to be added
+    #[clap(short, long, value_parser, value_name = "DIR")]
+    input: PathBuf,
+
+    /// Fuzzers output directory
+    #[clap(short, long, env="ZIGGY_OUTPUT", value_parser, value_name = "DIR", default_value=DEFAULT_OUTPUT_DIR)]
+    ziggy_output: PathBuf,
 }
 
 #[cfg(feature = "cli")]
 fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
     let Cargo::Ziggy(command) = Cargo::parse();
+
     match command {
-        Ziggy::Build(args) => {
-            build::build_fuzzers(args.no_afl, args.no_honggfuzz)
-                .context("Failure building fuzzers")?;
-            Ok(())
-        }
-        Ziggy::Fuzz(mut args) => {
-            args.target = get_target(args.target)?;
-            build::build_fuzzers(args.no_afl, args.no_honggfuzz)
-                .context("Failure while building fuzzers")?;
-            fuzz::run_fuzzers(&args).context("Failure running fuzzers")?;
-            Ok(())
-        }
-        Ziggy::Run(mut args) => {
-            args.target = get_target(args.target)?;
-            run::run_inputs(&args).context("Failure running inputs")?;
-            Ok(())
-        }
-        Ziggy::Minimize(mut args) => {
-            args.target = get_target(args.target)?;
-            minimize::minimize_corpus(
-                &args.target,
-                &args.input_corpus,
-                &args.output_corpus,
-                args.jobs,
-            )
-            .context("Failure minimizing")?;
-            Ok(())
-        }
-        Ziggy::Cover(mut args) => {
-            args.target = get_target(args.target)?;
-            coverage::generate_coverage(&args.target, &args.corpus, &args.output, args.source)
-                .context("Failure generating coverage")?;
-            Ok(())
-        }
-        Ziggy::Plot(mut args) => {
-            args.target = get_target(args.target)?;
-            plot::generate_plot(&args.target, &args.input, &args.output)
-                .context("Failure generating plot")?;
-            Ok(())
-        }
+        Ziggy::Build(args) => args.build().context("Failed to build the fuzzers"),
+        Ziggy::Fuzz(mut args) => args.fuzz().context("Failure running fuzzers"),
+        Ziggy::Run(args) => args.run().context("Failure running inputs"),
+        Ziggy::Minimize(mut args) => args.minimize().context("Failure running minimization"),
+        Ziggy::Cover(mut args) => args
+            .generate_coverage()
+            .context("Failure generating coverage"),
+        Ziggy::Plot(mut args) => args.generate_plot().context("Failure generating plot"),
+        Ziggy::AddSeeds(mut args) => args.add_seeds().context("Failure addings seeds to AFL"),
+        Ziggy::Triage(mut args) => args
+            .triage()
+            .context("Triaging with casr failed, try \"cargo install casr\""),
     }
 }
 
-#[cfg(feature = "cli")]
-fn get_target(target: String) -> Result<String> {
-    info!("Guessing target");
-
+pub fn find_target(target: &String) -> Result<String, anyhow::Error> {
     // If the target is already set, we're done here
     if target != DEFAULT_UNMODIFIED_TARGET {
-        eprintln!("    Using given target {target}\n");
-        return Ok(target);
+        info!("    Using given target {target}");
+        return Ok(target.into());
     }
 
-    fn get_new_target() -> Result<String> {
-        let cargo_toml_string = fs::read_to_string("Cargo.toml")?;
-        let cargo_toml = cargo_toml_string.parse::<toml::Value>()?;
-        if let Some(bin_section) = cargo_toml.get("bin") {
-            let bin_array = bin_section
-                .as_array()
-                .ok_or_else(|| anyhow!("Bin section should be an array in Cargo.toml"))?;
-            // If one of the bin targets uses main, we use this target
-            for bin_target in bin_array {
-                if bin_target["path"]
+    info!("Guessing target");
+
+    let new_target_result = guess_target();
+
+    if let Ok(ref new_target) = new_target_result {
+        info!("    Using target {new_target}");
+    }
+
+    new_target_result.context("Target is not obvious")
+}
+
+fn guess_target() -> Result<String> {
+    let cargo_toml_string = fs::read_to_string("Cargo.toml")
+        .context("⚠️  couldn't find Cargo.toml in this folder, cannot guess target")?;
+    let cargo_toml = cargo_toml_string.parse::<toml::Value>().context(
+        "⚠️  couldn't parse the Cargo.toml file in this folder, thus cannot guess the target",
+    )?;
+
+    if let Some(bin_section) = cargo_toml.get("bin") {
+        let bin_array = bin_section
+            .as_array()
+            .ok_or_else(|| anyhow!("Bin section should be an array in Cargo.toml"))?;
+        // If one of the bin targets uses main, we use this target
+        for bin_target in bin_array {
+            if bin_target["path"]
+                .as_str()
+                .context("Path should be a string in Cargo.toml")?
+                == "src/main.rs"
+            {
+                return Ok(bin_target["name"]
                     .as_str()
-                    .context("Path should be a string in Cargo.toml")?
-                    == "src/main.rs"
-                {
-                    return Ok(bin_target["name"]
-                        .as_str()
-                        .ok_or_else(|| anyhow!("Bin name should be a string in Cargo.toml"))?
-                        .to_string());
-                }
+                    .ok_or_else(|| anyhow!("Bin name should be a string in Cargo.toml"))?
+                    .to_string());
             }
         }
-        // src/main.rs exists, and either the bin array was empty, or it did not specify the main.rs bin target,
-        // so we use the name of the project as target.
-        if std::path::Path::new("src/main.rs").exists() {
-            return Ok(cargo_toml["package"]["name"]
-                .as_str()
-                .ok_or_else(|| anyhow!("Package name should be a string in Cargo.toml"))?
-                .to_string());
-        }
-        Err(anyhow!("Please specify a target"))
     }
-
-    let new_target_result = get_new_target();
-
-    match new_target_result {
-        Ok(new_target) => {
-            eprintln!("    Using target {new_target}\n");
-            Ok(new_target)
-        }
-        Err(err) => Err(anyhow!("    Target is not obvious, {err}\n")),
+    // src/main.rs exists, and either the bin array was empty, or it did not specify the main.rs bin target,
+    // so we use the name of the project as target.
+    if std::path::Path::new("src/main.rs").exists() {
+        return Ok(cargo_toml["package"]["name"]
+            .as_str()
+            .ok_or_else(|| anyhow!("Package name should be a string in Cargo.toml"))?
+            .to_string());
     }
+    Err(anyhow!("Please specify a target"))
 }

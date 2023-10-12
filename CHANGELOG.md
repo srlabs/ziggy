@@ -1,5 +1,51 @@
 # Changes
 
+## 0.7.1 - 2023-10-05
+
+- Fix honggfuzz bug
+- Cleanup minimization logic
+- Check grcov is installed before running coverage
+- Fix CLI output glitches
+
+## 0.7.0 - 2023-09-28
+
+- Revamp CLI output
+- Make honggfuzz learn from AFL++ seeds on the fly
+- Remove initial minimization by default
+- Fix bug with add-seeds secondary fuzzer name
+- Improve AFL++ flags for more fuzzing diversity
+- Add coverage feature to the harness
+- Add casr triage functionality
+
+## 0.6.8 - 2023-09-11
+
+- Fix bug with add-seeds determinism
+- Fix temporary corpus bug
+
+## 0.6.7 - 2023-08-31
+
+- Add new command - `cargo ziggy add-seeds`
+- Tweak AFL++ flags for better performance
+- Coverage now continues running after finding crash
+
+## 0.6.6 - 2023-08-29
+
+- Add CLI pointer to second AFL++ fuzzer log
+- Update dependencies, including the new AFL++ crate
+
+## 0.6.5 - 2023-08-24
+
+- Secondary AFL++ fuzzer log is now available
+- Bump AFL++ version
+- Better AFL++ envs, thanks again @vanhauser-thc
+
+## 0.6.4 - 2023-08-14
+
+- Better AFL++ envs, thank you @vanhauser-thc!
+- Bump AFL++ version
+- Honggfuzz share of total CPUs is now reduced
+- Overall code cleanup
+
 ## 0.6.3 - 2023-06-20
 
 - Add flag to skip initial minimization

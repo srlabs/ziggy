@@ -18,12 +18,24 @@ pub fn read_file_and_fuzz<F>(mut closure: F, file: String)
 where
     F: FnMut(&[u8]),
 {
-    println!("Now running file {file}");
     use std::{fs::File, io::Read};
+    println!("Now running file {file}");
     let mut buffer: Vec<u8> = Vec::new();
-    let mut f = File::open(file).unwrap();
-    f.read_to_end(&mut buffer).unwrap();
-    closure(buffer.as_slice());
+    match File::open(file) {
+        Ok(mut f) => {
+            match f.read_to_end(&mut buffer) {
+                Ok(_) => {
+                    closure(buffer.as_slice());
+                }
+                Err(e) => {
+                    println!("Could not get data from file: {e}");
+                }
+            };
+        }
+        Err(e) => {
+            println!("Error opening file: {e}");
+        }
+    };
 }
 
 // This is our middle harness handler macro for the runner and for coverage.
@@ -32,11 +44,12 @@ where
 #[cfg(not(any(feature = "afl", feature = "honggfuzz", feature = "with_libafl")))]
 macro_rules! read_args_and_fuzz {
     ( |$buf:ident| $body:block ) => {
-        let args: Vec<String> = std::env::args().collect();
+        use std::{env, fs};
+        let args: Vec<String> = env::args().collect();
         for path in &args[1..] {
-            if let Ok(metadata) = std::fs::metadata(&path) {
+            if let Ok(metadata) = fs::metadata(&path) {
                 let files = match metadata.is_dir() {
-                    true => std::fs::read_dir(&path)
+                    true => fs::read_dir(&path)
                         .unwrap()
                         .map(|x| x.unwrap().path())
                         .filter(|x| x.is_file())
