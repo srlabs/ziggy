@@ -401,7 +401,7 @@ impl Fuzz {
                     .unwrap_or_default()
                     .contains("dynamic_input")
             {
-                panic!("Outdated version of honggfuzz, please update the ziggy version in your Cargo.toml or rebuild the project");
+                return Err(anyhow!("Outdated version of honggfuzz, please update the ziggy version in your Cargo.toml or rebuild the project"));
             }
 
             let dictionary_option = match &self.dictionary {
