@@ -23,13 +23,13 @@ Features will also include:
 
 First, install `ziggy` and its dependencies by running:
 
-```bash,no_run
+```bash
 cargo install --force ziggy cargo-afl honggfuzz grcov
 ```
 
 Here is the output of the tool's help:
 
-```no_run
+```text
 $ cargo ziggy
 A multi-fuzzer management utility for all of your Rust fuzzing needs 🧑‍🎤
 
@@ -70,7 +70,7 @@ The `cargo cover` command will not generate coverage for the dependencies of you
 by default.
 
 If this is something you would like to change, you can use the following trick:
-```bash,no_run
+```bash
 CARGO_HOME=.cargo cargo ziggy cover 
 ```
 
