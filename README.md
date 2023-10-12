@@ -29,7 +29,7 @@ cargo install --force ziggy cargo-afl honggfuzz grcov
 
 Here is the output of the tool's help:
 
-```bash,no_run
+```no_run
 $ cargo ziggy
 A multi-fuzzer management utility for all of your Rust fuzzing needs 🧑‍🎤
 
