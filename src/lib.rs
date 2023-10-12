@@ -7,6 +7,8 @@ mod libafl_fuzzer;
 #[cfg(feature = "with_libafl")]
 pub use libafl;
 #[cfg(feature = "with_libafl")]
+pub use libafl_bolts;
+#[cfg(feature = "with_libafl")]
 pub use libafl_targets;
 
 // This is our inner harness handler function for the runner and for coverage.
