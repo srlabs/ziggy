@@ -146,7 +146,7 @@ pub struct Fuzz {
     no_afl: bool,
 
     /// No LibAFL
-    #[clap(long = "no-afl", action)]
+    #[clap(long = "no-libafl", action)]
     no_libafl: bool,
 
     /// No honggfuzz
