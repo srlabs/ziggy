@@ -1,5 +1,9 @@
 # Changes
 
+## 0.8.0 - 2023-10-16
+
+- New and improved terminal user interface
+
 ## 0.7.2 - 2023-10-12
 
 - Add `-z, --ziggy-output` flag and `ZIGGY_OUTPUT` environment variable to set ziggy's output directory

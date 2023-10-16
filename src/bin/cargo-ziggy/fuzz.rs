@@ -463,7 +463,7 @@ impl Fuzz {
             );
         }
 
-        eprintln!("\nSee live information by running:");
+        eprintln!("\nSee more live information by running:");
         if afl_jobs > 0 {
             eprintln!(
                 "  {}",
@@ -486,11 +486,6 @@ impl Fuzz {
                 .bold()
             );
         }
-        eprintln!("\n\n\n\n\n");
-        eprintln!("   Waiting for fuzzers to");
-        eprintln!("   finish executing the");
-        eprintln!("   existing corpus once");
-        eprintln!("\n\n");
 
         Ok(fuzzer_handles)
     }
@@ -581,18 +576,29 @@ impl Fuzz {
     }
 
     pub fn print_stats(&self) {
+        let fuzzer_name = format!(" {} ", self.target);
+
+        let reset = "\x1b[0m";
+        let gray = "\x1b[1;90m";
+        let red = "\x1b[1;91m";
+        let green = "\x1b[1;92m";
+        let yellow = "\x1b[1;93m";
+        let purple = "\x1b[1;95m";
+        let blue = "\x1b[1;96m";
+
         // First step: execute afl-whatsup
-        let mut afl_status = String::from("running ─");
+        let mut afl_status = format!("{green}running{reset} ─");
         let mut afl_total_execs = String::new();
         let mut afl_instances = String::new();
         let mut afl_speed = String::new();
         let mut afl_coverage = String::new();
         let mut afl_crashes = String::new();
+        let mut afl_timeouts = String::new();
         let mut afl_new_finds = String::new();
         let mut afl_faves = String::new();
 
         if !self.afl() {
-            afl_status = String::from("disabled ")
+            afl_status = format!("{yellow}disabled{reset} ")
         } else {
             let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
             let afl_stats_process = process::Command::new(cargo)
@@ -620,6 +626,8 @@ impl Fuzz {
                         afl_coverage = String::from(coverage);
                     } else if let Some(crashes) = line.strip_prefix("Crashes saved : ") {
                         afl_crashes = String::from(crashes);
+                    } else if let Some(timeouts) = line.strip_prefix("Hangs saved : ") {
+                        afl_timeouts = String::from(timeouts.split(' ').next().unwrap_or_default());
                     } else if let Some(new_finds) = line.strip_prefix("Time without finds : ") {
                         afl_new_finds =
                             String::from(new_finds.split(',').next().unwrap_or_default());
@@ -638,16 +646,17 @@ impl Fuzz {
         }
 
         // Second step: Get stats from honggfuzz logs
-        let mut hf_status = String::from("running ─");
+        let mut hf_status = format!("{green}running{reset} ─");
         let mut hf_total_execs = String::new();
         let mut hf_threads = String::new();
         let mut hf_speed = String::new();
         let mut hf_coverage = String::new();
         let mut hf_crashes = String::new();
+        let mut hf_timeouts = String::new();
         let mut hf_new_finds = String::new();
 
         if !self.honggfuzz() {
-            hf_status = String::from("disabled ");
+            hf_status = format!("{yellow}disabled{reset} ");
         } else {
             let hf_stats_process = process::Command::new("tail")
                 .args([
@@ -686,6 +695,8 @@ impl Fuzz {
                         );
                     } else if let Some(crashes) = line.strip_prefix("Crashes : ") {
                         hf_crashes = String::from(crashes.split(' ').next().unwrap_or_default());
+                    } else if let Some(timeouts) = line.strip_prefix("Timeouts : ") {
+                        hf_timeouts = String::from(timeouts.split(' ').next().unwrap_or_default());
                     } else if let Some(new_finds) = line.strip_prefix("Cov Update : ") {
                         hf_new_finds = String::from(new_finds.trim());
                         hf_new_finds = String::from(
@@ -722,35 +733,39 @@ impl Fuzz {
         }
 
         // Fourth step: Print stats
-        // TODO Colors, of course!
-        // Move 11 lines up and clear line
-        eprint!("\x1B[11A\x1B[K");
-        eprint!("\x1B[K");
-        eprintln!("┌── ziggy rocking ──────────────────────────────────────────────────────────┐");
-        eprint!("\x1B[K");
+        // We start by clearing the screen
+        eprint!("\x1B[1;1H\x1B[2J");
+        eprintln!("┌─ {blue}ziggy{reset} {purple}rocking{reset} ─────────{fuzzer_name:─^25.25}──────────────────{blue}/{red}///{reset}───┐");
         eprintln!(
-            "│        run time : {total_run_time:17}                                       │"
+            "│{gray}run time :{reset} {total_run_time:17.17}                                       {blue}/{red}//////{reset} │"
         );
-        eprint!("\x1B[K");
-        eprintln!("├── afl++ {afl_status:0}───────────────────┬── honggfuzz {hf_status:0}───────────────┤");
-        eprint!("\x1B[K");
+        eprintln!("├─ {blue}afl++{reset} {afl_status:0}────────────────────┬────────────────────────────────{blue}/{red}//{reset}──┤");
+        if !afl_status.contains("disabled") {
+            eprintln!("│       {gray}instances :{reset} {afl_instances:17.17} │ {gray}best coverage :{reset} {afl_coverage:11.11}   {blue}/{red}//{reset}   │");
+            if afl_crashes == "0" {
+                eprintln!("│{gray}cumulative speed :{reset} {afl_speed:17.17} │ {gray}crashes saved :{reset} {afl_crashes:11.11}  {blue}/{red}//{reset}    │");
+            } else {
+                eprintln!("│{gray}cumulative speed :{reset} {afl_speed:17.17} │ {gray}crashes saved :{reset} {red}{afl_crashes:11.11}{reset}  {blue}/{red}//{reset}    │");
+            }
+            eprintln!(
+                "│     {gray}total execs :{reset} {afl_total_execs:17.17} │{gray}timeouts saved :{reset} {afl_timeouts:17.17}   │"
+            );
+            eprintln!("│ {gray}top inputs todo :{reset} {afl_faves:17.17} │   {gray}no find for :{reset} {afl_new_finds:17.17}   │");
+        }
         eprintln!(
-            "│     total execs : {afl_total_execs:17} │     total execs : {hf_total_execs:17} │"
+            "├─ {blue}honggfuzz{reset} {hf_status:0}─────────────┬──┴────────────────────────────────┬────┘"
         );
-        eprint!("\x1B[K");
-        eprintln!("│       instances : {afl_instances:17} │         threads : {hf_threads:17} │");
-        eprint!("\x1B[K");
-        eprintln!("│cumulative speed : {afl_speed:17} │   average Speed : {hf_speed:17} │");
-        eprint!("\x1B[K");
-        eprintln!("│   best coverage : {afl_coverage:17} │        coverage : {hf_coverage:17} │");
-        eprint!("\x1B[K");
-        eprintln!("│   crashes saved : {afl_crashes:17} │   crashes saved : {hf_crashes:17} │");
-        eprint!("\x1B[K");
-        eprintln!("│     no find for : {afl_new_finds:17} │     no find for : {hf_new_finds:17} │");
-        eprint!("\x1B[K");
-        eprintln!("│ top inputs todo : {afl_faves:17} │                                     │");
-        eprint!("\x1B[K");
-        eprintln!("└─────────────────────────────────────┴─────────────────────────────────────┘");
+        if !hf_status.contains("disabled") {
+            eprintln!("│      {gray}threads :{reset} {hf_threads:17.17} │      {gray}coverage :{reset} {hf_coverage:17.17} │");
+            if hf_crashes == "0" {
+                eprintln!("│{gray}average Speed :{reset} {hf_speed:17.17} │ {gray}crashes saved :{reset} {hf_crashes:17.17} │");
+            } else {
+                eprintln!("│{gray}average Speed :{reset} {hf_speed:17.17} │ {gray}crashes saved :{reset} {red}{hf_crashes:17.17}{reset} │");
+            }
+            eprintln!("│  {gray}total execs :{reset} {hf_total_execs:17.17} │{gray}timeouts saved :{reset} {hf_timeouts:17.17} │");
+            eprintln!("│                                  │   {gray}no find for :{reset} {hf_new_finds:17.17} │");
+        }
+        eprintln!("└──────────────────────────────────┴───────────────────────────────────┘");
     }
 }
 
