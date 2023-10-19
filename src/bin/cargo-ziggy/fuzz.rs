@@ -290,7 +290,7 @@ impl Fuzz {
     // Spawns new fuzzers
     pub fn spawn_new_fuzzers(&self) -> Result<Vec<process::Child>, anyhow::Error> {
         // No fuzzers for you
-        if self.no_afl && self.no_honggfuzz {
+        if self.no_afl && self.no_honggfuzz && self.no_libafl {
             return Err(anyhow!("Pick at least one fuzzer"));
         }
 
@@ -446,34 +446,32 @@ impl Fuzz {
                 .spawn()?
                 .wait()?;
 
-            for identifier in 0..libafl_jobs {
-                fuzzer_handles.push(
-                    process::Command::new(format!(
-                        "./target/libafl/x86_64-unknown-linux-gnu/release/{}",
-                        self.target
-                    ))
-                    .env("LIBAFL_TARGET_NAME", &self.target)
-                    .env("LIBAFL_IDENTIFIER", &format!("{identifier}"))
-                    .env("LIBAFL_SHARED_CORPUS", self.corpus())
-                    .env(
-                        "LIBAFL_CORPUS",
-                        &format!("{}/libafl/corpus", self.output_target()),
-                    )
-                    .env(
-                        "LIBAFL_CRASHES",
-                        &format!("{}/libafl/crashes", self.output_target()),
-                    )
-                    .stderr(File::create(format!(
-                        "{}/libafl/logs/{identifier}.log",
-                        self.output_target(),
-                    ))?)
-                    .stdout(File::create(format!(
-                        "{}/libafl/logs/{identifier}.log",
-                        self.output_target()
-                    ))?)
-                    .spawn()?,
-                );
-            }
+            fuzzer_handles.push(
+                process::Command::new(format!(
+                    "./target/libafl/x86_64-unknown-linux-gnu/release/{}",
+                    self.target
+                ))
+                .env("LIBAFL_TARGET_NAME", &self.target)
+                .env("LIBAFL_SHARED_CORPUS", self.corpus())
+                .env(
+                    "LIBAFL_CORPUS",
+                    &format!("{}/libafl/corpus", self.output_target()),
+                )
+                .env(
+                    "LIBAFL_CRASHES",
+                    &format!("{}/libafl/crashes", self.output_target()),
+                )
+                .env("LIBAFL_CORES", format!("{libafl_jobs}"))
+                .stderr(File::create(format!(
+                    "{}/logs/libafl.log",
+                    self.output_target(),
+                ))?)
+                .stdout(File::create(format!(
+                    "{}/logs/libafl.log",
+                    self.output_target()
+                ))?)
+                .spawn()?,
+            );
             eprintln!(
                 "{} libafl                 ",
                 style("    Launched").green().bold()

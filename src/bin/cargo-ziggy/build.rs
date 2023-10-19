@@ -7,7 +7,7 @@ impl Build {
     /// Build the fuzzers
     pub fn build(&self) -> Result<(), anyhow::Error> {
         // No fuzzers for you
-        if self.no_afl && self.no_honggfuzz {
+        if self.no_afl && self.no_honggfuzz && self.no_libafl {
             return Err(anyhow!("Pick at least one fuzzer"));
         }
 
