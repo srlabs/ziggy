@@ -58,7 +58,7 @@ macro_rules! libafl_fuzz {
         // The Monitor trait define how the fuzzer stats are displayed to the user
         let monitor = SimpleMonitor::new(|s| println!("{s}"));
 
-        let free_cores: Vec<usize> = free_cpus::get().into_iter().collect();
+        let free_cores: Vec<usize> = free_cpus::get().unwrap().into_iter().collect();
         let mut cores = Cores::from(free_cores);
         cores.trim(num_of_cores).expect("Not enough free cores for LibAFL");
 
@@ -182,6 +182,7 @@ macro_rules! libafl_fuzz {
             .run_client(&mut run_client)
             .cores(&cores)
             .broker_port(broker_port)
+            // TODO Does this ever output anything? I have not seen it yet.
             .stdout_file(Some("/tmp/libafl.log"))
             .build()
             .launch()

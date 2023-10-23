@@ -469,10 +469,11 @@ dependencies = [
 
 [[package]]
 name = "free-cpus"
-version = "1.0.0"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64dee16a7db29828f9bce3e5c5b4b441b106bf09260d02a00fdfcaffdf8972a1"
+checksum = "d075faa40bcd39333046862075f62f1493921c47b15a7b13fc283df0192ad239"
 dependencies = [
+ "anyhow",
  "num_cpus",
 ]
 
