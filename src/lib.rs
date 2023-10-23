@@ -6,6 +6,8 @@ pub use honggfuzz::fuzz as honggfuzz_fuzz;
 #[cfg(feature = "with_libafl")]
 mod libafl_fuzzer;
 #[cfg(feature = "with_libafl")]
+pub use free_cpus;
+#[cfg(feature = "with_libafl")]
 pub use libafl;
 #[cfg(feature = "with_libafl")]
 pub use libafl_bolts;

@@ -20,6 +20,7 @@ cargo_metadata = { version = "0.18.0", optional = true }
 clap = { version = "4.4.6", features = ["cargo", "derive", "env"], optional = true }
 console = { version = "0.15.7", optional = true }
 env_logger = { version = "0.10.0", optional = true }
+free-cpus = { version = "1.0.0", optional = true }
 glob = { version = "0.3.1", optional = true }
 # We use our own fork of honggfuzz to use the tool's latest release
 # https://github.com/rust-fuzz/honggfuzz-rs/pull/85
@@ -52,4 +53,4 @@ cli = [
     "time-humanize",
     "cargo_metadata",
 ]
-with_libafl = ["libafl", "libafl_targets", "libafl_bolts"]
+with_libafl = ["libafl", "libafl_targets", "libafl_bolts", "free-cpus"]

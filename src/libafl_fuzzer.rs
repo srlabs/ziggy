@@ -36,6 +36,7 @@ macro_rules! libafl_fuzz {
             core_affinity::{Cores, CoreId}, current_nanos, rands::StdRand,shmem::{ShMemProvider, StdShMemProvider},
             tuples::{Merge, tuple_list}, AsSlice
         };
+        use ziggy::free_cpus;
         use core::time::Duration;
         use std::{env, path::PathBuf, ptr::write, str::FromStr, net::TcpListener};
         use ziggy::libafl_targets::{EDGES_MAP, MAX_EDGES_NUM};
@@ -57,24 +58,9 @@ macro_rules! libafl_fuzz {
         // The Monitor trait define how the fuzzer stats are displayed to the user
         let monitor = SimpleMonitor::new(|s| println!("{s}"));
 
-        /*
-        // Failed try at affinity
-        let all_cores: Cores = Cores::all().expect("Could not get all cores");
-        let mut num: usize = 0;
-        let core_ids: Vec<CoreId> = all_cores.ids.iter().filter(|core| {
-            if num >= num_of_cores {
-                return false;
-            }
-            if core.set_affinity().is_ok() {
-                num += 1;
-                return true;
-            }
-            return false;
-        }).cloned().collect();
-        */
-
-        // TODO Change this to not pin on the same cores every time
-        let cores = Cores::from((0..num_of_cores).collect::<Vec<_>>());
+        let free_cores: Vec<usize> = free_cpus::get().into_iter().collect();
+        let mut cores = Cores::from(free_cores);
+        cores.trim(num_of_cores).expect("Not enough free cores for LibAFL");
 
         let mut run_client = |state: Option<_>, mut mgr: LlmpRestartingEventManager<_, _>, core_id: CoreId| {
             // The wrapped harness function, calling out to the LLVM-style harness
