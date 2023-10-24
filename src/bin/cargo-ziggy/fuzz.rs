@@ -199,9 +199,12 @@ impl Fuzz {
                     for crash_input in crashes.flatten() {
                         let file_name = crash_input.file_name();
                         let to_path = crash_path.join(&file_name);
+                        let file_name_str = file_name.to_str().unwrap_or_default();
                         if to_path.exists()
                             || ["", "README.txt", "HONGGFUZZ.REPORT.TXT", "input"]
-                                .contains(&file_name.to_str().unwrap_or_default())
+                                .contains(&file_name_str)
+                            || file_name_str.contains(".lafl_lock")
+                            || file_name_str.contains(".metadata")
                         {
                             continue;
                         }
@@ -453,10 +456,6 @@ impl Fuzz {
                 ))
                 .env("LIBAFL_TARGET_NAME", &self.target)
                 .env("LIBAFL_SHARED_CORPUS", self.corpus())
-                .env(
-                    "LIBAFL_CORPUS",
-                    &format!("{}/libafl/corpus", self.output_target()),
-                )
                 .env(
                     "LIBAFL_CRASHES",
                     &format!("{}/libafl/crashes", self.output_target()),
@@ -738,8 +737,36 @@ impl Fuzz {
 
         // Second step: Get stats from libafl
         let mut libafl_status = format!("{green}running{reset} ─");
+        let mut libafl_clients = String::new();
+        let mut libafl_speed = String::new();
+        let mut libafl_crashes = String::new();
+        let mut libafl_total_execs = String::new();
+
         if !self.libafl() {
             libafl_status = format!("{yellow}disabled{reset} ");
+        } else {
+            let hf_stats_process = process::Command::new("tail")
+                .args(["-n5", &format!("{}/logs/libafl.log", self.output_target())])
+                .output();
+            if let Ok(process) = hf_stats_process {
+                let s = std::str::from_utf8(&process.stdout).unwrap_or_default();
+                for raw_line in s.split('\n') {
+                    let stripped_line = strip_str(raw_line);
+                    let line = stripped_line.trim();
+                    for stat in line.split(", ") {
+                        if let Some(clients) = stat.strip_prefix("clients: ") {
+                            libafl_clients =
+                                format!("{}", clients.parse::<usize>().unwrap_or(1) - 1)
+                        } else if let Some(objectives) = stat.strip_prefix("objectives: ") {
+                            libafl_crashes = objectives.to_string();
+                        } else if let Some(executions) = stat.strip_prefix("executions: ") {
+                            libafl_total_execs = executions.to_string();
+                        } else if let Some(exec_sec) = stat.strip_prefix("exec/sec: ") {
+                            libafl_speed = exec_sec.to_string();
+                        }
+                    }
+                }
+            }
         }
 
         // Third step: Get stats from honggfuzz logs
@@ -850,17 +877,26 @@ impl Fuzz {
             eprintln!("│ {gray}top inputs todo :{reset} {afl_faves:17.17} │   {gray}no find for :{reset} {afl_new_finds:17.17}   │");
         }
         eprintln!(
-            "├─ {blue}libafl{reset} {libafl_status:0}────────────────┬──┴────────────────────────────────┬────┘"
+            "├─ {blue}libafl{reset} {libafl_status:0}───────────────────┼──────────────────────────────────┬──┘"
         );
+        if !libafl_status.contains("disabled") {
+            eprintln!("│         {gray}clients :{reset} {libafl_clients:17.17} │                                  │");
+            if libafl_crashes == "0" {
+                eprintln!("│{gray}cumulative speed :{reset} {libafl_speed:17.17} │{gray}crashes saved :{reset} {libafl_crashes:17.17} │");
+            } else {
+                eprintln!("│{gray}cumulative speed :{reset} {libafl_speed:17.17} │{gray}crashes saved :{reset} {red}{libafl_crashes:17.17}{reset} │");
+            }
+            eprintln!("│     {gray}total execs :{reset} {libafl_total_execs:17.17} │                                  │");
+        }
         eprintln!(
-            "├─ {blue}honggfuzz{reset} {hf_status:0}─────────────┼───────────────────────────────────┤"
+            "├─ {blue}honggfuzz{reset} {hf_status:0}─────────────┬──┴────────────────────────────────┬─┘"
         );
         if !hf_status.contains("disabled") {
             eprintln!("│      {gray}threads :{reset} {hf_threads:17.17} │      {gray}coverage :{reset} {hf_coverage:17.17} │");
             if hf_crashes == "0" {
-                eprintln!("│{gray}average Speed :{reset} {hf_speed:17.17} │ {gray}crashes saved :{reset} {hf_crashes:17.17} │");
+                eprintln!("│{gray}average speed :{reset} {hf_speed:17.17} │ {gray}crashes saved :{reset} {hf_crashes:17.17} │");
             } else {
-                eprintln!("│{gray}average Speed :{reset} {hf_speed:17.17} │ {gray}crashes saved :{reset} {red}{hf_crashes:17.17}{reset} │");
+                eprintln!("│{gray}average speed :{reset} {hf_speed:17.17} │ {gray}crashes saved :{reset} {red}{hf_crashes:17.17}{reset} │");
             }
             eprintln!("│  {gray}total execs :{reset} {hf_total_execs:17.17} │{gray}timeouts saved :{reset} {hf_timeouts:17.17} │");
             eprintln!("│                                  │   {gray}no find for :{reset} {hf_new_finds:17.17} │");

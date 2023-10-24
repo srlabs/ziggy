@@ -44,7 +44,6 @@ macro_rules! libafl_fuzz {
         // Environement variables are passed from ziggy to LibAFL
         let target_name = env::var("LIBAFL_TARGET_NAME").expect("Could not find LIBAFL_TARGET_NAME env variable");
         let shared_corpus: PathBuf = env::var("LIBAFL_SHARED_CORPUS").expect("Could not find LIBAFL_SHARED_CORPUS env variable").into();
-        let libafl_corpus: PathBuf = env::var("LIBAFL_CORPUS").expect("Could not find LIBAFL_CORPUS env variable").into();
         let crashes_dir: PathBuf = env::var("LIBAFL_CRASHES").expect("Could not find LIBAFL_CRASHES env variable").into();
         let num_of_cores = env::var("LIBAFL_CORES").expect("Could not find LIBAFL_CORES env variable").parse::<usize>().unwrap_or(1);
 
@@ -112,7 +111,7 @@ macro_rules! libafl_fuzz {
                 // RNG
                 StdRand::with_seed(current_nanos()),
                 // Corpus that will be evolved
-                OnDiskCorpus::new(&libafl_corpus.clone()).unwrap(),
+                OnDiskCorpus::new(&shared_corpus.clone()).unwrap(),
                 // Corpus in which we store solutions (crashes in this example),
                 // on disk so the user can get them after stopping the fuzzer
                 OnDiskCorpus::new(&crashes_dir).unwrap(),
@@ -154,7 +153,7 @@ macro_rules! libafl_fuzz {
             )
             .expect("Failed to create the Executor");
 
-            let corpus_dirs = &[libafl_corpus.clone(), shared_corpus.clone()];
+            let corpus_dirs = &[shared_corpus.clone()];
 
             // In case the corpus is empty (on first run), reset
             if state.must_load_initial_inputs() {
