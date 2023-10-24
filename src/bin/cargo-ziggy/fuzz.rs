@@ -739,6 +739,7 @@ impl Fuzz {
         let mut libafl_status = format!("{green}running{reset} ─");
         let mut libafl_clients = String::new();
         let mut libafl_speed = String::new();
+        let mut libafl_coverage = String::new();
         let mut libafl_crashes = String::new();
         let mut libafl_total_execs = String::new();
 
@@ -746,7 +747,7 @@ impl Fuzz {
             libafl_status = format!("{yellow}disabled{reset} ");
         } else {
             let hf_stats_process = process::Command::new("tail")
-                .args(["-n5", &format!("{}/logs/libafl.log", self.output_target())])
+                .args(["-n100", &format!("{}/logs/libafl.log", self.output_target())])
                 .output();
             if let Ok(process) = hf_stats_process {
                 let s = std::str::from_utf8(&process.stdout).unwrap_or_default();
@@ -756,13 +757,15 @@ impl Fuzz {
                     for stat in line.split(", ") {
                         if let Some(clients) = stat.strip_prefix("clients: ") {
                             libafl_clients =
-                                format!("{}", clients.parse::<usize>().unwrap_or(1) - 1)
+                                format!("{}", clients.parse::<usize>().unwrap_or(1).saturating_sub(1).unwrap_or_default())
                         } else if let Some(objectives) = stat.strip_prefix("objectives: ") {
                             libafl_crashes = objectives.to_string();
                         } else if let Some(executions) = stat.strip_prefix("executions: ") {
                             libafl_total_execs = executions.to_string();
                         } else if let Some(exec_sec) = stat.strip_prefix("exec/sec: ") {
                             libafl_speed = exec_sec.to_string();
+                        } else if let Some(edges) = stat.strip_prefix("edges: ") {
+                            libafl_coverage = edges.to_string();
                         }
                     }
                 }

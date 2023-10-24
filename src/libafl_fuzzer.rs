@@ -19,7 +19,7 @@ macro_rules! libafl_fuzz {
             fuzzer::{Fuzzer, StdFuzzer},
             generators::RandPrintablesGenerator,
             inputs::{BytesInput, HasTargetBytes},
-            monitors::SimpleMonitor,
+            monitors::MultiMonitor,
             mutators::{
                 scheduled::{havoc_mutations, tokens_mutations, StdScheduledMutator},
                 token_mutations::Tokens,
@@ -29,23 +29,25 @@ macro_rules! libafl_fuzz {
                 powersched::PowerSchedule, IndexesLenTimeMinimizerScheduler, StdWeightedScheduler,
             },
             stages::{calibrate::CalibrationStage, power::StdPowerMutationalStage, sync::SyncFromDiskStage},
-            state::{HasCorpus, StdState},
+            state::{HasCorpus, StdState, HasMetadata},
             Error
         };
         use ziggy::libafl_bolts::{
-            core_affinity::{Cores, CoreId}, current_nanos, rands::StdRand,shmem::{ShMemProvider, StdShMemProvider},
-            tuples::{Merge, tuple_list}, AsSlice
+            core_affinity::{Cores, CoreId}, current_nanos, rands::StdRand, shmem::{ShMemProvider, StdShMemProvider, ShMem},
+            tuples::{Merge, tuple_list}, AsSlice,
+            AsMutSlice
         };
         use ziggy::free_cpus;
         use core::time::Duration;
         use std::{env, path::PathBuf, ptr::write, str::FromStr, net::TcpListener};
-        use ziggy::libafl_targets::{EDGES_MAP, MAX_EDGES_NUM};
+        use ziggy::libafl_targets::{EDGES_MAP, MAX_EDGES_NUM, autotokens};
 
         // Environement variables are passed from ziggy to LibAFL
         let target_name = env::var("LIBAFL_TARGET_NAME").expect("Could not find LIBAFL_TARGET_NAME env variable");
         let shared_corpus: PathBuf = env::var("LIBAFL_SHARED_CORPUS").expect("Could not find LIBAFL_SHARED_CORPUS env variable").into();
         let crashes_dir: PathBuf = env::var("LIBAFL_CRASHES").expect("Could not find LIBAFL_CRASHES env variable").into();
         let num_of_cores = env::var("LIBAFL_CORES").expect("Could not find LIBAFL_CORES env variable").parse::<usize>().unwrap_or(1);
+        let dict = env::var("LIBAFL_DICT");
 
         let broker_port = TcpListener::bind("127.0.0.1:0").map(|sock| {
             let port = sock.local_addr().unwrap().port();
@@ -55,7 +57,7 @@ macro_rules! libafl_fuzz {
         let shmem_provider = StdShMemProvider::new().expect("Failed to init shared memory");
 
         // The Monitor trait define how the fuzzer stats are displayed to the user
-        let monitor = SimpleMonitor::new(|s| println!("{s}"));
+        let monitor = MultiMonitor::new(|s| println!("{s}"));
 
         let maybe_free_cores: Option<Vec<usize>> = free_cpus::get().map(|cpus| cpus.into_iter().collect()).ok();
         let mut cores = match maybe_free_cores {
@@ -161,6 +163,23 @@ macro_rules! libafl_fuzz {
                     .load_initial_inputs(&mut fuzzer, &mut executor, &mut mgr, corpus_dirs)
                     .unwrap_or_else(|_| panic!("Failed to load initial corpus at {:?}", &corpus_dirs));
                 println!("We imported {} inputs from disk.", state.corpus().count());
+            }
+
+            // We load the dictionary
+            // Attempt to use tokens from libfuzzer dicts
+            if !state.has_metadata::<Tokens>() {
+                let mut toks = Tokens::default();
+                if let Ok(dictionary) = dict.clone() {
+                    let _ = toks.add_from_file(dictionary);
+                } 
+                #[cfg(any(target_os = "linux", target_vendor = "apple"))]
+                {
+                    toks += autotokens()?;
+                }
+
+                if !toks.is_empty() {
+                    state.add_metadata(toks);
+                }
             }
 
             // Setup a basic mutator with a mutational stage
