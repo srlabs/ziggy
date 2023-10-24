@@ -871,7 +871,7 @@ impl Fuzz {
         eprintln!(
             "│{gray}run time :{reset} {total_run_time:17.17}                                       {blue}/{red}///{reset}    │"
         );
-        eprintln!("├─ {blue}afl++{reset} {afl_status:0}────────────────────┬────────────────────────────────{blue}/{red}///{reset}─┤");
+        eprintln!("├─ {blue}afl++{reset} {afl_status:0}─────────────────────────────────────────────────────{blue}/{red}///{reset}─┤");
         if !afl_status.contains("disabled") {
             eprintln!("│       {gray}instances :{reset} {afl_instances:17.17} │ {gray}best coverage :{reset} {afl_coverage:11.11}   {blue}/{red}//{reset}   │");
             if afl_crashes == "0" {
@@ -885,7 +885,7 @@ impl Fuzz {
             eprintln!("│ {gray}top inputs todo :{reset} {afl_faves:17.17} │   {gray}no find for :{reset} {afl_new_finds:17.17}   │");
         }
         eprintln!(
-            "├─ {blue}libafl{reset} {libafl_status:0}───────────────────┼──────────────────────────────────┬──┘"
+            "├─ {blue}libafl{reset} {libafl_status:0}──────────────────────────────────────────────────────┬──┘"
         );
         if !libafl_status.contains("disabled") {
             eprintln!("│         {gray}clients :{reset} {libafl_clients:17.17} │{gray}best coverage :{reset} {libafl_coverage:17.17} │");
@@ -897,7 +897,7 @@ impl Fuzz {
             eprintln!("│     {gray}total execs :{reset} {libafl_total_execs:17.17} │                                  │");
         }
         eprintln!(
-            "├─ {blue}honggfuzz{reset} {hf_status:0}─────────────┬──┴────────────────────────────────┬─┘"
+            "├─ {blue}honggfuzz{reset} {hf_status:0}─────────────────────────────────────────────────┬─┘"
         );
         if !hf_status.contains("disabled") {
             eprintln!("│      {gray}threads :{reset} {hf_threads:17.17} │      {gray}coverage :{reset} {hf_coverage:17.17} │");
@@ -909,7 +909,7 @@ impl Fuzz {
             eprintln!("│  {gray}total execs :{reset} {hf_total_execs:17.17} │{gray}timeouts saved :{reset} {hf_timeouts:17.17} │");
             eprintln!("│                                  │   {gray}no find for :{reset} {hf_new_finds:17.17} │");
         }
-        eprintln!("└──────────────────────────────────┴───────────────────────────────────┘");
+        eprintln!("└──────────────────────────────────────────────────────────────────────┘");
     }
 }
 
