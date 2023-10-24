@@ -58,8 +58,11 @@ macro_rules! libafl_fuzz {
         // The Monitor trait define how the fuzzer stats are displayed to the user
         let monitor = SimpleMonitor::new(|s| println!("{s}"));
 
-        let free_cores: Vec<usize> = free_cpus::get().unwrap().into_iter().collect();
-        let mut cores = Cores::from(free_cores);
+        let maybe_free_cores: Option<Vec<usize>> = free_cpus::get().map(|cpus| cpus.into_iter().collect()).ok();
+        let mut cores = match maybe_free_cores {
+            Some(free_cores) => Cores::from(free_cores),
+            None => Cores::all().expect("Could not get all cores"),
+        };
         cores.trim(num_of_cores).expect("Not enough free cores for LibAFL");
 
         let mut run_client = |state: Option<_>, mut mgr: LlmpRestartingEventManager<_, _>, core_id: CoreId| {
