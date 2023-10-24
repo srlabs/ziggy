@@ -8,72 +8,93 @@
 #[macro_export]
 #[cfg(feature = "with_libafl")]
 macro_rules! libafl_fuzz {
-
     ( $($x:tt)* ) => {
-        use ziggy::libafl::{
-            corpus::{InMemoryCorpus, OnDiskCorpus, Corpus},
-            events::{launcher::Launcher, setup_restarting_mgr_std, EventConfig, EventRestarter, SimpleEventManager, LlmpRestartingEventManager},
-            executors::{inprocess::InProcessExecutor, InProcessForkExecutor, ExitKind, TimeoutExecutor},
-            feedback_or, feedback_or_fast,
-            feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback, TimeoutFeedback},
-            fuzzer::{Fuzzer, StdFuzzer},
-            generators::RandPrintablesGenerator,
-            inputs::{BytesInput, HasTargetBytes},
-            monitors::MultiMonitor,
-            mutators::{
-                scheduled::{havoc_mutations, tokens_mutations, StdScheduledMutator},
-                token_mutations::Tokens,
-            },
-            observers::{HitcountsMapObserver, StdMapObserver, TimeObserver},
-            schedulers::{
-                powersched::PowerSchedule, IndexesLenTimeMinimizerScheduler, StdWeightedScheduler,
-            },
-            stages::{calibrate::CalibrationStage, power::StdPowerMutationalStage, sync::SyncFromDiskStage},
-            state::{HasCorpus, StdState, HasMetadata},
-            Error
-        };
-        use ziggy::libafl_bolts::{
-            core_affinity::{Cores, CoreId}, current_nanos, rands::StdRand, shmem::{ShMemProvider, StdShMemProvider, ShMem},
-            tuples::{Merge, tuple_list}, AsSlice,
-            AsMutSlice
-        };
-        use ziggy::free_cpus;
-        use core::time::Duration;
-        use std::{env, path::PathBuf, ptr::write, str::FromStr, net::TcpListener};
-        use ziggy::libafl_targets::{EDGES_MAP, MAX_EDGES_NUM, autotokens};
+        ziggy::libafl_fuzzer::libafl_fuzz($($x)*)
+    };
+}
 
-        // Environement variables are passed from ziggy to LibAFL
-        let target_name = env::var("LIBAFL_TARGET_NAME").expect("Could not find LIBAFL_TARGET_NAME env variable");
-        let shared_corpus: PathBuf = env::var("LIBAFL_SHARED_CORPUS").expect("Could not find LIBAFL_SHARED_CORPUS env variable").into();
-        let crashes_dir: PathBuf = env::var("LIBAFL_CRASHES").expect("Could not find LIBAFL_CRASHES env variable").into();
-        let num_of_cores = env::var("LIBAFL_CORES").expect("Could not find LIBAFL_CORES env variable").parse::<usize>().unwrap_or(1);
-        let dict = env::var("LIBAFL_DICT");
+#[cfg(feature = "with_libafl")]
+pub fn libafl_fuzz(function: fn(&[u8])) {
+    use libafl::{
+        corpus::{Corpus, OnDiskCorpus},
+        events::{launcher::Launcher, EventConfig, LlmpRestartingEventManager},
+        executors::{inprocess::InProcessExecutor, ExitKind},
+        feedback_or, feedback_or_fast,
+        feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback, TimeoutFeedback},
+        fuzzer::{Fuzzer, StdFuzzer},
+        inputs::{BytesInput, HasTargetBytes},
+        monitors::MultiMonitor,
+        mutators::{
+            scheduled::{havoc_mutations, tokens_mutations, StdScheduledMutator},
+            token_mutations::Tokens,
+        },
+        observers::{HitcountsMapObserver, StdMapObserver, TimeObserver},
+        schedulers::{
+            powersched::PowerSchedule, IndexesLenTimeMinimizerScheduler, StdWeightedScheduler,
+        },
+        stages::{
+            calibrate::CalibrationStage, power::StdPowerMutationalStage, sync::SyncFromDiskStage,
+        },
+        state::{HasCorpus, HasMetadata, StdState},
+        Error,
+    };
+    use libafl_bolts::{
+        core_affinity::{CoreId, Cores},
+        current_nanos,
+        rands::StdRand,
+        shmem::{ShMemProvider, StdShMemProvider},
+        tuples::{tuple_list, Merge},
+        AsSlice,
+    };
+    use libafl_targets::{autotokens, EDGES_MAP, MAX_EDGES_NUM};
+    use std::{env, net::TcpListener, path::PathBuf};
 
-        let broker_port = TcpListener::bind("127.0.0.1:0").map(|sock| {
+    // Environement variables are passed from ziggy to LibAFL
+    let target_name =
+        env::var("LIBAFL_TARGET_NAME").expect("Could not find LIBAFL_TARGET_NAME env variable");
+    let shared_corpus: PathBuf = env::var("LIBAFL_SHARED_CORPUS")
+        .expect("Could not find LIBAFL_SHARED_CORPUS env variable")
+        .into();
+    let crashes_dir: PathBuf = env::var("LIBAFL_CRASHES")
+        .expect("Could not find LIBAFL_CRASHES env variable")
+        .into();
+    let num_of_cores = env::var("LIBAFL_CORES")
+        .expect("Could not find LIBAFL_CORES env variable")
+        .parse::<usize>()
+        .unwrap_or(1);
+    let dict = env::var("LIBAFL_DICT");
+
+    let broker_port = TcpListener::bind("127.0.0.1:0")
+        .map(|sock| {
             let port = sock.local_addr().unwrap().port();
             port
-        }).expect("Could not bind broker port");
+        })
+        .expect("Could not bind broker port");
 
-        let shmem_provider = StdShMemProvider::new().expect("Failed to init shared memory");
+    let shmem_provider = StdShMemProvider::new().expect("Failed to init shared memory");
 
-        // The Monitor trait define how the fuzzer stats are displayed to the user
-        let monitor = MultiMonitor::new(|s| println!("{s}"));
+    // The Monitor trait define how the fuzzer stats are displayed to the user
+    let monitor = MultiMonitor::new(|s| println!("{s}"));
 
-        let maybe_free_cores: Option<Vec<usize>> = free_cpus::get().map(|cpus| cpus.into_iter().collect()).ok();
-        let mut cores = match maybe_free_cores {
-            Some(free_cores) => Cores::from(free_cores),
-            None => Cores::all().expect("Could not get all cores"),
-        };
-        cores.trim(num_of_cores).expect("Not enough free cores for LibAFL");
+    let maybe_free_cores: Option<Vec<usize>> =
+        free_cpus::get().map(|cpus| cpus.into_iter().collect()).ok();
+    let mut cores = match maybe_free_cores {
+        Some(free_cores) => Cores::from(free_cores),
+        None => Cores::all().expect("Could not get all cores"),
+    };
+    cores
+        .trim(num_of_cores)
+        .expect("Not enough free cores for LibAFL");
 
-        let mut run_client = |state: Option<_>, mut mgr: LlmpRestartingEventManager<_, _>, core_id: CoreId| {
+    let mut run_client =
+        |state: Option<_>, mut mgr: LlmpRestartingEventManager<_, _>, core_id: CoreId| {
             // The wrapped harness function, calling out to the LLVM-style harness
-            let mut harness = |input: &BytesInput| {
+            let mut harness = |input: &BytesInput| -> ExitKind {
                 let target = input.target_bytes();
                 let buf = target.as_slice();
                 // The closure that we want to fuzz
-                let inner_harness = $($x)*;
-                inner_harness(buf);
+                let inner_harness = function;
+                inner_harness(buf.into());
                 ExitKind::Ok
             };
 
@@ -136,11 +157,9 @@ macro_rules! libafl_fuzz {
             };
 
             // A minimization+queue policy to get testcasess from the corpus
-            let scheduler = IndexesLenTimeMinimizerScheduler::new(StdWeightedScheduler::with_schedule(
-                &mut state,
-                &edges_observer,
-                Some(strategy),
-            ));
+            let scheduler = IndexesLenTimeMinimizerScheduler::new(
+                StdWeightedScheduler::with_schedule(&mut state, &edges_observer, Some(strategy)),
+            );
 
             // A fuzzer with feedbacks and a corpus scheduler
             let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
@@ -161,7 +180,9 @@ macro_rules! libafl_fuzz {
             if state.must_load_initial_inputs() {
                 state
                     .load_initial_inputs(&mut fuzzer, &mut executor, &mut mgr, corpus_dirs)
-                    .unwrap_or_else(|_| panic!("Failed to load initial corpus at {:?}", &corpus_dirs));
+                    .unwrap_or_else(|_| {
+                        panic!("Failed to load initial corpus at {:?}", &corpus_dirs)
+                    });
                 println!("We imported {} inputs from disk.", state.corpus().count());
             }
 
@@ -171,7 +192,7 @@ macro_rules! libafl_fuzz {
                 let mut toks = Tokens::default();
                 if let Ok(dictionary) = dict.clone() {
                     let _ = toks.add_from_file(dictionary);
-                } 
+                }
                 #[cfg(any(target_os = "linux", target_vendor = "apple"))]
                 {
                     toks += autotokens()?;
@@ -196,21 +217,20 @@ macro_rules! libafl_fuzz {
             Ok(())
         };
 
-        match Launcher::builder()
-            .shmem_provider(shmem_provider)
-            .configuration(EventConfig::from_name(&target_name))
-            .monitor(monitor)
-            .run_client(&mut run_client)
-            .cores(&cores)
-            .broker_port(broker_port)
-            // TODO Does this ever output anything? I have not seen it yet.
-            .stdout_file(Some("/tmp/libafl.log"))
-            .build()
-            .launch()
-        {
-            Ok(()) => (),
-            Err(Error::ShuttingDown) => println!("Fuzzing stopped by user. Good bye."),
-            Err(e) => panic!("Error in fuzzer: {e}"),
-        };
+    match Launcher::builder()
+        .shmem_provider(shmem_provider)
+        .configuration(EventConfig::from_name(&target_name))
+        .monitor(monitor)
+        .run_client(&mut run_client)
+        .cores(&cores)
+        .broker_port(broker_port)
+        // TODO Does this ever output anything? I have not seen it yet.
+        .stdout_file(Some("/tmp/libafl.log"))
+        .build()
+        .launch()
+    {
+        Ok(()) => (),
+        Err(Error::ShuttingDown) => println!("Fuzzing stopped by user. Good bye."),
+        Err(e) => panic!("Error in fuzzer: {e}"),
     };
 }

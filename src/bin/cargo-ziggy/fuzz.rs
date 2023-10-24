@@ -747,7 +747,10 @@ impl Fuzz {
             libafl_status = format!("{yellow}disabled{reset} ");
         } else {
             let hf_stats_process = process::Command::new("tail")
-                .args(["-n100", &format!("{}/logs/libafl.log", self.output_target())])
+                .args([
+                    "-n100",
+                    &format!("{}/logs/libafl.log", self.output_target()),
+                ])
                 .output();
             if let Ok(process) = hf_stats_process {
                 let s = std::str::from_utf8(&process.stdout).unwrap_or_default();
@@ -756,8 +759,10 @@ impl Fuzz {
                     let line = stripped_line.trim();
                     for stat in line.split(", ") {
                         if let Some(clients) = stat.strip_prefix("clients: ") {
-                            libafl_clients =
-                                format!("{}", clients.parse::<usize>().unwrap_or(1).saturating_sub(1).unwrap_or_default())
+                            libafl_clients = format!(
+                                "{}",
+                                clients.parse::<usize>().unwrap_or(1).saturating_sub(1)
+                            )
                         } else if let Some(objectives) = stat.strip_prefix("objectives: ") {
                             libafl_crashes = objectives.to_string();
                         } else if let Some(executions) = stat.strip_prefix("executions: ") {
@@ -883,7 +888,7 @@ impl Fuzz {
             "├─ {blue}libafl{reset} {libafl_status:0}───────────────────┼──────────────────────────────────┬──┘"
         );
         if !libafl_status.contains("disabled") {
-            eprintln!("│         {gray}clients :{reset} {libafl_clients:17.17} │                                  │");
+            eprintln!("│         {gray}clients :{reset} {libafl_clients:17.17} │{gray}best coverage :{reset} {libafl_coverage:17.17} │");
             if libafl_crashes == "0" {
                 eprintln!("│{gray}cumulative speed :{reset} {libafl_speed:17.17} │{gray}crashes saved :{reset} {libafl_crashes:17.17} │");
             } else {

@@ -4,7 +4,7 @@ pub use afl::fuzz as afl_fuzz;
 #[cfg(feature = "honggfuzz")]
 pub use honggfuzz::fuzz as honggfuzz_fuzz;
 #[cfg(feature = "with_libafl")]
-mod libafl_fuzzer;
+pub mod libafl_fuzzer;
 #[cfg(feature = "with_libafl")]
 pub use free_cpus;
 #[cfg(feature = "with_libafl")]
