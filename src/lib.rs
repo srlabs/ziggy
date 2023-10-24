@@ -139,13 +139,13 @@ macro_rules! fuzz {
 #[cfg(feature = "with_libafl")]
 macro_rules! fuzz {
     (|$buf:ident| $body:block) => {
-        $crate::libafl_fuzz!(|$buf| $body);
+        $crate::libafl_fuzzer::libafl_fuzz(|$buf| $body);
     };
     (|$buf:ident: &[u8]| $body:block) => {
-        $crate::libafl_fuzz!(|$buf| $body);
+        $crate::libafl_fuzzer::libafl_fuzz(|$buf| $body);
     };
     (|$buf:ident: $dty: ty| $body:block) => {
-        $crate::libafl_fuzz!(|$buf| {
+        $crate::libafl_fuzzer::libafl_fuzz(|$buf| {
             let $buf: $dty = {
                 let mut data = ::arbitrary::Unstructured::new($buf);
                 if let Ok(d) = ::arbitrary::Arbitrary::arbitrary(&mut data).map_err(|_| "") {

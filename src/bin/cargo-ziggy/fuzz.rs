@@ -747,28 +747,28 @@ impl Fuzz {
             libafl_status = format!("{yellow}disabled{reset} ");
         } else {
             let hf_stats_process = process::Command::new("tail")
-                .args([
-                    "-n100",
-                    &format!("{}/logs/libafl.log", self.output_target()),
-                ])
+                .args(["-n10", &format!("{}/logs/libafl.log", self.output_target())])
                 .output();
             if let Ok(process) = hf_stats_process {
                 let s = std::str::from_utf8(&process.stdout).unwrap_or_default();
                 for raw_line in s.split('\n') {
+                    let global = raw_line.contains("GLOBAL");
                     let stripped_line = strip_str(raw_line);
                     let line = stripped_line.trim();
                     for stat in line.split(", ") {
-                        if let Some(clients) = stat.strip_prefix("clients: ") {
-                            libafl_clients = format!(
-                                "{}",
-                                clients.parse::<usize>().unwrap_or(1).saturating_sub(1)
-                            )
-                        } else if let Some(objectives) = stat.strip_prefix("objectives: ") {
-                            libafl_crashes = objectives.to_string();
-                        } else if let Some(executions) = stat.strip_prefix("executions: ") {
-                            libafl_total_execs = executions.to_string();
-                        } else if let Some(exec_sec) = stat.strip_prefix("exec/sec: ") {
-                            libafl_speed = exec_sec.to_string();
+                        if global {
+                            if let Some(clients) = stat.strip_prefix("clients: ") {
+                                libafl_clients = format!(
+                                    "{}",
+                                    clients.parse::<usize>().unwrap_or(1).saturating_sub(1)
+                                )
+                            } else if let Some(objectives) = stat.strip_prefix("objectives: ") {
+                                libafl_crashes = objectives.to_string();
+                            } else if let Some(executions) = stat.strip_prefix("executions: ") {
+                                libafl_total_execs = executions.to_string();
+                            } else if let Some(exec_sec) = stat.strip_prefix("exec/sec: ") {
+                                libafl_speed = exec_sec.to_string();
+                            }
                         } else if let Some(edges) = stat.strip_prefix("edges: ") {
                             libafl_coverage = edges.to_string();
                         }

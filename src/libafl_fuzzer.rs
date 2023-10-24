@@ -1,11 +1,3 @@
-#[macro_export]
-#[cfg(feature = "with_libafl")]
-macro_rules! libafl_fuzz {
-    ( $($x:tt)* ) => {
-        ziggy::libafl_fuzzer::libafl_fuzz($($x)*)
-    };
-}
-
 #[cfg(feature = "with_libafl")]
 pub fn libafl_fuzz(function: fn(&[u8])) {
     use libafl::{
@@ -58,10 +50,7 @@ pub fn libafl_fuzz(function: fn(&[u8])) {
     let dict = env::var("LIBAFL_DICT");
 
     let broker_port = TcpListener::bind("127.0.0.1:0")
-        .map(|sock| {
-            let port = sock.local_addr().unwrap().port();
-            port
-        })
+        .map(|sock| sock.local_addr().unwrap().port())
         .expect("Could not bind broker port");
 
     let shmem_provider = StdShMemProvider::new().expect("Failed to init shared memory");
@@ -87,7 +76,7 @@ pub fn libafl_fuzz(function: fn(&[u8])) {
                 let buf = target.as_slice();
                 // The closure that we want to fuzz
                 let inner_harness = function;
-                inner_harness(buf.into());
+                inner_harness(buf);
                 ExitKind::Ok
             };
 
@@ -104,7 +93,7 @@ pub fn libafl_fuzz(function: fn(&[u8])) {
             let time_observer = TimeObserver::new("time");
 
             // Feedback to rate the interestingness of an input
-            let mut map_feedback = MaxMapFeedback::tracking(&edges_observer, true, true);
+            let map_feedback = MaxMapFeedback::tracking(&edges_observer, true, true);
 
             let calibration = CalibrationStage::new(&map_feedback);
 
@@ -123,21 +112,23 @@ pub fn libafl_fuzz(function: fn(&[u8])) {
             let mut objective = feedback_or_fast!(CrashFeedback::new(), TimeoutFeedback::new());
 
             // create a State from scratch
-            let mut state = StdState::new(
-                // RNG
-                StdRand::with_seed(current_nanos()),
-                // Corpus that will be evolved
-                OnDiskCorpus::new(&shared_corpus.clone()).unwrap(),
-                // Corpus in which we store solutions (crashes in this example),
-                // on disk so the user can get them after stopping the fuzzer
-                OnDiskCorpus::new(&crashes_dir).unwrap(),
-                // States of the feedbacks.
-                // The feedbacks can report the data that should persist in the State.
-                &mut feedback,
-                // Same for objective feedbacks
-                &mut objective,
-            )
-            .unwrap();
+            let mut state = state.unwrap_or_else(|| {
+                StdState::new(
+                    // RNG
+                    StdRand::with_seed(current_nanos()),
+                    // Corpus that will be evolved
+                    OnDiskCorpus::new(shared_corpus.clone()).unwrap(),
+                    // Corpus in which we store solutions (crashes in this example),
+                    // on disk so the user can get them after stopping the fuzzer
+                    OnDiskCorpus::new(&crashes_dir).unwrap(),
+                    // States of the feedbacks.
+                    // The feedbacks can report the data that should persist in the State.
+                    &mut feedback,
+                    // Same for objective feedbacks
+                    &mut objective,
+                )
+                .expect("Failed to create state")
+            });
 
             // We derive the strategy from the client identifier (given by ziggy)
             let strategy = match core_id.0 % 6 {
