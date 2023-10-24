@@ -867,17 +867,17 @@ impl Fuzz {
         // Fifth step: Print stats
         // We start by clearing the screen
         eprint!("\x1B[1;1H\x1B[2J");
-        eprintln!("┌─ {blue}ziggy{reset} {purple}rocking{reset} ─────────{fuzzer_name:─^25.25}──────────────────{blue}/{red}///{reset}───┐");
+        eprintln!("┌─ {blue}ziggy{reset} {purple}rocking{reset} ─────────{fuzzer_name:─^25.25}──────────────────{blue}/{red}////{reset}──┐");
         eprintln!(
-            "│{gray}run time :{reset} {total_run_time:17.17}                                       {blue}/{red}//////{reset} │"
+            "│{gray}run time :{reset} {total_run_time:17.17}                                       {blue}/{red}///{reset}    │"
         );
-        eprintln!("├─ {blue}afl++{reset} {afl_status:0}────────────────────┬────────────────────────────────{blue}/{red}//{reset}──┤");
+        eprintln!("├─ {blue}afl++{reset} {afl_status:0}────────────────────┬────────────────────────────────{blue}/{red}///{reset}─┤");
         if !afl_status.contains("disabled") {
             eprintln!("│       {gray}instances :{reset} {afl_instances:17.17} │ {gray}best coverage :{reset} {afl_coverage:11.11}   {blue}/{red}//{reset}   │");
             if afl_crashes == "0" {
-                eprintln!("│{gray}cumulative speed :{reset} {afl_speed:17.17} │ {gray}crashes saved :{reset} {afl_crashes:11.11}  {blue}/{red}//{reset}    │");
+                eprintln!("│{gray}cumulative speed :{reset} {afl_speed:17.17} │ {gray}crashes saved :{reset} {afl_crashes:11.11}  {blue}/{red}/{reset}     │");
             } else {
-                eprintln!("│{gray}cumulative speed :{reset} {afl_speed:17.17} │ {gray}crashes saved :{reset} {red}{afl_crashes:11.11}{reset}  {blue}/{red}//{reset}    │");
+                eprintln!("│{gray}cumulative speed :{reset} {afl_speed:17.17} │ {gray}crashes saved :{reset} {red}{afl_crashes:11.11}{reset}  {blue}/{red}/{reset}     │");
             }
             eprintln!(
                 "│     {gray}total execs :{reset} {afl_total_execs:17.17} │{gray}timeouts saved :{reset} {afl_timeouts:17.17}   │"
