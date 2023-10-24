@@ -1,10 +1,3 @@
-// To run this fuzzer, execute the following command (for example in `examples/url/`):
-// For some reason, using +nightly speeds up the performance quite a lot.
-// LIBAFL_EDGES_MAP_SIZE=500000 RUSTFLAGS="-C passes=sancov-module -C llvm-args=-sanitizer-coverage-level=3 -C llvm-args=-sanitizer-coverage-trace-pc-guard --cfg fuzzing -Clink-arg=-fuse-ld=gold" cargo run --features=ziggy/with_libafl --target x86_64-unknown-linux-gnu --release
-
-//! In-Memory fuzzing made easy.
-//! Use this sugar for scaling `libfuzzer`-style fuzzers.
-
 #[macro_export]
 #[cfg(feature = "with_libafl")]
 macro_rules! libafl_fuzz {
