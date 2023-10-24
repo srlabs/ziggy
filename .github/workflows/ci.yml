@@ -18,6 +18,7 @@ jobs:
         run: cargo fmt --check
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings 
+      - name: Clippy LibAFL fuzzer
         run: cargo clippy -F with_libafl -- -D warnings 
   build_and_test:
     name: Rust project - latest
