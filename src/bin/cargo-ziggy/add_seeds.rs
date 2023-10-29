@@ -1,5 +1,4 @@
 use crate::*;
-use rand::Rng;
 use std::{env, process};
 
 impl AddSeeds {
@@ -16,7 +15,6 @@ impl AddSeeds {
             .replace("{target_name}", &self.target);
 
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
-        let mut rng = rand::thread_rng();
         process::Command::new(cargo.clone())
             .args(
                 [
