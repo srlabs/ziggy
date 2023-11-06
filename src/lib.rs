@@ -1,6 +1,8 @@
 #![doc = include_str!("../README.md")]
 #[cfg(feature = "afl")]
 pub use afl::fuzz as afl_fuzz;
+#[cfg(feature = "coverage")]
+pub use fork;
 #[cfg(feature = "honggfuzz")]
 pub use honggfuzz::fuzz as honggfuzz_fuzz;
 #[cfg(feature = "with_libafl")]
@@ -14,10 +16,15 @@ pub use libafl_bolts;
 #[cfg(feature = "with_libafl")]
 pub use libafl_targets;
 
-// This is our inner harness handler function for the runner and for coverage.
+// This is our inner harness handler function for the runner.
 // We open the input file and feed the data to the harness closure.
 #[doc(hidden)]
-#[cfg(not(any(feature = "afl", feature = "honggfuzz", feature = "with_libafl")))]
+#[cfg(not(any(
+    feature = "afl",
+    feature = "honggfuzz",
+    feature = "with_libafl",
+    feature = "coverage"
+)))]
 pub fn read_file_and_fuzz<F>(mut closure: F, file: String)
 where
     F: FnMut(&[u8]),
@@ -30,6 +37,53 @@ where
             match f.read_to_end(&mut buffer) {
                 Ok(_) => {
                     closure(buffer.as_slice());
+                }
+                Err(e) => {
+                    println!("Could not get data from file: {e}");
+                }
+            };
+        }
+        Err(e) => {
+            println!("Error opening file: {e}");
+        }
+    };
+}
+
+// This is our special coverage harness runner.
+// We open the input file and feed the data to the harness closure.
+// The difference with the runner is that we catch any kind of panic.
+#[cfg(feature = "coverage")]
+pub fn read_file_and_fuzz<F>(mut closure: F, file: String)
+where
+    F: FnMut(&[u8]),
+{
+    use std::{fs::File, io::Read, process::exit};
+    println!("Now running file {file} for coverage");
+    let mut buffer: Vec<u8> = Vec::new();
+    match File::open(file) {
+        Ok(mut f) => {
+            match f.read_to_end(&mut buffer) {
+                Ok(_) => {
+                    use crate::fork::{fork, Fork};
+
+                    match fork() {
+                        Ok(Fork::Parent(child)) => {
+                            println!(
+                                "Continuing execution in parent process, new child has pid: {}",
+                                child
+                            );
+                            unsafe {
+                                let mut status = 0i32;
+                                let _ = libc::waitpid(child, &mut status, 0);
+                            }
+                            println!("Child is done, moving on");
+                        }
+                        Ok(Fork::Child) => {
+                            closure(buffer.as_slice());
+                            exit(0);
+                        }
+                        Err(_) => println!("Fork failed"),
+                    }
                 }
                 Err(e) => {
                     println!("Could not get data from file: {e}");
@@ -66,6 +120,7 @@ macro_rules! read_args_and_fuzz {
                 for file in files {
                     $crate::read_file_and_fuzz(|$buf| $body, file);
                 }
+                println!("Finished reading all files");
             } else {
                 println!("Could not read metadata for {path}");
             }

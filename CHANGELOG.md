@@ -1,5 +1,9 @@
 # Changes
 
+## 0.8.1 - 2023-10-30
+
+- Add forking coverage, to speedup coverage generation while allowing crashing inputs in corpus
+
 ## 0.8.0 - 2023-10-16
 
 - New and improved terminal user interface

@@ -24,7 +24,11 @@ impl Cover {
 
         // We build the runner with the appropriate flags for coverage
         process::Command::new(cargo)
-            .args(["rustc", "--target-dir=target/coverage"])
+            .args([
+                "rustc",
+                "--target-dir=target/coverage",
+                "--features=ziggy/coverage",
+            ])
             .env("RUSTFLAGS", coverage_rustflags)
             .env("RUSTDOCFLAGS", "-Cpanic=unwind")
             .env("CARGO_INCREMENTAL", "0")
@@ -56,22 +60,12 @@ impl Cover {
 
         info!("Corpus directory is {}", shared_corpus.display());
 
-        // We run the target against the corpus
-        shared_corpus.canonicalize()?.read_dir()?.for_each(|item| {
-            let item = item.unwrap();
-            let item_path = item.path();
-
-            let result = process::Command::new(format!("./target/coverage/debug/{}", &self.target))
-                .args([item_path.as_os_str()])
-                .spawn()
-                .unwrap()
-                .wait_with_output()
-                .unwrap();
-
-            if !result.status.success() {
-                eprintln!("Coverage crashed on {}, continuing.", item_path.display())
-            }
-        });
+        let _ = process::Command::new(format!("./target/coverage/debug/{}", &self.target))
+            .arg(format!("{}", shared_corpus.display()))
+            .spawn()
+            .unwrap()
+            .wait_with_output()
+            .unwrap();
 
         let source_or_workspace_root = match &self.source {
             Some(s) => s.display().to_string(),
