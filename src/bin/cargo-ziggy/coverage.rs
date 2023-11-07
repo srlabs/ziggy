@@ -38,12 +38,14 @@ impl Cover {
             .wait()
             .context("⚠️  couldn't wait for the rustc during coverage")?;
 
-        // We remove the previous coverage files
-        if let Ok(gcda_files) = glob("target/coverage/debug/deps/*.gcda") {
-            for file in gcda_files.flatten() {
-                let file_string = &file.display();
-                fs::remove_file(&file)
-                    .context(format!("⚠️  couldn't find {} during coverage", file_string))?;
+        if !self.keep {
+            // We remove the previous coverage files
+            if let Ok(gcda_files) = glob("target/coverage/debug/deps/*.gcda") {
+                for file in gcda_files.flatten() {
+                    let file_string = &file.display();
+                    fs::remove_file(&file)
+                        .context(format!("⚠️  couldn't find {} during coverage", file_string))?;
+                }
             }
         }
 
