@@ -224,6 +224,10 @@ pub struct Cover {
     /// Source directory of covered code
     #[clap(short, long, value_parser, value_name = "DIR")]
     source: Option<PathBuf>,
+
+    /// Keep coverage data files (WARNING: Do not use if source code has changed)
+    #[clap(short, long, default_value_t = false)]
+    keep: bool,
 }
 
 #[derive(Args)]
