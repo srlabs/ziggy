@@ -731,40 +731,42 @@ impl Fuzz {
             total_run_time = String::from("...");
         }
 
-        // Fourth step: Print stats
+        // Fifth step: Print stats
+        let mut screen = String::new();
         // We start by clearing the screen
-        eprint!("\x1B[1;1H\x1B[2J");
-        eprintln!("┌─ {blue}ziggy{reset} {purple}rocking{reset} ─────────{fuzzer_name:─^25.25}──────────────────{blue}/{red}///{reset}───┐");
-        eprintln!(
-            "│{gray}run time :{reset} {total_run_time:17.17}                                       {blue}/{red}//////{reset} │"
+        screen += "\x1B[1;1H\x1B[2J";
+        screen += &format!("┌─ {blue}ziggy{reset} {purple}rocking{reset} ─────────{fuzzer_name:─^25.25}──────────────────{blue}/{red}////{reset}──┐\n");
+        screen += &format!(
+            "│{gray}run time :{reset} {total_run_time:17.17}                                       {blue}/{red}///{reset}    │\n"
         );
-        eprintln!("├─ {blue}afl++{reset} {afl_status:0}────────────────────┬────────────────────────────────{blue}/{red}//{reset}──┤");
+        screen += &format!("├─ {blue}afl++{reset} {afl_status:0}─────────────────────────────────────────────────────{blue}/{red}///{reset}─┤\n");
         if !afl_status.contains("disabled") {
-            eprintln!("│       {gray}instances :{reset} {afl_instances:17.17} │ {gray}best coverage :{reset} {afl_coverage:11.11}   {blue}/{red}//{reset}   │");
+            screen += &format!("│       {gray}instances :{reset} {afl_instances:17.17} │ {gray}best coverage :{reset} {afl_coverage:11.11}   {blue}/{red}//{reset}   │\n");
             if afl_crashes == "0" {
-                eprintln!("│{gray}cumulative speed :{reset} {afl_speed:17.17} │ {gray}crashes saved :{reset} {afl_crashes:11.11}  {blue}/{red}//{reset}    │");
+                screen += &format!("│{gray}cumulative speed :{reset} {afl_speed:17.17} │ {gray}crashes saved :{reset} {afl_crashes:11.11}  {blue}/{red}/{reset}     │\n");
             } else {
-                eprintln!("│{gray}cumulative speed :{reset} {afl_speed:17.17} │ {gray}crashes saved :{reset} {red}{afl_crashes:11.11}{reset}  {blue}/{red}//{reset}    │");
+                screen += &format!("│{gray}cumulative speed :{reset} {afl_speed:17.17} │ {gray}crashes saved :{reset} {red}{afl_crashes:11.11}{reset}  {blue}/{red}/{reset}     │\n");
             }
-            eprintln!(
-                "│     {gray}total execs :{reset} {afl_total_execs:17.17} │{gray}timeouts saved :{reset} {afl_timeouts:17.17}   │"
+            screen += &format!(
+                "│     {gray}total execs :{reset} {afl_total_execs:17.17} │{gray}timeouts saved :{reset} {afl_timeouts:17.17}   │\n"
             );
-            eprintln!("│ {gray}top inputs todo :{reset} {afl_faves:17.17} │   {gray}no find for :{reset} {afl_new_finds:17.17}   │");
+            screen += &format!("│ {gray}top inputs todo :{reset} {afl_faves:17.17} │   {gray}no find for :{reset} {afl_new_finds:17.17}   │\n");
         }
-        eprintln!(
-            "├─ {blue}honggfuzz{reset} {hf_status:0}─────────────┬──┴────────────────────────────────┬────┘"
+        screen += &format!(
+            "├─ {blue}honggfuzz{reset} {hf_status:0}─────────────────────────────────────────────────┬────┘\n"
         );
         if !hf_status.contains("disabled") {
-            eprintln!("│      {gray}threads :{reset} {hf_threads:17.17} │      {gray}coverage :{reset} {hf_coverage:17.17} │");
+            screen += &format!("│      {gray}threads :{reset} {hf_threads:17.17} │      {gray}coverage :{reset} {hf_coverage:17.17} │\n");
             if hf_crashes == "0" {
-                eprintln!("│{gray}average Speed :{reset} {hf_speed:17.17} │ {gray}crashes saved :{reset} {hf_crashes:17.17} │");
+                screen += &format!("│{gray}average speed :{reset} {hf_speed:17.17} │ {gray}crashes saved :{reset} {hf_crashes:17.17} │\n");
             } else {
-                eprintln!("│{gray}average Speed :{reset} {hf_speed:17.17} │ {gray}crashes saved :{reset} {red}{hf_crashes:17.17}{reset} │");
+                screen += &format!("│{gray}average speed :{reset} {hf_speed:17.17} │ {gray}crashes saved :{reset} {red}{hf_crashes:17.17}{reset} │\n");
             }
-            eprintln!("│  {gray}total execs :{reset} {hf_total_execs:17.17} │{gray}timeouts saved :{reset} {hf_timeouts:17.17} │");
-            eprintln!("│                                  │   {gray}no find for :{reset} {hf_new_finds:17.17} │");
+            screen += &format!("│  {gray}total execs :{reset} {hf_total_execs:17.17} │{gray}timeouts saved :{reset} {hf_timeouts:17.17} │\n");
+            screen += &format!("│                                  │   {gray}no find for :{reset} {hf_new_finds:17.17} │\n");
         }
-        eprintln!("└──────────────────────────────────┴───────────────────────────────────┘");
+        screen += "└──────────────────────────────────────────────────────────────────────┘";
+        eprintln!("{screen}");
     }
 }
 
