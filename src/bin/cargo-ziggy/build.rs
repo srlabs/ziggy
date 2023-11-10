@@ -27,6 +27,7 @@ impl Build {
                     "--target-dir=target/afl",
                 ])
                 .env("AFL_QUIET", "1")
+                .env("AFL_LLVM_CMPGLOG", "1") // for afl.rs feature "plugins"
                 .env("RUSTFLAGS", env::var("RUSTFLAGS").unwrap_or_default())
                 .spawn()?
                 .wait()
