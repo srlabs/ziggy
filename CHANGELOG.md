@@ -1,5 +1,12 @@
 # Changes
 
+## 0.8.2 - 2023-11-20
+
+- Add option to optionally keep coverage data
+- Tweak TUI and prevent flickering
+- Improve add-seeds command
+- Update some dependencies
+
 ## 0.8.1 - 2023-10-30
 
 - Add forking coverage, to speedup coverage generation while allowing crashing inputs in corpus
