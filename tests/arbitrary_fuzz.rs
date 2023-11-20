@@ -72,6 +72,8 @@ fn integration() {
     thread::sleep(Duration::from_secs(10));
     kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
 
+    process::Command::new("cat").arg(format!("{}/arbitrary-fuzz/logs/afl.log", temp_dir_path.display())).spawn().unwrap();
+
     assert!(temp_dir_path
         .join("arbitrary-fuzz")
         .join("afl")
