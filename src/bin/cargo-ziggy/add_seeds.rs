@@ -20,7 +20,8 @@ impl AddSeeds {
                 [
                     "afl",
                     "addseeds",
-                    &format!("-o{}/{}/afl", self.ziggy_output.display(), self.target),
+                    "-o",
+                    &format!("{}/{}/afl", self.ziggy_output.display(), self.target),
                     "-i",
                     &input,
                 ]
