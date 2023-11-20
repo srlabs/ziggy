@@ -143,13 +143,13 @@ impl Fuzz {
             if let Ok(afl_log) =
                 fs::read_to_string(format!("{}/logs/afl.log", self.output_target()))
             {
-                if afl_log.contains("echo core >/proc/sys/kernel/core_pattern") {
+                if afl_log.contains("ready to roll") {
+                } else if afl_log.contains("echo core >/proc/sys/kernel/core_pattern") {
                     stop_fuzzers(&mut processes)?;
                     eprintln!("AFL++ needs you to run the following command before it can start fuzzing:\n");
                     eprintln!("    echo core >/proc/sys/kernel/core_pattern\n");
                     return Ok(());
-                }
-                if afl_log.contains("cd /sys/devices/system/cpu") {
+                } else if afl_log.contains("cd /sys/devices/system/cpu") {
                     stop_fuzzers(&mut processes)?;
                     eprintln!("AFL++ needs you to run the following commands before it can start fuzzing:\n");
                     eprintln!("    cd /sys/devices/system/cpu");
