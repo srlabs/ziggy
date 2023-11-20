@@ -93,17 +93,17 @@ impl Fuzz {
 
         if Path::new(&self.corpus()).exists() {
             if self.minimize {
-                fs::create_dir_all(&self.corpus_tmp())
+                fs::create_dir_all(self.corpus_tmp())
                     .context("Could not create temporary corpus")?;
                 self.copy_corpora()
                     .context("Could not move all seeds to temporary corpus")?;
-                let _ = fs::remove_dir_all(&self.corpus_minimized());
+                let _ = fs::remove_dir_all(self.corpus_minimized());
                 self.run_minimization()
                     .context("Failure while minimizing")?;
-                fs::remove_dir_all(&self.corpus()).context("Could not remove shared corpus")?;
-                fs::rename(&self.corpus_minimized(), &self.corpus())
+                fs::remove_dir_all(self.corpus()).context("Could not remove shared corpus")?;
+                fs::rename(self.corpus_minimized(), self.corpus())
                     .context("Could not move minimized corpus over")?;
-                fs::remove_dir_all(&self.corpus_tmp())
+                fs::remove_dir_all(self.corpus_tmp())
                     .context("Could not remove temporary corpus")?;
             }
         } else {
