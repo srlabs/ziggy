@@ -133,6 +133,7 @@ impl Fuzz {
 
         let mut last_synced_queue_id: u32 = 0;
         let mut last_sync_time = Instant::now();
+        let mut afl_output_ok = false;
 
         loop {
             let sleep_duration = Duration::from_secs(1);
@@ -140,21 +141,24 @@ impl Fuzz {
 
             self.print_stats();
 
-            if let Ok(afl_log) =
-                fs::read_to_string(format!("{}/logs/afl.log", self.output_target()))
-            {
-                if afl_log.contains("ready to roll") {
-                } else if afl_log.contains("echo core >/proc/sys/kernel/core_pattern") {
-                    stop_fuzzers(&mut processes)?;
-                    eprintln!("AFL++ needs you to run the following command before it can start fuzzing:\n");
-                    eprintln!("    echo core >/proc/sys/kernel/core_pattern\n");
-                    return Ok(());
-                } else if afl_log.contains("cd /sys/devices/system/cpu") {
-                    stop_fuzzers(&mut processes)?;
-                    eprintln!("AFL++ needs you to run the following commands before it can start fuzzing:\n");
-                    eprintln!("    cd /sys/devices/system/cpu");
-                    eprintln!("    echo performance | tee cpu*/cpufreq/scaling_governor\n");
-                    return Ok(());
+            if !afl_output_ok {
+                if let Ok(afl_log) =
+                    fs::read_to_string(format!("{}/logs/afl.log", self.output_target()))
+                {
+                    if afl_log.contains("ready to roll") {
+                        afl_output_ok = true;
+                    } else if afl_log.contains("echo core >/proc/sys/kernel/core_pattern") {
+                        stop_fuzzers(&mut processes)?;
+                        eprintln!("AFL++ needs you to run the following command before it can start fuzzing:\n");
+                        eprintln!("    echo core >/proc/sys/kernel/core_pattern\n");
+                        return Ok(());
+                    } else if afl_log.contains("cd /sys/devices/system/cpu") {
+                        stop_fuzzers(&mut processes)?;
+                        eprintln!("AFL++ needs you to run the following commands before it can start fuzzing:\n");
+                        eprintln!("    cd /sys/devices/system/cpu");
+                        eprintln!("    echo performance | tee cpu*/cpufreq/scaling_governor\n");
+                        return Ok(());
+                    }
                 }
             }
 
