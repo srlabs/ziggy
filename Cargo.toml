@@ -10,6 +10,7 @@ repository = "https://github.com/srlabs/ziggy/"
 members = [
     ".",
     "examples/arbitrary",
+    "examples/cmplog",
     "examples/url",
 ]
 
