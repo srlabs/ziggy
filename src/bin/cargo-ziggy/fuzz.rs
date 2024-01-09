@@ -919,45 +919,6 @@ impl Fuzz {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::{path::PathBuf, time::Instant};
-    #[test]
-    fn job_repartition_works() {
-        let mut fuzz = crate::Fuzz {
-            target: String::new(),
-            corpus: PathBuf::new(),
-            initial_corpus: None,
-            ziggy_output: PathBuf::new(),
-            jobs: 0,
-            timeout: None,
-            minimize: false,
-            dictionary: None,
-            max_length: 0,
-            min_length: 0,
-            no_afl: false,
-            no_libafl: false,
-            no_honggfuzz: false,
-            start_time: Instant::now(),
-        };
-        for i in 0..1024 {
-            fuzz.jobs = i;
-            fuzz.no_afl = i % 7 == 0;
-            fuzz.no_libafl = i % 11 == 0;
-            fuzz.no_honggfuzz = i % 5 == 0;
-            if i % 385 == 0 {
-                continue;
-            }
-            let (afl_jobs, libafl_jobs, honggfuzz_jobs) = fuzz.compute_job_repartition();
-            assert_eq!(
-                afl_jobs + libafl_jobs + honggfuzz_jobs,
-                fuzz.jobs,
-                "Jobs total mismatch"
-            );
-        }
-    }
-}
-
 pub fn kill_subprocesses_recursively(pid: &str) -> Result<(), anyhow::Error> {
     let subprocesses = process::Command::new("pgrep")
         .arg(&format!("-P{pid}"))
@@ -1000,4 +961,43 @@ pub fn extract_file_id(file: &Path) -> Option<(u32, String)> {
     let str_id = id_part.strip_prefix("id:")?;
     let file_id = str_id.parse::<u32>().ok()?;
     Some((file_id, String::from(file_name)))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{path::PathBuf, time::Instant};
+    #[test]
+    fn job_repartition_works() {
+        let mut fuzz = crate::Fuzz {
+            target: String::new(),
+            corpus: PathBuf::new(),
+            initial_corpus: None,
+            ziggy_output: PathBuf::new(),
+            jobs: 0,
+            timeout: None,
+            minimize: false,
+            dictionary: None,
+            max_length: 0,
+            min_length: 0,
+            no_afl: false,
+            no_libafl: false,
+            no_honggfuzz: false,
+            start_time: Instant::now(),
+        };
+        for i in 0..1024 {
+            fuzz.jobs = i;
+            fuzz.no_afl = i % 7 == 0;
+            fuzz.no_libafl = i % 11 == 0;
+            fuzz.no_honggfuzz = i % 5 == 0;
+            if i % 385 == 0 {
+                continue;
+            }
+            let (afl_jobs, libafl_jobs, honggfuzz_jobs) = fuzz.compute_job_repartition();
+            assert_eq!(
+                afl_jobs + libafl_jobs + honggfuzz_jobs,
+                fuzz.jobs,
+                "Jobs total mismatch"
+            );
+        }
+    }
 }
