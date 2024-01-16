@@ -149,8 +149,8 @@ pub struct Fuzz {
     #[clap(skip=std::time::Instant::now())]
     start_time: std::time::Instant,
 
-    /// Pass
-    #[clap(short = 'f', value_name = "FLAGS", default_value = "")]
+    /// Pass flags to AFL++ directly
+    #[clap(short = 'a', long = "afl-flags", value_name = "FLAGS")]
     afl_flags: String,
 }
 
