@@ -20,7 +20,7 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings 
   build_and_test:
     name: Rust project - latest
-    runs-on: ubuntu-stable
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         toolchain:
