@@ -148,6 +148,10 @@ pub struct Fuzz {
     // This value helps us create a global timer for our display
     #[clap(skip=std::time::Instant::now())]
     start_time: std::time::Instant,
+
+    /// Pass
+    #[clap(short = 'f', value_name = "FLAGS", default_value = "")]
+    afl_flags: String,
 }
 
 #[derive(Args)]

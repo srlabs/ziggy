@@ -365,6 +365,7 @@ impl Fuzz {
                                 mutation_option,
                                 &timeout_option_afl,
                                 &dictionary_option,
+                                &self.afl_flags,
                                 &format!("./target/afl/debug/{}", self.target),
                             ]
                             .iter()
