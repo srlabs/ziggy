@@ -1,5 +1,11 @@
 # Changes
 
+## 0.8.3 - 2023-01-18
+
+- Add new flag for passing arguments directly to AFL++
+- Run the build code before launching minimization
+- Fix GitHub CI
+
 ## 0.8.2 - 2023-11-20
 
 - Add option to optionally keep coverage data
