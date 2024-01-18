@@ -5,11 +5,26 @@ pub use afl::fuzz as afl_fuzz;
 pub use fork;
 #[cfg(feature = "honggfuzz")]
 pub use honggfuzz::fuzz as honggfuzz_fuzz;
+#[cfg(feature = "with_libafl")]
+pub mod libafl_fuzzer;
+#[cfg(feature = "with_libafl")]
+pub use free_cpus;
+#[cfg(feature = "with_libafl")]
+pub use libafl;
+#[cfg(feature = "with_libafl")]
+pub use libafl_bolts;
+#[cfg(feature = "with_libafl")]
+pub use libafl_targets;
 
 // This is our inner harness handler function for the runner.
 // We open the input file and feed the data to the harness closure.
 #[doc(hidden)]
-#[cfg(not(any(feature = "afl", feature = "honggfuzz", feature = "coverage")))]
+#[cfg(not(any(
+    feature = "afl",
+    feature = "honggfuzz",
+    feature = "with_libafl",
+    feature = "coverage"
+)))]
 pub fn read_file_and_fuzz<F>(mut closure: F, file: String)
 where
     F: FnMut(&[u8]),
@@ -85,7 +100,7 @@ where
 // We read input files and directories from the command line and run the inner harness `fuzz`.
 #[doc(hidden)]
 #[macro_export]
-#[cfg(not(any(feature = "afl", feature = "honggfuzz")))]
+#[cfg(not(any(feature = "afl", feature = "honggfuzz", feature = "with_libafl")))]
 macro_rules! read_args_and_fuzz {
     ( |$buf:ident| $body:block ) => {
         use std::{env, fs};
@@ -134,7 +149,7 @@ macro_rules! read_args_and_fuzz {
 /// # }
 /// ```
 #[macro_export]
-#[cfg(not(any(feature = "afl", feature = "honggfuzz")))]
+#[cfg(not(any(feature = "afl", feature = "honggfuzz", feature = "with_libafl")))]
 macro_rules! fuzz {
     (|$buf:ident| $body:block) => {
         $crate::read_args_and_fuzz!(|$buf| $body);
@@ -172,5 +187,29 @@ macro_rules! fuzz {
         loop {
             $crate::honggfuzz_fuzz!($($x)*);
         }
+    };
+}
+
+#[macro_export]
+#[cfg(feature = "with_libafl")]
+macro_rules! fuzz {
+    (|$buf:ident| $body:block) => {
+        $crate::libafl_fuzzer::libafl_fuzz(|$buf| $body);
+    };
+    (|$buf:ident: &[u8]| $body:block) => {
+        $crate::libafl_fuzzer::libafl_fuzz(|$buf| $body);
+    };
+    (|$buf:ident: $dty: ty| $body:block) => {
+        $crate::libafl_fuzzer::libafl_fuzz(|$buf| {
+            let $buf: $dty = {
+                let mut data = ::arbitrary::Unstructured::new($buf);
+                if let Ok(d) = ::arbitrary::Arbitrary::arbitrary(&mut data).map_err(|_| "") {
+                    d
+                } else {
+                    return;
+                }
+            };
+            $body
+        });
     };
 }

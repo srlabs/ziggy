@@ -56,11 +56,11 @@ fn integration() {
 
     assert!(build_status.success(), "`cargo ziggy build` failed");
 
-    // cargo ziggy fuzz -j 2 -t 5 -o temp_dir
+    // cargo ziggy fuzz -j 3 -t 5 -o temp_dir
     let fuzzer = process::Command::new(cargo_ziggy)
         .arg("ziggy")
         .arg("fuzz")
-        .arg("-j2")
+        .arg("-j3")
         .arg("-t5")
         .arg("-G100")
         .env("ZIGGY_OUTPUT", format!("{}", temp_dir_path.display()))
@@ -71,6 +71,16 @@ fn integration() {
         .expect("failed to run `cargo ziggy fuzz`");
     thread::sleep(Duration::from_secs(10));
     kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
+
+    process::Command::new("cat")
+        .arg(
+            temp_dir_path
+                .join("arbitrary-fuzz")
+                .join("logs")
+                .join("afl.log"),
+        )
+        .spawn()
+        .unwrap();
 
     assert!(temp_dir_path
         .join("arbitrary-fuzz")

@@ -56,11 +56,11 @@ fn integration() {
 
     assert!(build_status.success(), "`cargo ziggy build` failed");
 
-    // cargo ziggy fuzz -j 2 -t 5
+    // cargo ziggy fuzz -j 3 -t 5
     let fuzzer = process::Command::new(&cargo_ziggy)
         .arg("ziggy")
         .arg("fuzz")
-        .arg("-j2")
+        .arg("-j3")
         .arg("-t5")
         .arg("-G100")
         .env("ZIGGY_OUTPUT", format!("{}", temp_dir_path.display()))
@@ -86,11 +86,11 @@ fn integration() {
         .is_dir());
 
     // We resume fuzzing
-    // cargo ziggy fuzz -j 2 -t 5
+    // cargo ziggy fuzz -j 3 -t 5
     let fuzzer = process::Command::new(&cargo_ziggy)
         .arg("ziggy")
         .arg("fuzz")
-        .arg("-j2")
+        .arg("-j3")
         .arg("-t5")
         .arg("-G100")
         .env("ZIGGY_OUTPUT", format!("{}", temp_dir_path.display()))
