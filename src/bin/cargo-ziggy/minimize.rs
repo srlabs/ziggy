@@ -1,9 +1,15 @@
-use crate::{find_target, FuzzingEngines, Minimize};
+use crate::{find_target, Build, FuzzingEngines, Minimize};
 use anyhow::{Context, Result};
 use std::{env, fs::File, process, thread, time::Duration};
 
 impl Minimize {
     pub fn minimize(&mut self) -> Result<(), anyhow::Error> {
+        let build = Build {
+            no_afl: self.engine == FuzzingEngines::Honggfuzz,
+            no_honggfuzz: self.engine == FuzzingEngines::AFLPlusPlus,
+        };
+        build.build().context("Failed to build the fuzzers")?;
+
         self.target =
             find_target(&self.target).context("⚠️  couldn't find target when minimizing")?;
 
