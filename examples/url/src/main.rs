@@ -33,13 +33,13 @@ fn differential_fuzz(data: &str) {
 
 // Correctness Fuzzing
 // TODO Definition
-fn correctness_fuzz(data: &str) {
+fn correctness_fuzz(_data: &str) {
     // TODO Implementation
 }
 
 // Consistency Fuzzing
 // TODO Definition
-fn consistency_fuzz(data: &str) {
+fn consistency_fuzz(_data: &str) {
     // TODO Implementation
 }
 
