@@ -324,7 +324,7 @@ impl Fuzz {
                     2..=3 => "-Pexplore",
                     _ => "-Pexploit",
                 };
-                let input_format = format!("-a{}", self.config.input_format());
+                let input_format_option = self.config.input_format_flag();
                 let log_destination = || match job_num {
                     0 => File::create(format!("{}/logs/afl.log", self.output_target()))
                         .unwrap()
@@ -357,7 +357,7 @@ impl Fuzz {
                                 cmplog_options,
                                 mopt_mutator,
                                 mutation_option,
-                                &input_format,
+                                input_format_option,
                                 &timeout_option_afl,
                                 &dictionary_option,
                             ]
@@ -779,10 +779,11 @@ pub enum FuzzingConfig {
 }
 
 impl FuzzingConfig {
-    fn input_format(&self) -> &str {
+    fn input_format_flag(&self) -> &str {
         match self {
-            Self::Text => "text",
-            _ => "binary",
+            Self::Text => "-atext",
+            Self::Binary => "-abinary",
+            _ => "",
         }
     }
 }
