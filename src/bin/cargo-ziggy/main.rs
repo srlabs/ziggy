@@ -11,6 +11,8 @@ mod run;
 mod triage;
 
 #[cfg(feature = "cli")]
+use crate::fuzz::FuzzingConfig;
+#[cfg(feature = "cli")]
 use anyhow::{anyhow, Context, Result};
 #[cfg(feature = "cli")]
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -152,6 +154,10 @@ pub struct Fuzz {
     /// Pass flags to AFL++ directly
     #[clap(short, long)]
     afl_flags: Vec<String>,
+
+    /// AFL++ configuration
+    #[clap(short = 'C', long, default_value = "generic")]
+    config: FuzzingConfig,
 }
 
 #[derive(Args)]

@@ -324,12 +324,7 @@ impl Fuzz {
                     2..=3 => "-Pexplore",
                     _ => "-Pexploit",
                 };
-                /* wait for afl crate update
-                let mutation_option = match job_num / 2 {
-                    0 => "-abinary",
-                    _ => "-adefault",
-                };
-                */
+                let input_format_option = self.config.input_format_flag();
                 let log_destination = || match job_num {
                     0 => File::create(format!("{}/logs/afl.log", self.output_target()))
                         .unwrap()
@@ -357,12 +352,12 @@ impl Fuzz {
                                 &format!("-g{}", self.min_length),
                                 &format!("-G{}", self.max_length),
                                 &use_shared_corpus,
-                                // &format!("-V{}", self.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL, &use_initial_corpus_dir),
                                 &use_initial_corpus_dir,
                                 old_queue_cycling,
                                 cmplog_options,
                                 mopt_mutator,
                                 mutation_option,
+                                input_format_option,
                                 &timeout_option_afl,
                                 &dictionary_option,
                             ]
@@ -381,8 +376,8 @@ impl Fuzz {
                         .env("AFL_NO_WARN_INSTABILITY", "1")
                         .env("AFL_FUZZER_STATS_UPDATE_INTERVAL", "10")
                         .env("AFL_IMPORT_FIRST", "1")
-                        .env(final_sync, "1") // upcoming in v4.09c
-                        .env("AFL_IGNORE_SEED_PROBLEMS", "1") // upcoming in v4.09c
+                        .env(final_sync, "1")
+                        .env("AFL_IGNORE_SEED_PROBLEMS", "1")
                         .stdout(log_destination())
                         .stderr(log_destination())
                         .spawn()?,
@@ -772,6 +767,31 @@ impl Fuzz {
         }
         screen += "└──────────────────────────────────────────────────────────────────────┘";
         eprintln!("{screen}");
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
+pub enum FuzzingConfig {
+    Generic,
+    Binary,
+    Text,
+    Blockchain,
+}
+
+impl FuzzingConfig {
+    fn input_format_flag(&self) -> &str {
+        match self {
+            Self::Text => "-atext",
+            Self::Binary => "-abinary",
+            _ => "",
+        }
+    }
+}
+
+use std::fmt;
+impl fmt::Display for FuzzingConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
