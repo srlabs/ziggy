@@ -33,8 +33,14 @@ fn differential_fuzz(data: &str) {
 
 // Correctness Fuzzing
 // TODO Definition
-fn correctness_fuzz(_data: &str) {
-    // TODO Implementation
+fn correctness_fuzz(data: &str) {
+    if let Ok(parsed) = url::Url::parse(data) {
+        // This formatter removes any leading and trailing whitespaces from the input string.
+        // In theory, this should not have any impact on the URL. We test that this is the case.
+        let formatted_data = data.trim();
+        let parsed_formatted = url::Url::parse(formatted_data).unwrap();
+        assert_eq!(parsed, parsed_formatted);
+    }
 }
 
 // Consistency Fuzzing
