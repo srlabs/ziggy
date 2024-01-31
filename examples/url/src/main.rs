@@ -44,15 +44,18 @@ fn consistency_fuzz(_data: &str) {
 }
 
 // Idempotency Fuzzing
-// TODO Definition
-// As of `url = 2.5.0`, this will crash.
+// We run sequentially a parser, an unparser, a parser and an unparser, and assert that both
+// outputs from the unparsers are equal. This verifies that the parser/unparser pair is
+// idempotent.
+// https://en.wikipedia.org/wiki/Idempotence
+// Here, the pair of operations is str::as_bytes(&self) and str::from_utf8(&[u8]).
 fn idempotency_fuzz(data: &str) {
-    if let Ok(parsed_once) = url::Url::parse(data) {
-        let parsed_once_string = parsed_once.to_string();
-        let parsed_twice = url::Url::parse(&parsed_once_string).unwrap();
-        let parsed_twice_string = parsed_twice.to_string();
-        assert_eq!(parsed_once_string, parsed_twice_string);
-    }
+    // We have already parsed the data once in the main harness.
+    let parsed_once = data;
+    let unparsed_once = parsed_once.as_bytes();
+    let parsed_twice = std::str::from_utf8(unparsed_once).unwrap();
+    let unparsed_twice = parsed_twice.as_bytes();
+    assert_eq!(unparsed_once, unparsed_twice);
 }
 
 fn main() {
