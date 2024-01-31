@@ -155,6 +155,7 @@ pub struct Fuzz {
     #[clap(short, long)]
     afl_flags: Vec<String>,
 
+    /// AFL++ configuration
     #[clap(short = 'C', long, default_value = "generic")]
     config: FuzzingConfig,
 }
