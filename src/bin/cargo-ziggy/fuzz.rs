@@ -365,12 +365,12 @@ impl Fuzz {
                                 mutation_option,
                                 &timeout_option_afl,
                                 &dictionary_option,
-                                &self.afl_flags.clone().unwrap_or_default(),
-                                &format!("./target/afl/debug/{}", self.target),
                             ]
                             .iter()
                             .filter(|a| a != &&""),
                         )
+                        .args(self.afl_flags.clone())
+                        .arg(format!("./target/afl/debug/{}", self.target))
                         .env("AFL_AUTORESUME", "1")
                         .env("AFL_TESTCACHE_SIZE", "100")
                         .env("AFL_FAST_CAL", "1")
