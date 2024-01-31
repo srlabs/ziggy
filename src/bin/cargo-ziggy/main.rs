@@ -153,7 +153,7 @@ pub struct Fuzz {
 
     /// Pass flags to AFL++ directly
     #[clap(short, long)]
-    afl_flags: Option<String>,
+    afl_flags: Vec<String>,
 
     #[clap(short = 'C', long, default_value = "generic")]
     config: FuzzingConfig,
