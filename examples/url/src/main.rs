@@ -51,7 +51,8 @@ fn correctness_fuzz(data: &str) {
 }
 
 // Consistency Fuzzing
-// TODO Definition
+// We run an encoder on an input, then a decoder on that output, and verify that the final value
+// is the same as the first input. This verifies the consistency of an encode/decode pair.
 fn consistency_fuzz(data: &str) {
     // The input is a single character.
     if let Some(input) = data.chars().next() {
