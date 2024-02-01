@@ -85,8 +85,6 @@ fn main() {
             correctness_fuzz(string);
             consistency_fuzz(string);
             idempotency_fuzz(string);
-            #[cfg(coverage)]
-            println!("This is only printed during coverage generation");
         }
     });
 }
