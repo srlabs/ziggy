@@ -44,7 +44,8 @@ fn correctness_fuzz(data: &str) {
         // This formatter removes any leading whitespaces from the input string.
         // In theory, this should not have any impact on the URL. We test that this is the case.
         let formatted_data = data.trim_start();
-        let linted_formatted = url::Url::parse(formatted_data).unwrap();
+        let linted_formatted =
+            url::Url::parse(formatted_data).expect("formatted data should still be lintable");
         assert_eq!(linted, linted_formatted);
     }
 }
@@ -57,7 +58,10 @@ fn consistency_fuzz(data: &str) {
     if let Some(input) = data.chars().next() {
         let mut output = [0; 2];
         let _ = input.encode_utf16(&mut output);
-        let result = char::decode_utf16(output).next().unwrap().unwrap();
+        let result = char::decode_utf16(output)
+            .next()
+            .expect("decoded value should contain one character")
+            .expect("character should be properly decoded after it has been encoded");
         assert_eq!(input, result);
     }
 }
@@ -72,7 +76,8 @@ fn idempotency_fuzz(data: &str) {
     // We have already parsed the data once in the main harness.
     let parsed_once = data;
     let unparsed_once = parsed_once.as_bytes();
-    let parsed_twice = std::str::from_utf8(unparsed_once).unwrap();
+    let parsed_twice = std::str::from_utf8(unparsed_once)
+        .expect("data should be parseable a second time after being unparsed");
     let unparsed_twice = parsed_twice.as_bytes();
     assert_eq!(unparsed_once, unparsed_twice);
 }
