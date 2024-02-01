@@ -42,9 +42,9 @@ fn correctness_fuzz(data: &str) {
     // We use the URL parser as a linter.
     if let Ok(linted) = url::Url::parse(data) {
         // We use `trim()` as a formatter.
-        // This formatter removes any leading and trailing whitespaces from the input string.
+        // This formatter removes any leading whitespaces from the input string.
         // In theory, this should not have any impact on the URL. We test that this is the case.
-        let formatted_data = data.trim();
+        let formatted_data = data.trim_start();
         let linted_formatted = url::Url::parse(formatted_data).unwrap();
         assert_eq!(linted, linted_formatted);
     }
@@ -52,8 +52,14 @@ fn correctness_fuzz(data: &str) {
 
 // Consistency Fuzzing
 // TODO Definition
-fn consistency_fuzz(_data: &str) {
-    // TODO Implementation
+fn consistency_fuzz(data: &str) {
+    // The input is a single character.
+    if let Some(input) = data.chars().next() {
+        let mut output = [0; 2];
+        let _ = input.encode_utf16(&mut output);
+        let result = char::decode_utf16(output).next().unwrap().unwrap();
+        assert_eq!(input, result);
+    }
 }
 
 // Idempotency Fuzzing
