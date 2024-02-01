@@ -22,13 +22,12 @@ fn invariant_fuzz(data: &str) {
 // Differential Fuzzing
 // We run two implementations of the same process on identical data and verify that the outputs
 // match.
+// This requires two different implementations of the same process, and can catch bugs in both.
 fn differential_fuzz(data: &str) {
     // We do not have an alternative implementation, so we mock one.
     let other_parse = url::Url::parse;
     // We run both `parse` methods and assert the results are equal.
-    if let (Ok(parsed), Ok(parsed_other)) = (url::Url::parse(data), other_parse(data)) {
-        assert_eq!(parsed, parsed_other);
-    }
+    assert_eq!(url::Url::parse(data), other_parse(data));
 }
 
 // Correctness Fuzzing
