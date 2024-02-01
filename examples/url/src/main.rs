@@ -32,14 +32,21 @@ fn differential_fuzz(data: &str) {
 }
 
 // Correctness Fuzzing
-// TODO Definition
+// We run a linter on data, as well as on the same data that has gone through a formatter, and
+// verify the outputs are the same.
+// In doing this, we check the validity of both the linter and the formatter.
+// Here, we have created an imperfect example as we are not using actual linters and formatters. A
+// correct example would be using `cargo fmt` as a formatter and `cargo clippy` as a linter on a
+// piece of Rust code.
 fn correctness_fuzz(data: &str) {
-    if let Ok(parsed) = url::Url::parse(data) {
+    // We use the URL parser as a linter.
+    if let Ok(linted) = url::Url::parse(data) {
+        // We use `trim()` as a formatter.
         // This formatter removes any leading and trailing whitespaces from the input string.
         // In theory, this should not have any impact on the URL. We test that this is the case.
         let formatted_data = data.trim();
-        let parsed_formatted = url::Url::parse(formatted_data).unwrap();
-        assert_eq!(parsed, parsed_formatted);
+        let linted_formatted = url::Url::parse(formatted_data).unwrap();
+        assert_eq!(linted, linted_formatted);
     }
 }
 
