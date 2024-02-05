@@ -1,5 +1,11 @@
 # Changes
 
+## 1.0.0 - 2023-02-05
+
+- Improve `-a` flag to let you pass multiple arguments to AFL++
+- Add `-C` configuration flag
+- Improve url fuzzer to showcase different fuzzing metodologies
+
 ## 0.8.3 - 2023-01-18
 
 - Add new flag for passing arguments directly to AFL++
