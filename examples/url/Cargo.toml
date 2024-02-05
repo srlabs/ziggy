@@ -5,7 +5,5 @@ edition = "2021"
 publish = false
 
 [dependencies]
-# This git revision has an easy to find crash
-# url = { git = "https://github.com/servo/rust-url", rev = "bfa167b4e0253642b6766a7aa74a99df60a94048" }
-url = "2.3.1"
+url = "2.5.0"
 ziggy = { path = "../../", default-features = false }
