@@ -2,6 +2,7 @@
 fn main() {}
 
 mod add_seeds;
+mod bench;
 mod build;
 mod coverage;
 mod fuzz;
@@ -84,6 +85,8 @@ pub enum Ziggy {
 
     /// Triage crashes found with casr - currently only works for AFL++
     Triage(Triage),
+
+    Bench(Bench),
 }
 
 #[derive(Args)]
@@ -290,6 +293,17 @@ pub struct AddSeeds {
     ziggy_output: PathBuf,
 }
 
+#[derive(Args)]
+pub struct Bench {
+    /// Target to use
+    #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
+    target: String,
+
+    /// Fuzzers output directory
+    #[clap(short, long, env="ZIGGY_OUTPUT", value_parser, value_name = "DIR", default_value=DEFAULT_OUTPUT_DIR)]
+    ziggy_output: PathBuf,
+}
+
 #[cfg(feature = "cli")]
 fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
@@ -308,6 +322,7 @@ fn main() -> Result<(), anyhow::Error> {
         Ziggy::Triage(mut args) => args
             .triage()
             .context("Triaging with casr failed, try \"cargo install casr\""),
+        Ziggy::Bench(mut args) => args.bench().context("Failure running benchmarks"),
     }
 }
 
