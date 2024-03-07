@@ -51,6 +51,19 @@ Options:
   -V, --version  Print version
 ```
 
+To use it in your own project, simply add Ziggy as a dependency.
+```toml
+[dependencies]
+ziggy = { git = "https://github.com/srlabs/ziggy", default-features = false }
+```
+Then, use the `fuzz!` macro inside your harness.
+```rust
+ziggy::fuzz!(|data: &[u8]| {
+     if let Ok(string) = std::str::from_utf8(data) {
+          fuzzme(string);
+     }
+});
+```
 For an example fuzz project, see [the url example](./examples/url/).
 
 ## The `output` directory
