@@ -51,10 +51,11 @@ Options:
   -V, --version  Print version
 ```
 
-To use it in your own project, simply add Ziggy as a dependency.
+To use it in your own project, simply add `ziggy` as a dependency.
+
 ```toml
 [dependencies]
-ziggy = { git = "https://github.com/srlabs/ziggy", default-features = false }
+ziggy = { version = "1.0.0", default-features = false }
 ```
 Then, use the `fuzz!` macro inside your harness.
 ```rust
