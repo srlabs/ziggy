@@ -51,21 +51,24 @@ Options:
   -V, --version  Print version
 ```
 
-To use it in your own project, simply add `ziggy` as a dependency.
+To create a fuzzer, simply add `ziggy` as a dependency.
 
 ```toml
 [dependencies]
 ziggy = { version = "1.0.0", default-features = false }
 ```
-Then, use the `fuzz!` macro inside your harness.
+
+Then use the `fuzz!` macro inside your `main` to create a harness.
+
 ```rust
-ziggy::fuzz!(|data: &[u8]| {
-     if let Ok(string) = std::str::from_utf8(data) {
-          fuzzme(string);
-     }
-});
+fn main() {
+    ziggy::fuzz!(|data: &[u8]| {
+        println!("{data:?}");
+    });
+}
 ```
-For an example fuzz project, see [the url example](./examples/url/).
+
+For a well-documented fuzzer, see [the url example](./examples/url/).
 
 ## The `output` directory
 
