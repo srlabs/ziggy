@@ -1,12 +1,12 @@
 use crate::*;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Error};
 use console::{style, Term};
 use glob::glob;
 use std::{
     env,
-    fs::{self, File},
+    fs::File,
     io::Write,
-    path::{Path, PathBuf},
+    path::Path,
     process, thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -795,7 +795,7 @@ impl fmt::Display for FuzzingConfig {
     }
 }
 
-pub fn kill_subprocesses_recursively(pid: &str) -> Result<(), anyhow::Error> {
+pub fn kill_subprocesses_recursively(pid: &str) -> Result<(), Error> {
     let subprocesses = process::Command::new("pgrep")
         .arg(&format!("-P{pid}"))
         .output()?;
@@ -817,7 +817,7 @@ pub fn kill_subprocesses_recursively(pid: &str) -> Result<(), anyhow::Error> {
 }
 
 // Stop all fuzzer processes
-pub fn stop_fuzzers(processes: &mut Vec<process::Child>) -> Result<(), anyhow::Error> {
+pub fn stop_fuzzers(processes: &mut Vec<process::Child>) -> Result<(), Error> {
     info!("Stopping fuzzer processes");
 
     for process in processes {
