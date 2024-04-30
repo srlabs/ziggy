@@ -3,11 +3,15 @@ use anyhow::{Context, Error, Result};
 use std::{
     env,
     fs::{self, File},
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, Write},
     path::Path,
     process,
     time::SystemTime,
 };
+
+const STATS_LEN: usize = 4;
+const STATS: [&str; STATS_LEN] = ["run_time", "execs_per_sec", "edges_found", "total_edges"];
+type Stats = [f64; STATS_LEN];
 
 impl Bench {
     // Build the AFL++ fuzzer
@@ -34,20 +38,33 @@ impl Bench {
             &self.target,
         );
 
-        let bench_dir = format!("{output_target_dir}/bench");
+        let bench_dir = format!("{output_target_dir}/bench",);
         let input_dir = format!("{output_target_dir}/bench/corpus",);
-        let afl_corpus_dir = format!("{output_target_dir}/afl/mainaflfuzzer/queue/",);
+        let logs_dir = format!("{output_target_dir}/logs",);
 
         let _ = process::Command::new("mkdir")
-            .args(["-p", &bench_dir, &input_dir])
+            .args(["-p", &input_dir, &logs_dir])
             .stderr(process::Stdio::piped())
             .spawn()?
             .wait()?;
 
         let output_dir = format!("{bench_dir}/{timestamp}");
 
-        let afl_corpus_path = Path::new(&afl_corpus_dir);
+        let output_file = format!("{input_dir}/bench_input");
 
+        if self
+            .copy_benchmark_file(&output_file, &output_target_dir)
+            .is_err()
+        {
+            self.create_empty_benchmark_file(&output_file)?;
+        }
+
+        Ok((input_dir, output_dir))
+    }
+
+    fn copy_benchmark_file(&self, output_file: &str, output_target_dir: &str) -> Result<(), Error> {
+        let afl_corpus_dir = format!("{output_target_dir}/afl/mainaflfuzzer/queue/",);
+        let afl_corpus_path = Path::new(&afl_corpus_dir);
         let mut corpus_files: Vec<_> = fs::read_dir(afl_corpus_path)
             .context("Could not find corpus directory")?
             .filter_map(|entry| entry.ok())
@@ -60,26 +77,43 @@ impl Bench {
             .last()
             .context("Could not get last file from corpus")?;
 
-        println!("Chosen benchmark input: {}", last_input.path().display());
-
-        fs::copy(last_input.path(), format!("{input_dir}/bench_input"))
+        fs::copy(last_input.path(), output_file)
             .context("Could not copy file to new corpus directory")?;
 
-        Ok((input_dir, output_dir))
+        println!("Chosen benchmark input: {}", last_input.path().display());
+        Ok(())
     }
 
-    fn extract_stats(&self, output_dir: &str) -> Result<(), Error> {
+    fn create_empty_benchmark_file(&self, output_file: &str) -> Result<(), Error> {
+        let mut output = File::create(output_file)?;
+        writeln!(&mut output, "00000000")?;
+        Ok(())
+    }
+
+    fn extract_stats(&self, output_dir: &str) -> Result<Stats, Error> {
         let fuzzer_stats = File::open(format!("{output_dir}/default/fuzzer_stats"))
             .context("Could not open fuzzer_stats")?;
+        let mut stats = Stats::default();
         for line in BufReader::new(fuzzer_stats).lines().map_while(Result::ok) {
-            if ["run_time", "execs_per_sec", "edges_found", "total_edges"]
-                .iter()
-                .any(|s| line.contains(s))
-            {
-                println!("{}", line);
+            if let Some((i, _)) = STATS.iter().enumerate().find(|s| line.contains(s.1)) {
+                stats[i] = line.split(' ').last().unwrap().parse()?;
             }
         }
-        Ok(())
+        Ok(stats)
+    }
+
+    fn compute_averages(&self, values: &[Stats]) -> Stats {
+        let mut sum = Stats::default();
+        for v in values {
+            sum = sum
+                .iter()
+                .zip(v.iter())
+                .map(|(i, j)| i + j)
+                .collect::<Vec<f64>>()
+                .try_into()
+                .unwrap();
+        }
+        sum
     }
 
     // Benchmark a harness
@@ -97,9 +131,10 @@ impl Bench {
         self.build()?;
         // Prepare the input and output directories
         let (input_dir, output_dir) = self.prepare_directories()?;
+        let mut stats = Vec::<Stats>::new();
         // TODO Allow for a custom amount of repetitions
         for i in 1..4 {
-            println!("\nRun {i}");
+            println!("Run {i}");
             // Get the Cargo excecutable
             let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
             // Execute the benchmarking command
@@ -132,7 +167,11 @@ impl Bench {
                 .spawn()?
                 .wait()?;
             // Extract the stats from the AFL++ output
-            self.extract_stats(&output_dir)?;
+            stats.push(self.extract_stats(&output_dir)?);
+        }
+        let averages = self.compute_averages(&stats);
+        for i in 0..STATS_LEN {
+            println!("average {}: {}", STATS[i], averages[i].round());
         }
         Ok(())
     }

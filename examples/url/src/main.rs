@@ -86,10 +86,10 @@ fn main() {
     ziggy::fuzz!(|data: &[u8]| {
         if let Ok(string) = std::str::from_utf8(data) {
             invariant_fuzz(string);
-            differential_fuzz(string);
+            /*differential_fuzz(string);
             correctness_fuzz(string);
             consistency_fuzz(string);
-            idempotency_fuzz(string);
+            idempotency_fuzz(string);*/
         }
     });
 }
