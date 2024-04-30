@@ -266,12 +266,6 @@ impl Fuzz {
                 .spawn()?
                 .wait()?;
 
-            // https://aflplus.plus/docs/fuzzing_in_depth/#c-using-multiple-cores
-            let afl_modes = [
-                "explore", "fast", "coe", "lin", "quad", "exploit", "rare", "explore", "fast",
-                "mmopt",
-            ];
-
             for job_num in 0..afl_jobs {
                 // We set the fuzzer name, and if it's the main or a secondary fuzzer
                 let fuzzer_name = match job_num {
@@ -282,34 +276,6 @@ impl Fuzz {
                     0 => format!("-F{}", &self.corpus()),
                     _ => String::new(),
                 };
-                let use_initial_corpus_dir = match (&self.initial_corpus, job_num) {
-                    (Some(initial_corpus), 0) => {
-                        format!("-F{}", &initial_corpus.display().to_string())
-                    }
-                    _ => String::new(),
-                };
-                // 10% of secondary fuzzers have the MOpt mutator enabled
-                let mopt_mutator = match job_num % 10 {
-                    9 => "-L0",
-                    _ => "",
-                };
-                // Power schedule
-                let power_schedule = afl_modes
-                    .get(job_num as usize % afl_modes.len())
-                    .unwrap_or(&"fast");
-                // Old queue cycling
-                let old_queue_cycling = match job_num % 10 {
-                    8 => "-Z",
-                    _ => "",
-                };
-                // Only few instances do cmplog
-                let cmplog_options = match job_num {
-                    1 => "-l2a",
-                    3 => "-l1",
-                    14 => "-l2a",
-                    22 => "-l3at",
-                    _ => "-c-", // disable Cmplog, needs AFL++ 4.08a
-                };
                 // AFL timeout is in ms so we convert the value
                 let timeout_option_afl = match self.timeout {
                     Some(t) => format!("-t{}", t * 1000),
@@ -319,12 +285,6 @@ impl Fuzz {
                     Some(d) => format!("-x{}", &d.display().to_string()),
                     None => String::new(),
                 };
-                let mutation_option = match job_num / 5 {
-                    0..=1 => "-P600",
-                    2..=3 => "-Pexplore",
-                    _ => "-Pexploit",
-                };
-                let input_format_option = self.config.input_format_flag();
                 let log_destination = || match job_num {
                     0 => File::create(format!("{}/logs/afl.log", self.output_target()))
                         .unwrap()
@@ -347,17 +307,10 @@ impl Fuzz {
                                 "fuzz",
                                 &fuzzer_name,
                                 &format!("-i{}", self.corpus()),
-                                &format!("-p{power_schedule}"),
                                 &format!("-o{}/afl", self.output_target()),
                                 &format!("-g{}", self.min_length),
                                 &format!("-G{}", self.max_length),
                                 &use_shared_corpus,
-                                &use_initial_corpus_dir,
-                                old_queue_cycling,
-                                cmplog_options,
-                                mopt_mutator,
-                                mutation_option,
-                                input_format_option,
                                 &timeout_option_afl,
                                 &dictionary_option,
                             ]
@@ -367,15 +320,10 @@ impl Fuzz {
                         .args(self.afl_flags.clone())
                         .arg(format!("./target/afl/debug/{}", self.target))
                         .env("AFL_AUTORESUME", "1")
-                        .env("AFL_TESTCACHE_SIZE", "100")
-                        .env("AFL_FAST_CAL", "1")
                         .env("AFL_FORCE_UI", "1")
                         .env("AFL_IGNORE_UNKNOWN_ENVS", "1")
-                        .env("AFL_CMPLOG_ONLY_NEW", "1")
-                        .env("AFL_DISABLE_TRIM", "1")
                         .env("AFL_NO_WARN_INSTABILITY", "1")
                         .env("AFL_FUZZER_STATS_UPDATE_INTERVAL", "10")
-                        .env("AFL_IMPORT_FIRST", "1")
                         .env(final_sync, "1")
                         .env("AFL_IGNORE_SEED_PROBLEMS", "1")
                         .stdout(log_destination())
@@ -776,16 +724,6 @@ pub enum FuzzingConfig {
     Binary,
     Text,
     Blockchain,
-}
-
-impl FuzzingConfig {
-    fn input_format_flag(&self) -> &str {
-        match self {
-            Self::Text => "-atext",
-            Self::Binary => "-abinary",
-            _ => "",
-        }
-    }
 }
 
 use std::fmt;
