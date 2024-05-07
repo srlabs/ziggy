@@ -278,8 +278,9 @@ impl Fuzz {
                     0 => String::from("-Mmainaflfuzzer"),
                     n => format!("-Ssecondaryfuzzer{n}"),
                 };
-                let use_shared_corpus = match job_num {
-                    0 => format!("-F{}", &self.corpus()),
+                // We only sync to the shared corpus if Honggfuzz is also running
+                let use_shared_corpus = match (self.no_honggfuzz, job_num) {
+                    (false, 0) => format!("-F{}", &self.corpus()),
                     _ => String::new(),
                 };
                 let use_initial_corpus_dir = match (&self.initial_corpus, job_num) {
