@@ -330,6 +330,8 @@ pub fn find_target(target: &String) -> Result<String, anyhow::Error> {
 }
 
 fn guess_target() -> Result<String> {
+    // TODO Use cargo-metadata and remove toml dependency
+
     let cargo_toml_string = fs::read_to_string("Cargo.toml")
         .context("⚠️  couldn't find Cargo.toml in this folder, cannot guess target")?;
     let cargo_toml = cargo_toml_string.parse::<toml::Value>().context(

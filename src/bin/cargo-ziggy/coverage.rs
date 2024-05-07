@@ -72,21 +72,8 @@ impl Cover {
         let source_or_workspace_root = match &self.source {
             Some(s) => s.display().to_string(),
             None => {
-                // TODO use cargo_metadata
-                let metadata_output = std::process::Command::new("cargo")
-                    .arg("metadata")
-                    .output()
-                    .context("Failed to run cargo metadata")?;
-
-                let stdout =
-                    String::from_utf8(metadata_output.stdout).context("Failed to read stdout")?;
-                let metadata: serde_json::Value =
-                    serde_json::from_str(&stdout).context("Failed to parse JSON")?;
-
-                metadata["workspace_root"]
-                    .as_str()
-                    .context("Failed to get workspace root")?
-                    .to_string()
+                let metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();
+                metadata.workspace_root.into()
             }
         };
 

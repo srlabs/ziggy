@@ -741,7 +741,6 @@ dependencies = [
  "libc",
  "log",
  "semver",
- "serde_json",
  "strip-ansi-escapes",
  "time-humanize",
  "toml",
