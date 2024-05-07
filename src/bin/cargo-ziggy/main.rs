@@ -330,39 +330,13 @@ pub fn find_target(target: &String) -> Result<String, anyhow::Error> {
 }
 
 fn guess_target() -> Result<String> {
-    // TODO Use cargo-metadata and remove toml dependency
-
-    let cargo_toml_string = fs::read_to_string("Cargo.toml")
-        .context("⚠️  couldn't find Cargo.toml in this folder, cannot guess target")?;
-    let cargo_toml = cargo_toml_string.parse::<toml::Value>().context(
-        "⚠️  couldn't parse the Cargo.toml file in this folder, thus cannot guess the target",
-    )?;
-
-    if let Some(bin_section) = cargo_toml.get("bin") {
-        let bin_array = bin_section
-            .as_array()
-            .ok_or_else(|| anyhow!("Bin section should be an array in Cargo.toml"))?;
-        // If one of the bin targets uses main, we use this target
-        for bin_target in bin_array {
-            if bin_target["path"]
-                .as_str()
-                .context("Path should be a string in Cargo.toml")?
-                == "src/main.rs"
-            {
-                return Ok(bin_target["name"]
-                    .as_str()
-                    .ok_or_else(|| anyhow!("Bin name should be a string in Cargo.toml"))?
-                    .to_string());
-            }
+    let metadata = cargo_metadata::MetadataCommand::new().exec()?;
+    let default_package = metadata.workspace_default_members;
+    if let Some(package_id) = default_package.first() {
+        if let Some(package) = metadata.packages.iter().find(|p| p.id == *package_id) {
+            return Ok(package.name.clone());
         }
     }
-    // src/main.rs exists, and either the bin array was empty, or it did not specify the main.rs bin target,
-    // so we use the name of the project as target.
-    if std::path::Path::new("src/main.rs").exists() {
-        return Ok(cargo_toml["package"]["name"]
-            .as_str()
-            .ok_or_else(|| anyhow!("Package name should be a string in Cargo.toml"))?
-            .to_string());
-    }
+
     Err(anyhow!("Please specify a target"))
 }
