@@ -1,5 +1,9 @@
 # Changes
 
+## 1.0.2 - 2024-05-17
+
+- Downgrade dependency that was [yanked](https://github.com/rust-lang/libc/issues/3608#issuecomment-2116310436)
+
 ## 1.0.1 - 2024-05-07
 
 - Only make AFL++ sync to shared corpus if Honggfuzz is also running

@@ -1,6 +1,6 @@
 [package]
 name = "ziggy"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2021"
 license = "Apache-2.0"
 description = "A multi-fuzzer management utility for all of your Rust fuzzing needs 🧑‍🎤"
@@ -25,7 +25,7 @@ glob = { version = "0.3.1", optional = true }
 # We use our own fork of honggfuzz to use the tool's latest release
 # https://github.com/rust-fuzz/honggfuzz-rs/pull/85
 honggfuzz = { package = "ziggy-honggfuzz-2", version = "0.5.55", optional = true }
-libc = { version = "0.2.154", optional = true }
+libc = { version = "0.2.153", optional = true }
 log = { version = "0.4.21", optional = true }
 semver = { version = "1.0.23", optional = true }
 strip-ansi-escapes = { version = "0.2.0", optional = true }
