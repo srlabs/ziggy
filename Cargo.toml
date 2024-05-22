@@ -22,9 +22,7 @@ console = { version = "0.15.8", optional = true }
 env_logger = { version = "0.11.3", optional = true }
 fork = { version = "0.1.23", optional = true }
 glob = { version = "0.3.1", optional = true }
-# We use our own fork of honggfuzz to use the tool's latest release
-# https://github.com/rust-fuzz/honggfuzz-rs/pull/85
-honggfuzz = { package = "ziggy-honggfuzz-2", version = "0.5.55", optional = true }
+honggfuzz = { version = "0.5.56", optional = true }
 libc = { version = "0.2.153", optional = true }
 log = { version = "0.4.21", optional = true }
 semver = { version = "1.0.23", optional = true }

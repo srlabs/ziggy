@@ -266,6 +266,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "honggfuzz"
+version = "0.5.56"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c76b6234c13c9ea73946d1379d33186151148e0da231506b964b44f3d023505"
+dependencies = [
+ "arbitrary",
+ "lazy_static",
+ "memmap2",
+ "rustc_version",
+]
+
+[[package]]
 name = "humantime"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -319,9 +331,9 @@ checksum = "6c8640c5d730cb13ebd907d8d04b52f55ac9a2eec55b440c8892f40d56c76c1d"
 
 [[package]]
 name = "memmap2"
-version = "0.5.10"
+version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83faa42c0a078c393f6b29d5db232d8be22776a891f8f56e5284faee4a20b327"
+checksum = "fe751422e4a8caa417e13c3ea66452215d7d63e19e604f4980461212f3ae1322"
 dependencies = [
  "libc",
 ]
@@ -654,7 +666,7 @@ checksum = "213b7324336b53d2414b2db8537e56544d981803139155afa84f76eeebb7a546"
 
 [[package]]
 name = "ziggy"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "afl",
  "anyhow",
@@ -664,22 +676,10 @@ dependencies = [
  "env_logger",
  "fork",
  "glob",
+ "honggfuzz",
  "libc",
  "log",
  "semver",
  "strip-ansi-escapes",
  "time-humanize",
- "ziggy-honggfuzz-2",
-]
-
-[[package]]
-name = "ziggy-honggfuzz-2"
-version = "0.5.55"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61ea81f97201dd3c58f84266428c242c17f26140b0e40dd53bdcc0108da3743f"
-dependencies = [
- "arbitrary",
- "lazy_static",
- "memmap2",
- "rustc_version",
 ]
