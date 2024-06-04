@@ -174,6 +174,10 @@ pub struct Run {
     #[clap(short, long, value_name = "DIR", default_value = DEFAULT_CORPUS_DIR)]
     inputs: Vec<PathBuf>,
 
+    /// Recursively run nested directories for all input directories
+    #[clap(short, long)]
+    recursive: bool,
+
     /// Fuzzers output directory
     #[clap(short, long, env="ZIGGY_OUTPUT", value_parser, value_name = "DIR", default_value=DEFAULT_OUTPUT_DIR)]
     ziggy_output: PathBuf,
@@ -298,7 +302,7 @@ fn main() -> Result<(), anyhow::Error> {
     match command {
         Ziggy::Build(args) => args.build().context("Failed to build the fuzzers"),
         Ziggy::Fuzz(mut args) => args.fuzz().context("Failure running fuzzers"),
-        Ziggy::Run(args) => args.run().context("Failure running inputs"),
+        Ziggy::Run(mut args) => args.run().context("Failure running inputs"),
         Ziggy::Minimize(mut args) => args.minimize().context("Failure running minimization"),
         Ziggy::Cover(mut args) => args
             .generate_coverage()
