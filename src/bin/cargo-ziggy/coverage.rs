@@ -92,13 +92,18 @@ impl Cover {
             }
         };
 
+        let output_types = match &self.output_types {
+            Some(o) => o,
+            None => "html",
+        };
+
         // We generate the code coverage report
         process::Command::new("grcov")
             .args([
                 ".",
                 &format!("-b=./target/coverage/debug/{}", self.target),
                 &format!("-s={source_or_workspace_root}"),
-                "-t=html",
+                &format!("-t={}", output_types),
                 "--llvm",
                 "--branch",
                 "--ignore-not-existing",

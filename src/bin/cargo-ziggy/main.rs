@@ -234,6 +234,10 @@ pub struct Cover {
     /// Keep coverage data files (WARNING: Do not use if source code has changed)
     #[clap(short, long, default_value_t = false)]
     keep: bool,
+
+    /// Comma separated list of output types. See grov --help to see supported output types.
+    #[clap(short = 't', long)]
+    output_types: Option<String>,
 }
 
 #[derive(Args)]
