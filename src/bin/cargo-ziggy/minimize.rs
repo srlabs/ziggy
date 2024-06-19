@@ -7,6 +7,7 @@ impl Minimize {
         let build = Build {
             no_afl: self.engine == FuzzingEngines::Honggfuzz,
             no_honggfuzz: self.engine == FuzzingEngines::AFLPlusPlus,
+            release: false,
         };
         build.build().context("Failed to build the fuzzers")?;
 

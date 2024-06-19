@@ -17,15 +17,22 @@ impl Build {
 
         if !self.no_afl {
             eprintln!("    {} afl", style("Building").red().bold());
+            let mut afl_args = vec![
+                "afl",
+                "build",
+                "--features=ziggy/afl",
+                "--target-dir=target/afl",
+            ];
+
+            // Add the --release argument if self.release is true
+            if self.release {
+                afl_args.push("--release");
+                info!("Building in release mode");
+            }
 
             // Second fuzzer we build: AFL++
             let run = process::Command::new(cargo.clone())
-                .args([
-                    "afl",
-                    "build",
-                    "--features=ziggy/afl",
-                    "--target-dir=target/afl",
-                ])
+                .args(afl_args)
                 .env("AFL_QUIET", "1")
                 .env("AFL_LLVM_CMPGLOG", "1") // for afl.rs feature "plugins"
                 .env("RUSTFLAGS", env::var("RUSTFLAGS").unwrap_or_default())
@@ -46,9 +53,20 @@ impl Build {
         if !self.no_honggfuzz {
             eprintln!("    {} honggfuzz", style("Building").red().bold());
 
+            let mut hfuzz_args = vec![
+                "hfuzz",
+                "build",
+            ];
+
+            // Add the --release argument if self.release is true
+            if self.release {
+                hfuzz_args.push("--release");
+                info!("Building in release mode");
+            }
+
             // Third fuzzer we build: Honggfuzz
             let run = process::Command::new(cargo)
-                .args(["hfuzz", "build"])
+                .args(hfuzz_args)
                 .env("CARGO_TARGET_DIR", "./target/honggfuzz")
                 .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
                 .env("RUSTFLAGS", env::var("RUSTFLAGS").unwrap_or_default())
