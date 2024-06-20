@@ -313,12 +313,14 @@ fn main() -> Result<(), anyhow::Error> {
 
     env_logger::init();
     let Cargo::Ziggy(command) = Cargo::parse();
-    let (tx, rx) = channel();
-    ctrlc::set_handler(move || tx.send(()).expect("Could not send signal on channel."))
-        .expect("Error setting Ctrl-C handler");
     match command {
         Ziggy::Build(args) => args.build().context("Failed to build the fuzzers"),
-        Ziggy::Fuzz(mut args) => args.fuzz(rx).context("Failure running fuzzers"),
+        Ziggy::Fuzz(mut args) => {
+            let (tx, rx) = channel();
+            ctrlc::set_handler(move || tx.send(()).expect("Could not send signal on channel."))
+                .expect("Error setting Ctrl-C handler");
+            args.fuzz(rx).context("Failure running fuzzers")
+        }
         Ziggy::Run(mut args) => args.run().context("Failure running inputs"),
         Ziggy::Minimize(mut args) => args.minimize().context("Failure running minimization"),
         Ziggy::Cover(mut args) => args
