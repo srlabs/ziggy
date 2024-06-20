@@ -68,6 +68,7 @@ impl Fuzz {
         let build = Build {
             no_afl: !self.afl(),
             no_honggfuzz: !self.honggfuzz(),
+            release: self.release,
         };
         build.build().context("Failed to build the fuzzers")?;
 
@@ -790,6 +791,7 @@ impl FuzzingConfig {
 }
 
 use std::fmt;
+
 impl fmt::Display for FuzzingConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
