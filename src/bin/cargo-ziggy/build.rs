@@ -53,10 +53,7 @@ impl Build {
         if !self.no_honggfuzz {
             eprintln!("    {} honggfuzz", style("Building").red().bold());
 
-            let mut hfuzz_args = vec![
-                "hfuzz",
-                "build",
-            ];
+            let mut hfuzz_args = vec!["hfuzz", "build"];
 
             // Add the --release argument if self.release is true
             if self.release {

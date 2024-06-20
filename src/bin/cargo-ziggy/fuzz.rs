@@ -46,7 +46,7 @@ impl Fuzz {
     }
 
     pub fn corpus_minimized(&self) -> String {
-        format!("{}/corpus_minimized/", self.output_target(), )
+        format!("{}/corpus_minimized/", self.output_target(),)
     }
 
     pub fn output_target(&self) -> String {
@@ -173,7 +173,7 @@ impl Fuzz {
                     self.output_target(),
                     self.target
                 )
-                    .into()]);
+                .into()]);
 
             for crash_dir in crash_dirs {
                 if let Ok(crashes) = fs::read_dir(crash_dir) {
@@ -182,7 +182,7 @@ impl Fuzz {
                         let to_path = crash_path.join(&file_name);
                         if to_path.exists()
                             || ["", "README.txt", "HONGGFUZZ.REPORT.TXT", "input"]
-                            .contains(&file_name.to_str().unwrap_or_default())
+                                .contains(&file_name.to_str().unwrap_or_default())
                         {
                             continue;
                         }
@@ -199,7 +199,7 @@ impl Fuzz {
                     "{}/afl/mainaflfuzzer/queue/*",
                     self.output_target(),
                 ))?
-                    .flatten();
+                .flatten();
                 for file in afl_corpus {
                     if let Some((file_id, file_name)) = extract_file_id(&file) {
                         if file_id > last_synced_queue_id {
@@ -363,8 +363,8 @@ impl Fuzz {
                                 &timeout_option_afl,
                                 &dictionary_option,
                             ]
-                                .iter()
-                                .filter(|a| a != &&""),
+                            .iter()
+                            .filter(|a| a != &&""),
                         )
                         .args(self.afl_flags.clone())
                         .arg(format!("./target/afl/debug/{}", self.target))
@@ -405,8 +405,8 @@ impl Fuzz {
                 .unwrap_or_default()
                 .contains("dynamic_input")
                 && !std::str::from_utf8(hfuzz_help.stderr.as_slice())
-                .unwrap_or_default()
-                .contains("dynamic_input")
+                    .unwrap_or_default()
+                    .contains("dynamic_input")
             {
                 return Err(anyhow!("Outdated version of honggfuzz, please update the ziggy version in your Cargo.toml or rebuild the project"));
             }
@@ -484,7 +484,7 @@ impl Fuzz {
                     "tail -f {}/logs/honggfuzz.log",
                     self.output_target()
                 ))
-                    .bold()
+                .bold()
             );
         }
 
