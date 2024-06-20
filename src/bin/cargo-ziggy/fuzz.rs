@@ -139,11 +139,14 @@ impl Fuzz {
         let mut afl_output_ok = false;
 
         if self.no_afl && self.coverage_worker {
-            return Err(anyhow!("cannot use --no-afl with --coverage-worker!"))
+            return Err(anyhow!("cannot use --no-afl with --coverage-worker!"));
         }
 
         let (cov_worker, cov_worker_messages_rx) = match self.coverage_worker {
             true => {
+                info!("cleaning old coverage files");
+                Cover::clean_old_cov()?;
+
                 // build coverage the runner
                 info!("building coverage worker");
                 Cover::build_runner()?;
@@ -154,7 +157,10 @@ impl Fuzz {
                     .to_string();
                 let coverage_interval = self.coverage_interval;
                 let target = self.target.clone();
-                let main_corpus = PathBuf::from(self.output_target()).join("afl").join("mainaflfuzzer").join("queue");
+                let main_corpus = PathBuf::from(self.output_target())
+                    .join("afl")
+                    .join("mainaflfuzzer")
+                    .join("queue");
                 let mut cov_worker_last_run = None;
                 let (cov_tx, mut cov_rx) = channel::<()>();
                 let (cov_message_tx, cov_message_rx) = channel::<String>();
@@ -167,16 +173,13 @@ impl Fuzz {
                         }
                         cov_message_tx
                             .send(format!("sleeping for {} minutes", coverage_interval))?;
-                        /*                         thread::sleep(Duration::from_secs(coverage_interval * 60)); */
-                        if should_thread_exit(&mut cov_rx)? {
-                            return Ok(());
-                        }
-                        cov_message_tx.send(format!("i am awake"))?;
+                        thread::sleep(Duration::from_secs(coverage_interval * 60));
+                        cov_message_tx.send("i am awake".to_string())?;
                         let entries = std::fs::read_dir(&main_corpus)?;
                         let last_run = SystemTime::now();
                         let mut new_entries = 0;
                         for entry in entries {
-                            if !entry.is_ok() {
+                            if entry.is_err() {
                                 continue;
                             }
                             let entry = entry.unwrap().path();
@@ -204,7 +207,7 @@ impl Fuzz {
                             }
                         }
                         if new_entries > 0 {
-                            cov_message_tx.send(format!("generating grcov report"))?;
+                            cov_message_tx.send("generating grcov report".to_string())?;
                             Cover::run_grcov(&target, "html", "coverage", &workspace_root)?;
                         }
                         cov_worker_last_run = Some(last_run);
@@ -219,7 +222,7 @@ impl Fuzz {
             }
             false => (None, None),
         };
-        let mut cov_worker_messages = VecDeque::new();
+        let mut cov_worker_messages = VecDeque::<String>::new();
         loop {
             let sleep_duration = Duration::from_secs(1);
             thread::sleep(sleep_duration);
@@ -227,12 +230,20 @@ impl Fuzz {
                 match kill_channel.try_recv() {
                     Ok(_) => {
                         // We got ctrl-c time to exit!
-                        info!("Waiting for coverage worker to exit!");
-                        let (cov_worker, cov_tx) = cov_worker.unwrap();
-                        cov_tx.send(())?;
-                        cov_worker
-                            .join()
-                            .expect("the cov_worker exited before we could join!")?;
+                        println!("Waiting for coverage worker to exit;");
+                        // If the cov worker is sleeping, we can kill it, no bad side effects will happen.
+                        if !cov_worker_messages
+                            .iter()
+                            .last()
+                            .expect("cov worker should have sent a message!")
+                            .starts_with("sleeping")
+                        {
+                            let (cov_worker, cov_tx) = cov_worker.unwrap();
+                            cov_tx.send(())?;
+                            cov_worker
+                                .join()
+                                .expect("the cov_worker exited before we could join!")?;
+                        }
                         return Ok(());
                     }
                     Err(TryRecvError::Disconnected) => {
@@ -251,7 +262,7 @@ impl Fuzz {
                                     cov_worker_messages.push_back(message)
                                 }
                                 Err(TryRecvError::Empty) => {
-/*                                     break; */
+                                    break;
                                 }
                                 Err(TryRecvError::Disconnected) => {
                                     return Err(anyhow!(
@@ -893,13 +904,13 @@ impl Fuzz {
         }
         if self.coverage_worker {
             screen += &format!(
-                "├─ {blue}coverage-worker{hf_status:0}─────────────────────────────────────────────┬────┘\n"
+                "├─ {blue}coverage-worker{reset}─────────────────────────────────────────────────────┬────┘\n"
             );
             for message in cov_worker_messages {
                 screen += &format!("├─ {message}\n");
             }
         }
-        screen += "└──────────────────────────────────────────────────────────────────────┘";
+        screen += "└───────────────────────────────────────────────────────────────────────────┘";
         eprintln!("{screen}");
     }
 }
@@ -977,10 +988,10 @@ fn should_thread_exit<T>(rx: &mut Receiver<T>) -> Result<bool, anyhow::Error> {
     match rx.try_recv() {
         Ok(_) => {
             // We got ctrl-c time to exit!
-            return Ok(true);
+            Ok(true)
         }
         Err(TryRecvError::Disconnected) => {
-            return Err(anyhow!("channel disconnected; this should not happen!"))
+            Err(anyhow!("channel disconnected; this should not happen!"))
         }
         Err(TryRecvError::Empty) => Ok(false),
     }

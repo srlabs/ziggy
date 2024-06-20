@@ -20,13 +20,7 @@ impl Cover {
 
         if !self.keep {
             // We remove the previous coverage files
-            if let Ok(gcda_files) = glob("target/coverage/debug/deps/*.gcda") {
-                for file in gcda_files.flatten() {
-                    let file_string = &file.display();
-                    fs::remove_file(&file)
-                        .context(format!("⚠️  couldn't find {} during coverage", file_string))?;
-                }
-            }
+            Cover::clean_old_cov()?;
         }
 
         let mut shared_corpus = PathBuf::new();
@@ -133,6 +127,17 @@ impl Cover {
             .context("⚠️  cannot find grcov in your path, please install it")?
             .wait()
             .context("⚠️  couldn't wait for the grcov process")?;
+        Ok(())
+    }
+
+    pub fn clean_old_cov() -> Result<(), anyhow::Error> {
+        if let Ok(gcda_files) = glob("target/coverage/debug/deps/*.gcda") {
+            for file in gcda_files.flatten() {
+                let file_string = &file.display();
+                fs::remove_file(&file)
+                    .context(format!("⚠️  couldn't find {} during coverage", file_string))?;
+            }
+        }
         Ok(())
     }
 }
