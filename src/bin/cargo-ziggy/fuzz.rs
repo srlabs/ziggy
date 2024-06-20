@@ -187,7 +187,7 @@ impl Fuzz {
                             let created = entry.metadata()?.created()?;
                             let should_run = match cov_worker_last_run {
                                 None => true,
-                                Some(start_time) => start_time < created,
+                                Some(start_time) => start_time < created && last_run >= created,
                             };
                             if should_run {
                                 cov_message_tx.send(format!("running {}", entry.display()))?;
