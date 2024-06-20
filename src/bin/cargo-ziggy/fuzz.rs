@@ -134,6 +134,53 @@ impl Fuzz {
         let mut last_synced_queue_id: u32 = 0;
         let mut last_sync_time = Instant::now();
         let mut afl_output_ok = false;
+        let fuzzer_sync_dir = match self.honggfuzz() {
+            true => PathBuf::from(self.output_target()).join("queue"),
+            false => PathBuf::from(self.output_target()).join("corpus"),
+        };
+
+        if self.coverage_worker {
+            // build coverage the runner
+            Cover::build_runner()?;
+            
+            let workspace_root = cargo_metadata::MetadataCommand::new()
+                .exec()?
+                .workspace_root
+                .to_string();
+            let coverage_interval = self.coverage_interval;
+            let target = self.target.clone();
+            let global_corpus = fuzzer_sync_dir.clone();
+            let mut cov_worker_last_run = None;
+            
+            // start the coverage worker
+            let _cov_worker_thread = thread::spawn(move || -> Result<(), anyhow::Error> {
+                loop {
+                    thread::sleep(Duration::from_secs(coverage_interval * 60));
+                    let entries = std::fs::read_dir(&global_corpus)?;
+                    let last_run = SystemTime::now();
+                    for entry in entries {
+                        if !entry.is_ok() {
+                            continue;
+                        }
+                        let entry = entry.unwrap().path();
+                        // We only want to run corpus entries created since the last time we ran.
+                        let created = entry.metadata()?.created()?;
+                        let should_run = match cov_worker_last_run {
+                            None => true,
+                            Some(start_time) => start_time < created,
+                        };
+                        if should_run {
+                            process::Command::new(format!("./target/coverage/debug/{}", &target))
+                                .arg(format!("{}", entry.display()))
+                                .spawn()?
+                                .wait()?;
+                        }
+                    }
+                    Cover::run_grcov(&target, "html", "coverage", &workspace_root)?;
+                    cov_worker_last_run = Some(last_run);
+                }
+            });
+        }
 
         loop {
             let sleep_duration = Duration::from_secs(1);
@@ -202,11 +249,7 @@ impl Fuzz {
                 for file in afl_corpus {
                     if let Some((file_id, file_name)) = extract_file_id(&file) {
                         if file_id > last_synced_queue_id {
-                            let copy_destination = match self.honggfuzz() {
-                                true => format!("{}/queue/{file_name}", self.output_target()),
-                                false => format!("{}/corpus/{file_name}", self.output_target()),
-                            };
-                            let _ = fs::copy(&file, copy_destination);
+                            let _ = fs::copy(&file, fuzzer_sync_dir.join(&file));
                             last_synced_queue_id = file_id;
                         }
                     }
@@ -223,6 +266,7 @@ impl Fuzz {
                 return Ok(());
             }
         }
+        /*         cov_worker_thread.join().unwrap(); */
     }
 
     // Spawns new fuzzers
