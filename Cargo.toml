@@ -19,6 +19,7 @@ anyhow = { version = "1.0.83", optional = true }
 cargo_metadata = { version = "0.18.1", optional = true }
 clap = { version = "4.5.4", features = ["cargo", "derive", "env"], optional = true }
 console = { version = "0.15.8", optional = true }
+ctrlc = "3.4.4"
 env_logger = { version = "0.11.3", optional = true }
 fork = { version = "0.1.23", optional = true }
 glob = { version = "0.3.1", optional = true }

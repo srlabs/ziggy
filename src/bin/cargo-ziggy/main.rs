@@ -16,7 +16,7 @@ use crate::fuzz::FuzzingConfig;
 use anyhow::{anyhow, Context, Result};
 #[cfg(feature = "cli")]
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use std::time::Duration;
+use std::sync::mpsc::Receiver;
 #[cfg(feature = "cli")]
 use std::{fs, path::PathBuf};
 
@@ -161,11 +161,11 @@ pub struct Fuzz {
     config: FuzzingConfig,
 
     /// With a coverage worker
-    #[clap(short, long)]
+    #[clap(long)]
     coverage_worker: bool,
 
     /// Coverage generation interval in minutes
-    #[clap(short, long, default_value="15")]
+    #[clap(long, default_value = "15")]
     coverage_interval: u64,
 }
 
@@ -309,12 +309,16 @@ pub struct AddSeeds {
 
 #[cfg(feature = "cli")]
 fn main() -> Result<(), anyhow::Error> {
+    use std::sync::mpsc::channel;
+
     env_logger::init();
     let Cargo::Ziggy(command) = Cargo::parse();
-
+    let (tx, rx) = channel();
+    ctrlc::set_handler(move || tx.send(()).expect("Could not send signal on channel."))
+        .expect("Error setting Ctrl-C handler");
     match command {
         Ziggy::Build(args) => args.build().context("Failed to build the fuzzers"),
-        Ziggy::Fuzz(mut args) => args.fuzz().context("Failure running fuzzers"),
+        Ziggy::Fuzz(mut args) => args.fuzz(rx).context("Failure running fuzzers"),
         Ziggy::Run(mut args) => args.run().context("Failure running inputs"),
         Ziggy::Minimize(mut args) => args.minimize().context("Failure running minimization"),
         Ziggy::Cover(mut args) => args

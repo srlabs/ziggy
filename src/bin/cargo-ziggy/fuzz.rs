@@ -3,11 +3,14 @@ use anyhow::{anyhow, Error};
 use console::{style, Term};
 use glob::glob;
 use std::{
+    collections::VecDeque,
     env,
     fs::File,
     io::Write,
     path::Path,
-    process, thread,
+    process::{self, Stdio},
+    sync::mpsc::{channel, TryRecvError},
+    thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use strip_ansi_escapes::strip_str;
@@ -64,7 +67,7 @@ impl Fuzz {
     }
 
     // Manages the continuous running of fuzzers
-    pub fn fuzz(&mut self) -> Result<(), anyhow::Error> {
+    pub fn fuzz(&mut self, kill_channel: Receiver<()>) -> Result<(), anyhow::Error> {
         let build = Build {
             no_afl: !self.afl(),
             no_honggfuzz: !self.honggfuzz(),
@@ -134,59 +137,134 @@ impl Fuzz {
         let mut last_synced_queue_id: u32 = 0;
         let mut last_sync_time = Instant::now();
         let mut afl_output_ok = false;
-        let fuzzer_sync_dir = match self.honggfuzz() {
-            true => PathBuf::from(self.output_target()).join("queue"),
-            false => PathBuf::from(self.output_target()).join("corpus"),
-        };
 
-        if self.coverage_worker {
-            // build coverage the runner
-            Cover::build_runner()?;
-            
-            let workspace_root = cargo_metadata::MetadataCommand::new()
-                .exec()?
-                .workspace_root
-                .to_string();
-            let coverage_interval = self.coverage_interval;
-            let target = self.target.clone();
-            let global_corpus = fuzzer_sync_dir.clone();
-            let mut cov_worker_last_run = None;
-            
-            // start the coverage worker
-            let _cov_worker_thread = thread::spawn(move || -> Result<(), anyhow::Error> {
-                loop {
-                    thread::sleep(Duration::from_secs(coverage_interval * 60));
-                    let entries = std::fs::read_dir(&global_corpus)?;
-                    let last_run = SystemTime::now();
-                    for entry in entries {
-                        if !entry.is_ok() {
-                            continue;
-                        }
-                        let entry = entry.unwrap().path();
-                        // We only want to run corpus entries created since the last time we ran.
-                        let created = entry.metadata()?.created()?;
-                        let should_run = match cov_worker_last_run {
-                            None => true,
-                            Some(start_time) => start_time < created,
-                        };
-                        if should_run {
-                            process::Command::new(format!("./target/coverage/debug/{}", &target))
-                                .arg(format!("{}", entry.display()))
-                                .spawn()?
-                                .wait()?;
-                        }
-                    }
-                    Cover::run_grcov(&target, "html", "coverage", &workspace_root)?;
-                    cov_worker_last_run = Some(last_run);
-                }
-            });
+        if self.no_afl && self.coverage_worker {
+            return Err(anyhow!("cannot use --no-afl with --coverage-worker!"))
         }
 
+        let (cov_worker, cov_worker_messages_rx) = match self.coverage_worker {
+            true => {
+                // build coverage the runner
+                info!("building coverage worker");
+                Cover::build_runner()?;
+
+                let workspace_root = cargo_metadata::MetadataCommand::new()
+                    .exec()?
+                    .workspace_root
+                    .to_string();
+                let coverage_interval = self.coverage_interval;
+                let target = self.target.clone();
+                let main_corpus = PathBuf::from(self.output_target()).join("afl").join("mainaflfuzzer").join("queue");
+                let mut cov_worker_last_run = None;
+                let (cov_tx, mut cov_rx) = channel::<()>();
+                let (cov_message_tx, cov_message_rx) = channel::<String>();
+                // start the coverage worker
+                info!("starting coverage worker");
+                let cov_worker_thread = thread::spawn(move || -> Result<(), anyhow::Error> {
+                    loop {
+                        if should_thread_exit(&mut cov_rx)? {
+                            return Ok(());
+                        }
+                        cov_message_tx
+                            .send(format!("sleeping for {} minutes", coverage_interval))?;
+                        /*                         thread::sleep(Duration::from_secs(coverage_interval * 60)); */
+                        if should_thread_exit(&mut cov_rx)? {
+                            return Ok(());
+                        }
+                        cov_message_tx.send(format!("i am awake"))?;
+                        let entries = std::fs::read_dir(&main_corpus)?;
+                        let last_run = SystemTime::now();
+                        let mut new_entries = 0;
+                        for entry in entries {
+                            if !entry.is_ok() {
+                                continue;
+                            }
+                            let entry = entry.unwrap().path();
+                            // We only want to run corpus entries created since the last time we ran.
+                            let created = entry.metadata()?.created()?;
+                            let should_run = match cov_worker_last_run {
+                                None => true,
+                                Some(start_time) => start_time < created,
+                            };
+                            if should_run {
+                                cov_message_tx.send(format!("running {}", entry.display()))?;
+                                process::Command::new(format!(
+                                    "./target/coverage/debug/{}",
+                                    &target
+                                ))
+                                .arg(format!("{}", entry.display()))
+                                .stdout(Stdio::null())
+                                .stderr(Stdio::null())
+                                .spawn()?
+                                .wait()?;
+                                new_entries += 1;
+                            }
+                            if should_thread_exit(&mut cov_rx)? {
+                                return Ok(());
+                            }
+                        }
+                        if new_entries > 0 {
+                            cov_message_tx.send(format!("generating grcov report"))?;
+                            Cover::run_grcov(&target, "html", "coverage", &workspace_root)?;
+                        }
+                        cov_worker_last_run = Some(last_run);
+                        cov_message_tx.send(format!(
+                            "last_run = {:?}; new_entries = {}",
+                            last_run.duration_since(UNIX_EPOCH)?.as_secs(),
+                            new_entries
+                        ))?;
+                    }
+                });
+                (Some((cov_worker_thread, cov_tx)), Some(cov_message_rx))
+            }
+            false => (None, None),
+        };
+        let mut cov_worker_messages = VecDeque::new();
         loop {
             let sleep_duration = Duration::from_secs(1);
             thread::sleep(sleep_duration);
+            if self.coverage_worker {
+                match kill_channel.try_recv() {
+                    Ok(_) => {
+                        // We got ctrl-c time to exit!
+                        info!("Waiting for coverage worker to exit!");
+                        let (cov_worker, cov_tx) = cov_worker.unwrap();
+                        cov_tx.send(())?;
+                        cov_worker
+                            .join()
+                            .expect("the cov_worker exited before we could join!")?;
+                        return Ok(());
+                    }
+                    Err(TryRecvError::Disconnected) => {
+                        return Err(anyhow!(
+                            "Ctrl-c channel disconnected; this should not happen!"
+                        ))
+                    }
+                    Err(TryRecvError::Empty) => {
+                        let messages_rx = cov_worker_messages_rx.as_ref().unwrap();
+                        for _i in 0..50 {
+                            match messages_rx.try_recv() {
+                                Ok(message) => {
+                                    if cov_worker_messages.len() == 50 {
+                                        cov_worker_messages.pop_front();
+                                    }
+                                    cov_worker_messages.push_back(message)
+                                }
+                                Err(TryRecvError::Empty) => {
+/*                                     break; */
+                                }
+                                Err(TryRecvError::Disconnected) => {
+                                    return Err(anyhow!(
+                                        "Coverage worker died; this should not happen!"
+                                    ))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
-            self.print_stats();
+            self.print_stats(&cov_worker_messages);
 
             if !afl_output_ok {
                 if let Ok(afl_log) =
@@ -249,7 +327,11 @@ impl Fuzz {
                 for file in afl_corpus {
                     if let Some((file_id, file_name)) = extract_file_id(&file) {
                         if file_id > last_synced_queue_id {
-                            let _ = fs::copy(&file, fuzzer_sync_dir.join(&file));
+                            let copy_destination = match self.honggfuzz() {
+                                true => format!("{}/queue/{file_name}", self.output_target()),
+                                false => format!("{}/corpus/{file_name}", self.output_target()),
+                            };
+                            let _ = fs::copy(&file, copy_destination);
                             last_synced_queue_id = file_id;
                         }
                     }
@@ -266,7 +348,6 @@ impl Fuzz {
                 return Ok(());
             }
         }
-        /*         cov_worker_thread.join().unwrap(); */
     }
 
     // Spawns new fuzzers
@@ -619,7 +700,7 @@ impl Fuzz {
         Ok(())
     }
 
-    pub fn print_stats(&self) {
+    pub fn print_stats(&self, cov_worker_messages: &VecDeque<String>) {
         let fuzzer_name = format!(" {} ", self.target);
 
         let reset = "\x1b[0m";
@@ -810,6 +891,14 @@ impl Fuzz {
             screen += &format!("│  {gray}total execs :{reset} {hf_total_execs:17.17} │{gray}timeouts saved :{reset} {hf_timeouts:17.17} │\n");
             screen += &format!("│                                  │   {gray}no find for :{reset} {hf_new_finds:17.17} │\n");
         }
+        if self.coverage_worker {
+            screen += &format!(
+                "├─ {blue}coverage-worker{hf_status:0}─────────────────────────────────────────────┬────┘\n"
+            );
+            for message in cov_worker_messages {
+                screen += &format!("├─ {message}\n");
+            }
+        }
         screen += "└──────────────────────────────────────────────────────────────────────┘";
         eprintln!("{screen}");
     }
@@ -882,4 +971,17 @@ pub fn extract_file_id(file: &Path) -> Option<(u32, String)> {
     let str_id = id_part.strip_prefix("id:")?;
     let file_id = str_id.parse::<u32>().ok()?;
     Some((file_id, String::from(file_name)))
+}
+
+fn should_thread_exit<T>(rx: &mut Receiver<T>) -> Result<bool, anyhow::Error> {
+    match rx.try_recv() {
+        Ok(_) => {
+            // We got ctrl-c time to exit!
+            return Ok(true);
+        }
+        Err(TryRecvError::Disconnected) => {
+            return Err(anyhow!("channel disconnected; this should not happen!"))
+        }
+        Err(TryRecvError::Empty) => Ok(false),
+    }
 }

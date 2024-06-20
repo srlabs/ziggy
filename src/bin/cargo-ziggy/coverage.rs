@@ -1,5 +1,5 @@
 use crate::{find_target, Cover};
-use anyhow::{anyhow, Context, Error, Result};
+use anyhow::{anyhow, Context, Result};
 use glob::glob;
 use std::{env, fs, path::PathBuf, process};
 
