@@ -11,7 +11,7 @@
 // could assert that a certain value satisfies a property.
 fn invariant_fuzz(data: &str) {
     if let Ok(parsed) = url::Url::parse(data) {
-        #[cfg(not(fuzzing))]
+        #[cfg(not(feature = "fuzzing"))]
         println!("{data} => {parsed}");
         // We assert that the string representation of the URL always contains a ':'
         // character.
