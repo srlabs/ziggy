@@ -45,3 +45,6 @@ cli = [
     "cargo_metadata",
 ]
 coverage = ["fork", "libc"]
+
+[lints.clippy]
+needless_doctest_main = "allow"

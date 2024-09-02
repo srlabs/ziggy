@@ -7,7 +7,7 @@ use std::{
 
 fn kill_subprocesses_recursively(pid: &str) {
     let subprocesses = process::Command::new("pgrep")
-        .arg(&format!("-P{pid}"))
+        .arg(format!("-P{pid}"))
         .output()
         .unwrap();
 

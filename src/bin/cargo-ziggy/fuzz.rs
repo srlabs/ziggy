@@ -800,7 +800,7 @@ impl fmt::Display for FuzzingConfig {
 
 pub fn kill_subprocesses_recursively(pid: &str) -> Result<(), Error> {
     let subprocesses = process::Command::new("pgrep")
-        .arg(&format!("-P{pid}"))
+        .arg(format!("-P{pid}"))
         .output()?;
 
     for subprocess in std::str::from_utf8(&subprocesses.stdout)?.split('\n') {
