@@ -71,6 +71,7 @@ impl Fuzz {
         let build = Build {
             no_afl: !self.afl(),
             no_honggfuzz: !self.honggfuzz(),
+            release: self.release,
         };
         build.build().context("Failed to build the fuzzers")?;
 
@@ -934,6 +935,7 @@ impl FuzzingConfig {
 }
 
 use std::fmt;
+
 impl fmt::Display for FuzzingConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
@@ -942,7 +944,7 @@ impl fmt::Display for FuzzingConfig {
 
 pub fn kill_subprocesses_recursively(pid: &str) -> Result<(), Error> {
     let subprocesses = process::Command::new("pgrep")
-        .arg(&format!("-P{pid}"))
+        .arg(format!("-P{pid}"))
         .output()?;
 
     for subprocess in std::str::from_utf8(&subprocesses.stdout)?.split('\n') {

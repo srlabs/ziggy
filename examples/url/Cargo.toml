@@ -7,3 +7,6 @@ publish = false
 [dependencies]
 url = "2.5.0"
 ziggy = { path = "../../", default-features = false }
+
+[features]
+fuzzing = []
