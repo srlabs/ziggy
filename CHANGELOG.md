@@ -1,5 +1,13 @@
 # Changes
 
+## 1.2.0 - 2024-09-16
+
+- Add recursive option to `cargo ziggy run` (#93)
+- Add support for different grcov coverage output types (#94)
+- Add support for building a target in `--release` mode (#95)
+- Fix CI (#98)
+- Thank you @R9295 and @kevin-valerio for these changes!
+
 ## 1.1.0 - 2024-05-22
 
 - Upgrade honggfuzz version
