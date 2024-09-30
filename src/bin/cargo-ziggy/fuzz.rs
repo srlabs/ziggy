@@ -59,8 +59,18 @@ impl Fuzz {
     }
 
     /// Returns true if Honggfuzz is enabled
+    // This definition could be a one-liner but it was expanded for clarity
     pub fn honggfuzz(&self) -> bool {
-        self.no_afl || (!self.no_honggfuzz && self.jobs > 1)
+        if self.fuzz_binary() {
+            // We cannot use honggfuzz in binary mode
+            false
+        } else if self.no_afl {
+            // If we have "no_afl" set then honggfuzz is always enabled
+            true
+        } else {
+            // If honggfuzz is not disabled, we use it if there are more than 1 jobs
+            !self.no_honggfuzz && self.jobs > 1
+        }
     }
 
     fn fuzz_binary(&self) -> bool {
@@ -69,26 +79,16 @@ impl Fuzz {
 
     // Manages the continuous running of fuzzers
     pub fn fuzz(&mut self) -> Result<(), anyhow::Error> {
-        let fuzz_binary = self.fuzz_binary();
-
-        // Note: we cannot fuzz AFL++ instrumented binaries with honggfuzz so if we
-        // are fuzzing an already instrumented binary - then we run AFL++ only
-        if self.fuzz_binary() {
-            self.no_honggfuzz = true;
-        }
-
-        if !fuzz_binary {
-            let build = Build {
-                no_afl: !self.afl(),
-                no_honggfuzz: !self.honggfuzz(),
-                release: self.release,
-            };
-            build.build().context("Failed to build the fuzzers")?;
-        }
+        let build = Build {
+            no_afl: !self.afl(),
+            no_honggfuzz: !self.honggfuzz(),
+            release: self.release,
+        };
+        build.build().context("Failed to build the fuzzers")?;
 
         info!("Running fuzzer");
 
-        self.target = if fuzz_binary {
+        self.target = if self.fuzz_binary() {
             self.binary
                 .as_ref()
                 .expect("invariant; should never occur")
@@ -267,7 +267,7 @@ impl Fuzz {
         let (afl_jobs, honggfuzz_jobs) = {
             if self.no_afl {
                 (0, self.jobs)
-            } else if self.no_honggfuzz {
+            } else if self.no_honggfuzz || self.fuzz_binary() {
                 (self.jobs, 0)
             } else {
                 // we assign roughly 2/3 to AFL++, 1/3 to honggfuzz, however do
@@ -364,10 +364,9 @@ impl Fuzz {
                     0 => "AFL_FINAL_SYNC",
                     _ => "_DUMMY_VAR",
                 };
-                let target_path = if self.fuzz_binary() {
-                    self.target.clone()
-                } else {
-                    format!("./target/afl/debug/{}", self.target)
+                let target_path = match self.fuzz_binary() {
+                    true => self.target.clone(),
+                    false => format!("./target/afl/debug/{}", self.target),
                 };
                 fuzzer_handles.push(
                     process::Command::new(cargo.clone())
