@@ -53,28 +53,49 @@ impl Fuzz {
         format!("{}/{}", self.ziggy_output.display(), self.target)
     }
 
-    /// Returns true iff AFL++ is enabled
+    /// Returns true if AFL++ is enabled
     pub fn afl(&self) -> bool {
         !self.no_afl
     }
 
-    /// Returns true iff Honggfuzz is enabled
+    /// Returns true if Honggfuzz is enabled
     pub fn honggfuzz(&self) -> bool {
         self.no_afl || (!self.no_honggfuzz && self.jobs > 1)
     }
 
+    fn fuzz_binary(&self) -> bool {
+        self.binary.is_some()
+    }
+
     // Manages the continuous running of fuzzers
     pub fn fuzz(&mut self) -> Result<(), anyhow::Error> {
-        let build = Build {
-            no_afl: !self.afl(),
-            no_honggfuzz: !self.honggfuzz(),
-            release: self.release,
-        };
-        build.build().context("Failed to build the fuzzers")?;
+        let fuzz_binary = self.fuzz_binary();
+
+        // Note: we cannot fuzz AFL++ instrumented binaries with honggfuzz so if we
+        // are fuzzing an already instrumented binary - then we run AFL++ only
+        if self.fuzz_binary() {
+            self.no_honggfuzz = true;
+        }
+
+        if !fuzz_binary {
+            let build = Build {
+                no_afl: !self.afl(),
+                no_honggfuzz: !self.honggfuzz(),
+                release: self.release,
+            };
+            build.build().context("Failed to build the fuzzers")?;
+        }
 
         info!("Running fuzzer");
 
-        self.target = find_target(&self.target).context("⚠️  couldn't find target when fuzzing")?;
+        self.target = if fuzz_binary {
+            self.binary.as_ref()
+                .expect("invariant; should never occur")
+                .display()
+                .to_string()
+        } else {
+            find_target(&self.target).context("⚠️  couldn't find target when fuzzing")?
+        };
 
         let time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
 
