@@ -251,7 +251,7 @@ impl Fuzz {
     pub fn spawn_new_fuzzers(&self) -> Result<Vec<process::Child>, anyhow::Error> {
         // No fuzzers for you
         if self.no_afl && self.no_honggfuzz {
-            return Err(anyhow!("Pick at least one fuzzer"));
+            return Err(anyhow!("Pick at least one fuzzer.\nNote: -b/--binary implies --no-honggfuzz"));
         }
 
         info!("Spawning new fuzzers");
