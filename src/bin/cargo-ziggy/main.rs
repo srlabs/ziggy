@@ -168,6 +168,10 @@ pub struct Fuzz {
     /// AFL++ configuration
     #[clap(short = 'C', long, default_value = "generic")]
     config: FuzzingConfig,
+
+    /// Fuzz an already AFL++ instrumented binary; the ziggy way
+    #[clap(short, long)]
+    binary: Option<PathBuf>,
 }
 
 #[derive(Args)]
