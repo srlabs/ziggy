@@ -364,7 +364,11 @@ impl Fuzz {
                     0 => "AFL_FINAL_SYNC",
                     _ => "_DUMMY_VAR",
                 };
-
+                let target_path = if self.fuzz_binary() {
+                    self.target.clone()
+                } else {
+                    format!("./target/afl/debug/{}", self.target)
+                };
                 fuzzer_handles.push(
                     process::Command::new(cargo.clone())
                         .args(
@@ -391,7 +395,7 @@ impl Fuzz {
                             .filter(|a| a != &&""),
                         )
                         .args(self.afl_flags.clone())
-                        .arg(format!("./target/afl/debug/{}", self.target))
+                        .arg(target_path)
                         .env("AFL_AUTORESUME", "1")
                         .env("AFL_TESTCACHE_SIZE", "100")
                         .env("AFL_FAST_CAL", "1")
