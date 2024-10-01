@@ -19,7 +19,7 @@ impl Cover {
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
         let mut coverage_rustflags = env::var("COVERAGE_RUSTFLAGS")
-            .unwrap_or_else(|_| String::from("--cfg=coverage -Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort"));
+            .unwrap_or_else(|_| String::from("--cfg=coverage -Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort "));
         coverage_rustflags.push_str(&env::var("RUSTFLAGS").unwrap_or_default());
 
         // We build the runner with the appropriate flags for coverage
