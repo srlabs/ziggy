@@ -135,14 +135,6 @@ impl Fuzz {
                 .stderr(process::Stdio::piped())
                 .spawn()?
                 .wait()?;
-
-            // We create an initial corpus file, so that AFL++ starts-up properly
-            let mut initial_corpus = File::create(self.corpus() + "/init")?;
-            writeln!(
-                &mut initial_corpus,
-                "00000000000000000000********0000########111111111111111111111111"
-            )?;
-            drop(initial_corpus);
         }
 
         // We create an initial corpus file, so that AFL++ starts-up properly if corpus is empty
@@ -366,7 +358,13 @@ impl Fuzz {
                 };
                 let target_path = match self.fuzz_binary() {
                     true => self.target.clone(),
-                    false => format!("./target/afl/debug/{}", self.target),
+                    false => {
+                        if self.release {
+                            format!("./target/afl/release/{}", self.target)
+                        } else {
+                            format!("./target/afl/debug/{}", self.target)
+                        }
+                    }
                 };
                 fuzzer_handles.push(
                     process::Command::new(cargo.clone())
