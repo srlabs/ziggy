@@ -55,7 +55,7 @@ To create a fuzzer, simply add `ziggy` as a dependency.
 
 ```toml
 [dependencies]
-ziggy = { version = "1.2.0", default-features = false }
+ziggy = { version = "1.2", default-features = false }
 ```
 
 Then use the `fuzz!` macro inside your `main` to create a harness.
