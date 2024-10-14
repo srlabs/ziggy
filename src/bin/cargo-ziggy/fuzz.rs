@@ -138,9 +138,12 @@ impl Fuzz {
         }
 
         // We create an initial corpus file, so that AFL++ starts-up properly if corpus is empty
-        let mut initial_corpus = File::create(self.corpus() + "/init")?;
-        writeln!(&mut initial_corpus, "00000000")?;
-        drop(initial_corpus);
+        let is_empty = fs::read_dir(self.corpus())?.next().is_none(); // check if corpus has some seeds
+        if is_empty {
+            let mut initial_corpus = File::create(self.corpus() + "/init")?;
+            writeln!(&mut initial_corpus, "00000000")?;
+            drop(initial_corpus);
+        }
 
         let mut processes = self.spawn_new_fuzzers()?;
 
