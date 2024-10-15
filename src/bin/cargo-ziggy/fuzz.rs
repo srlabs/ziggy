@@ -79,12 +79,14 @@ impl Fuzz {
 
     // Manages the continuous running of fuzzers
     pub fn fuzz(&mut self) -> Result<(), anyhow::Error> {
-        let build = Build {
-            no_afl: !self.afl(),
-            no_honggfuzz: !self.honggfuzz(),
-            release: self.release,
-        };
-        build.build().context("Failed to build the fuzzers")?;
+        if !self.fuzz_binary() {
+            let build = Build {
+                no_afl: !self.afl(),
+                no_honggfuzz: !self.honggfuzz(),
+                release: self.release,
+            };
+            build.build().context("Failed to build the fuzzers")?;
+        }
 
         info!("Running fuzzer");
 
