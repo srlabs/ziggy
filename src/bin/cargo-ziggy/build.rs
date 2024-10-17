@@ -61,8 +61,6 @@ impl Build {
                 .env("AFL_LLVM_CMPGLOG", "1") // for afl.rs feature "plugins"
                 .env("RUSTFLAGS", rust_flags)
                 .env("RUSTDOCFLAGS", rust_doc_flags)
-                // If we're using ASAN, we must be on nightly - let's force the usage of AFL++ plugins
-                .env("AFLRS_REQUIRE_PLUGINS", if self.asan { "1" } else { "0" })
                 .spawn()?
                 .wait()
                 .context("Error spawning afl build command")?;
