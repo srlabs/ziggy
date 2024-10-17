@@ -4,8 +4,8 @@ use console::style;
 use std::{env, process};
 
 /// Target for ASAN builds
-/// Note: we need to supply due to -Z build-std
-/// Note: we need to use -Z build-std or else many macros cannot be build when using ASAN
+/// Note: we need to supply a target due to -Z build-std
+/// Note: we need to use -Z build-std or else many macros cannot be built when using ASAN
 pub const ASAN_TARGET: &str = "x86_64-unknown-linux-gnu";
 
 impl Build {
