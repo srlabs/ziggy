@@ -180,6 +180,10 @@ pub struct Fuzz {
     /// Build with ASAN
     #[clap(long = "asan", action)]
     asan: bool,
+
+    /// Foreign fuzzer directories to sync with (AFL++ -F option)
+    #[clap(long = "foreign-sync", short = 'F', action)]
+    foreign_sync_dirs: Vec<PathBuf>,
 }
 
 #[derive(Args)]
@@ -205,7 +209,7 @@ pub struct Run {
         short, long, env = "ZIGGY_OUTPUT", value_parser, value_name = "DIR", default_value = DEFAULT_OUTPUT_DIR
     )]
     ziggy_output: PathBuf,
-    
+
     /// Build with ASAN
     #[clap(long = "asan", action)]
     asan: bool,
@@ -358,7 +362,6 @@ fn main() -> Result<(), anyhow::Error> {
 }
 
 pub fn find_target(target: &String) -> Result<String, anyhow::Error> {
-
     // If the target is already set, we're done here
     if target != DEFAULT_UNMODIFIED_TARGET {
         info!("    Using given target {target}");

@@ -16,9 +16,9 @@ impl Run {
 
         let mut args = vec!["rustc", "--target-dir=target/runner"];
         let asan_target_str = format!("--target={ASAN_TARGET}");
-        let mut rust_flags =  env::var("RUSTFLAGS").unwrap_or_default();
+        let mut rust_flags = env::var("RUSTFLAGS").unwrap_or_default();
         let mut rust_doc_flags = env::var("RUSTDOCFLAGS").unwrap_or_default();
-        
+
         if self.asan {
             info!("Building runner with ASAN");
             args.push(&asan_target_str);
@@ -75,10 +75,10 @@ impl Run {
                     .replace("{target_name}", &target)
             })
             .collect();
-        
+
         let runner_path = match self.asan {
             true => format!("./target/runner/{ASAN_TARGET}/debug/{}", target),
-            false => format!("./target/runner/debug/{}", target)
+            false => format!("./target/runner/debug/{}", target),
         };
 
         process::Command::new(runner_path)

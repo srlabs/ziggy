@@ -1,5 +1,5 @@
-use crate::*;
 use crate::build::ASAN_TARGET;
+use crate::*;
 use anyhow::{anyhow, Error};
 use console::{style, Term};
 use glob::glob;
@@ -297,10 +297,11 @@ impl Fuzz {
             ];
 
             for job_num in 0..afl_jobs {
+                let is_main_instance = job_num == 0;
                 // We set the fuzzer name, and if it's the main or a secondary fuzzer
-                let fuzzer_name = match job_num {
-                    0 => String::from("-Mmainaflfuzzer"),
-                    n => format!("-Ssecondaryfuzzer{n}"),
+                let fuzzer_name = match is_main_instance {
+                    true => String::from("-Mmainaflfuzzer"),
+                    false => format!("-Ssecondaryfuzzer{job_num}"),
                 };
                 // We only sync to the shared corpus if Honggfuzz is also running
                 let use_shared_corpus = match (self.no_honggfuzz, job_num) {
@@ -368,15 +369,21 @@ impl Fuzz {
                     false => {
                         if self.release {
                             format!("./target/afl/release/{}", self.target)
+                        } else if self.asan {
+                            format!("./target/afl/{ASAN_TARGET}/debug/{}", self.target)
                         } else {
-                            if self.asan {
-                                format!("./target/afl/{ASAN_TARGET}/debug/{}", self.target)
-                            } else {
-                                format!("./target/afl/debug/{}", self.target)
-                            }
+                            format!("./target/afl/debug/{}", self.target)
                         }
                     }
                 };
+
+                let mut afl_flags = self.afl_flags.clone();
+                if is_main_instance {
+                    for path in &self.foreign_sync_dirs {
+                        afl_flags.push(format!("-F {}", path.display()))
+                    }
+                }
+
                 fuzzer_handles.push(
                     process::Command::new(cargo.clone())
                         .args(
@@ -402,7 +409,7 @@ impl Fuzz {
                             .iter()
                             .filter(|a| a != &&""),
                         )
-                        .args(self.afl_flags.clone())
+                        .args(afl_flags)
                         .arg(target_path)
                         .env("AFL_AUTORESUME", "1")
                         .env("AFL_TESTCACHE_SIZE", "100")

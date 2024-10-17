@@ -31,7 +31,7 @@ impl Build {
 
             // Add the --release argument if self.release is true
             if self.release {
-                assert_eq!(self.release, false, "cannot use --release for ASAN builds");
+                assert!(!self.release, "cannot use --release for ASAN builds");
                 afl_args.push("--release");
                 info!("Building in release mode");
             }
