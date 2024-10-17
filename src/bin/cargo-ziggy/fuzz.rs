@@ -1,4 +1,5 @@
 use crate::*;
+use crate::build::ASAN_TARGET;
 use anyhow::{anyhow, Error};
 use console::{style, Term};
 use glob::glob;
@@ -84,6 +85,7 @@ impl Fuzz {
                 no_afl: !self.afl(),
                 no_honggfuzz: !self.honggfuzz(),
                 release: self.release,
+                asan: self.asan,
             };
             build.build().context("Failed to build the fuzzers")?;
         }
@@ -367,7 +369,11 @@ impl Fuzz {
                         if self.release {
                             format!("./target/afl/release/{}", self.target)
                         } else {
-                            format!("./target/afl/debug/{}", self.target)
+                            if self.asan {
+                                format!("./target/afl/{ASAN_TARGET}/debug/{}", self.target)
+                            } else {
+                                format!("./target/afl/debug/{}", self.target)
+                            }
                         }
                     }
                 };
