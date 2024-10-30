@@ -895,11 +895,14 @@ impl Fuzz {
         }
         if self.coverage_worker {
             screen += &format!(
-                "├─ {blue}coverage worker{reset}───────────────┬─────────────────────────────────────┘\n"
+                "├─ {blue}coverage worker{reset}─────┬───────────────────────────────────────────────┘\n"
             );
-            screen += &format!("├─ {:29.29} │\n", cov_worker_status);
+            // TODO Add countdown
+            screen += &format!("│{gray}status :{reset} {cov_worker_status:12.12} │\n");
+            screen += "└──────────────────────┘";
+        } else {
+            screen += "└──────────────────────────────────────────────────────────────────────┘\n";
         }
-        screen += "└────────────────────────────────┘";
         eprintln!("{screen}");
     }
 }
