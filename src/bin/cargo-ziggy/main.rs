@@ -16,7 +16,6 @@ use crate::fuzz::FuzzingConfig;
 use anyhow::{anyhow, Context, Result};
 #[cfg(feature = "cli")]
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use std::sync::mpsc::Receiver;
 #[cfg(feature = "cli")]
 use std::{fs, path::PathBuf};
 
@@ -335,18 +334,11 @@ pub struct AddSeeds {
 
 #[cfg(feature = "cli")]
 fn main() -> Result<(), anyhow::Error> {
-    use std::sync::mpsc::channel;
-
     env_logger::init();
     let Cargo::Ziggy(command) = Cargo::parse();
     match command {
         Ziggy::Build(args) => args.build().context("Failed to build the fuzzers"),
-        Ziggy::Fuzz(mut args) => {
-            let (tx, rx) = channel();
-            ctrlc::set_handler(move || tx.send(()).expect("Could not send signal on channel."))
-                .expect("Error setting Ctrl-C handler");
-            args.fuzz(rx).context("Failure running fuzzers")
-        }
+        Ziggy::Fuzz(mut args) => args.fuzz().context("Failure running fuzzers"),
         Ziggy::Run(mut args) => args.run().context("Failure running inputs"),
         Ziggy::Minimize(mut args) => args.minimize().context("Failure running minimization"),
         Ziggy::Cover(mut args) => args
