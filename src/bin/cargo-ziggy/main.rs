@@ -177,6 +177,10 @@ pub struct Fuzz {
     /// Coverage generation interval in minutes
     #[clap(long, default_value = "15")]
     coverage_interval: u64,
+
+    /// Fuzz an already AFL++ instrumented binary; the ziggy way
+    #[clap(short, long)]
+    binary: Option<PathBuf>,
 }
 
 #[derive(Args)]
