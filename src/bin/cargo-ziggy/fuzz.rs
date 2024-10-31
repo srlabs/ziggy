@@ -191,13 +191,14 @@ impl Fuzz {
                 (true, false, wait) if wait < self.coverage_interval => {
                     format!("waiting {} minutes", self.coverage_interval - wait)
                 }
-                (true, _, _) => String::from("running"),
+                (true, false, _) => String::from("starting"),
+                (true, true, _) => String::from("running"),
                 (false, _, _) => String::from("disabled"),
             };
 
             self.print_stats(&coverage_status);
 
-            if coverage_status.as_str() == "running" {
+            if coverage_status.as_str() == "starting" {
                 *coverage_now_running.lock().unwrap() = true;
 
                 let main_corpus = main_corpus.clone();
@@ -206,7 +207,7 @@ impl Fuzz {
                 let output_target = output_target.clone();
                 let cov_start_time = Arc::clone(&cov_start_time);
                 let cov_end_time = Arc::clone(&cov_end_time);
-                let coverage_now_running_thread = Arc::clone(&coverage_now_running);
+                let coverage_now_running = Arc::clone(&coverage_now_running);
 
                 thread::spawn(move || {
                     let mut seen_new_entry = false;
@@ -225,20 +226,19 @@ impl Fuzz {
                             .unwrap()
                             .elapsed()
                             .unwrap_or_default();
-                        // TODO Handle corpus entries that were created during the last run.
                         if prev_start_time
                             .map(|s| s.elapsed())
                             .unwrap_or(Duration::MAX)
                             >= created
                         {
-                            process::Command::new(format!("./target/coverage/debug/{}", &target))
-                                .arg(format!("{}", entry.display()))
-                                .stdout(Stdio::null())
-                                .stderr(Stdio::null())
-                                .spawn()
-                                .unwrap()
-                                .wait()
-                                .unwrap();
+                            let _ = process::Command::new(format!(
+                                "./target/coverage/debug/{}",
+                                &target
+                            ))
+                            .arg(format!("{}", entry.display()))
+                            .stdout(Stdio::null())
+                            .stderr(Stdio::null())
+                            .status();
                             seen_new_entry = true;
                         }
                     }
@@ -250,7 +250,7 @@ impl Fuzz {
                     }
 
                     *cov_end_time.lock().unwrap() = Instant::now();
-                    *coverage_now_running_thread.lock().unwrap() = false;
+                    *coverage_now_running.lock().unwrap() = false;
                 });
             }
 
