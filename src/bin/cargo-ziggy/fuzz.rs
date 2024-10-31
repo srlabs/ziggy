@@ -168,10 +168,9 @@ impl Fuzz {
             info!("building coverage worker");
             Cover::build_runner()?;
         }
-        let last_coverage_time = Arc::new(Mutex::new(Instant::now()));
-        //let mut last_coverage_time = Instant::now();
+        let cov_start_time = Arc::new(Mutex::new(None));
+        let cov_end_time = Arc::new(Mutex::new(Instant::now()));
         let coverage_now_running = Arc::new(Mutex::new(false));
-        // let mut coverage_now_running = false;
         let workspace_root = cargo_metadata::MetadataCommand::new()
             .exec()?
             .workspace_root
@@ -187,9 +186,11 @@ impl Fuzz {
             let coverage_status = match (
                 self.coverage_worker,
                 *coverage_now_running.lock().unwrap(),
-                last_coverage_time.lock().unwrap().elapsed().as_secs() / 60,
+                cov_end_time.lock().unwrap().elapsed().as_secs() / 60,
             ) {
-                (true, false, wait) if wait < self.coverage_interval => String::from("waiting"),
+                (true, false, wait) if wait < self.coverage_interval => {
+                    format!("waiting {} minutes", self.coverage_interval - wait)
+                }
                 (true, _, _) => String::from("running"),
                 (false, _, _) => String::from("disabled"),
             };
@@ -197,31 +198,25 @@ impl Fuzz {
             self.print_stats(&coverage_status);
 
             if coverage_status.as_str() == "running" {
-                //let string_clone = Arc::clone(&shared_string);
-
-                //let handle = thread::spawn(move || {
-                //let mut data = string_clone.lock().unwrap();
-                //data.push_str(" world");
-                //});
-                let mut shared_cov_now_running = coverage_now_running.lock().unwrap();
-                *shared_cov_now_running = true;
+                *coverage_now_running.lock().unwrap() = true;
 
                 let main_corpus = main_corpus.clone();
                 let target = target.clone();
                 let workspace_root = workspace_root.clone();
                 let output_target = output_target.clone();
-                let last_coverage_time_thread = Arc::clone(&last_coverage_time);
+                let cov_start_time = Arc::clone(&cov_start_time);
+                let cov_end_time = Arc::clone(&cov_end_time);
                 let coverage_now_running_thread = Arc::clone(&coverage_now_running);
 
                 thread::spawn(move || {
-                    let entries = std::fs::read_dir(&main_corpus).unwrap();
-                    let mut new_entries = 0;
-                    let last_cov_time = {
-                        let unlocked = last_coverage_time_thread.lock().unwrap();
+                    let mut seen_new_entry = false;
+                    let prev_start_time = {
+                        let unlocked = cov_start_time.lock().unwrap();
                         *unlocked
                     };
-                    for entry in entries.flatten() {
-                        let entry = entry.path();
+                    *cov_start_time.lock().unwrap() = Some(Instant::now());
+                    let entries = std::fs::read_dir(&main_corpus).unwrap();
+                    for entry in entries.flatten().map(|e| e.path()) {
                         // We only want to run corpus entries created since the last time we ran.
                         let created = entry
                             .metadata()
@@ -231,7 +226,11 @@ impl Fuzz {
                             .elapsed()
                             .unwrap_or_default();
                         // TODO Handle corpus entries that were created during the last run.
-                        if last_cov_time.elapsed() >= created {
+                        if prev_start_time
+                            .map(|s| s.elapsed())
+                            .unwrap_or(Duration::MAX)
+                            >= created
+                        {
                             process::Command::new(format!("./target/coverage/debug/{}", &target))
                                 .arg(format!("{}", entry.display()))
                                 .stdout(Stdio::null())
@@ -240,20 +239,18 @@ impl Fuzz {
                                 .unwrap()
                                 .wait()
                                 .unwrap();
-                            new_entries += 1;
+                            seen_new_entry = true;
                         }
                     }
-                    if new_entries > 0 {
+                    if seen_new_entry {
                         let coverage_dir = output_target + "/coverage";
                         let _ = fs::remove_dir_all(&coverage_dir);
                         Cover::run_grcov(&target.clone(), "html", &coverage_dir, &workspace_root)
                             .unwrap();
                     }
 
-                    let mut unlock_last_cov_time = last_coverage_time_thread.lock().unwrap();
-                    *unlock_last_cov_time = Instant::now();
-                    let mut end_cov_now_running = coverage_now_running_thread.lock().unwrap();
-                    *end_cov_now_running = false;
+                    *cov_end_time.lock().unwrap() = Instant::now();
+                    *coverage_now_running_thread.lock().unwrap() = false;
                 });
             }
 
@@ -895,11 +892,11 @@ impl Fuzz {
         }
         if self.coverage_worker {
             screen += &format!(
-                "├─ {blue}coverage worker{reset}─────┬───────────────────────────────────────────────┘\n"
+                "├─ {blue}coverage{reset} {green}enabled{reset} ───────────┬───────────────────────────────────────┘\n"
             );
             // TODO Add countdown
-            screen += &format!("│{gray}status :{reset} {cov_worker_status:12.12} │\n");
-            screen += "└──────────────────────┘";
+            screen += &format!("│{gray}status :{reset} {cov_worker_status:20.20} │\n");
+            screen += "└──────────────────────────────┘";
         } else {
             screen += "└──────────────────────────────────────────────────────────────────────┘\n";
         }
