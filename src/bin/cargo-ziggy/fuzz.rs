@@ -169,16 +169,15 @@ impl Fuzz {
                 {
                     if afl_log.contains("ready to roll") {
                         afl_output_ok = true;
-                    } else if afl_log.contains("echo core >/proc/sys/kernel/core_pattern") {
+                    } else if afl_log.contains("echo core >/proc/sys/kernel/core_pattern")
+                        || afl_log.contains("cd /sys/devices/system/cpu")
+                    {
                         stop_fuzzers(&mut processes)?;
-                        eprintln!("AFL++ needs you to run the following command before it can start fuzzing:\n");
-                        eprintln!("    echo core >/proc/sys/kernel/core_pattern\n");
-                        return Ok(());
-                    } else if afl_log.contains("cd /sys/devices/system/cpu") {
-                        stop_fuzzers(&mut processes)?;
-                        eprintln!("AFL++ needs you to run the following commands before it can start fuzzing:\n");
-                        eprintln!("    cd /sys/devices/system/cpu");
-                        eprintln!("    echo performance | tee cpu*/cpufreq/scaling_governor\n");
+                        eprintln!("We highly recommend you configure your system for better performance:\n");
+                        eprintln!("    cargo afl system-config\n");
+                        eprintln!(
+                            "Or set AFL_SKIP_CPUFREQ and AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES\n"
+                        );
                         return Ok(());
                     }
                 }
