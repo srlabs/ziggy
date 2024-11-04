@@ -53,9 +53,9 @@ fn asan_crashes() {
 
     // cargo ziggy build
     let build_status = process::Command::new(&cargo_ziggy)
-        .arg("+nightly")
         .arg("ziggy")
         .arg("build")
+        .arg("--asan")
         .arg("--no-honggfuzz")
         .current_dir(&fuzzer_directory)
         .status()
@@ -65,13 +65,12 @@ fn asan_crashes() {
 
     // cargo ziggy fuzz --asan
     let fuzzer = process::Command::new(&cargo_ziggy)
-        .arg("+nightly")
         .arg("ziggy")
         .arg("fuzz")
         .arg("--asan")
         .env("ZIGGY_OUTPUT", format!("{}", temp_dir_path.display()))
-        .env("AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES", "1")
-        .env("AFL_SKIP_CPUFREQ", "1")
+        // .env("AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES", "1")
+        // .env("AFL_SKIP_CPUFREQ", "1")
         .current_dir(&fuzzer_directory)
         .spawn()
         .expect("failed to run `cargo ziggy fuzz`");
