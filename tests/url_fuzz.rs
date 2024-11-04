@@ -124,6 +124,7 @@ fn integration() {
         .join("minimization_honggfuzz.log")
         .is_file());
 
+    /* Removed until https://github.com/mozilla/grcov/issues/1240 has a fix
     // cargo ziggy cover
     let coverage = process::Command::new(&cargo_ziggy)
         .arg("ziggy")
@@ -139,6 +140,7 @@ fn integration() {
         .join("coverage")
         .join("index.html")
         .is_file());
+    */
 
     // cargo ziggy plot
     let plot = process::Command::new(&cargo_ziggy)
