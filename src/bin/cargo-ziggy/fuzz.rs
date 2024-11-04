@@ -53,28 +53,52 @@ impl Fuzz {
         format!("{}/{}", self.ziggy_output.display(), self.target)
     }
 
-    /// Returns true iff AFL++ is enabled
+    /// Returns true if AFL++ is enabled
     pub fn afl(&self) -> bool {
         !self.no_afl
     }
 
-    /// Returns true iff Honggfuzz is enabled
+    /// Returns true if Honggfuzz is enabled
+    // This definition could be a one-liner but it was expanded for clarity
     pub fn honggfuzz(&self) -> bool {
-        self.no_afl || (!self.no_honggfuzz && self.jobs > 1)
+        if self.fuzz_binary() {
+            // We cannot use honggfuzz in binary mode
+            false
+        } else if self.no_afl {
+            // If we have "no_afl" set then honggfuzz is always enabled
+            true
+        } else {
+            // If honggfuzz is not disabled, we use it if there are more than 1 jobs
+            !self.no_honggfuzz && self.jobs > 1
+        }
+    }
+
+    fn fuzz_binary(&self) -> bool {
+        self.binary.is_some()
     }
 
     // Manages the continuous running of fuzzers
     pub fn fuzz(&mut self) -> Result<(), anyhow::Error> {
-        let build = Build {
-            no_afl: !self.afl(),
-            no_honggfuzz: !self.honggfuzz(),
-            release: self.release,
-        };
-        build.build().context("Failed to build the fuzzers")?;
+        if !self.fuzz_binary() {
+            let build = Build {
+                no_afl: !self.afl(),
+                no_honggfuzz: !self.honggfuzz(),
+                release: self.release,
+            };
+            build.build().context("Failed to build the fuzzers")?;
+        }
 
         info!("Running fuzzer");
 
-        self.target = find_target(&self.target).context("⚠️  couldn't find target when fuzzing")?;
+        self.target = if self.fuzz_binary() {
+            self.binary
+                .as_ref()
+                .expect("invariant; should never occur")
+                .display()
+                .to_string()
+        } else {
+            find_target(&self.target).context("⚠️  couldn't find target when fuzzing")?
+        };
 
         let time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
 
@@ -113,20 +137,15 @@ impl Fuzz {
                 .stderr(process::Stdio::piped())
                 .spawn()?
                 .wait()?;
-
-            // We create an initial corpus file, so that AFL++ starts-up properly
-            let mut initial_corpus = File::create(self.corpus() + "/init")?;
-            writeln!(
-                &mut initial_corpus,
-                "00000000000000000000********0000########111111111111111111111111"
-            )?;
-            drop(initial_corpus);
         }
 
         // We create an initial corpus file, so that AFL++ starts-up properly if corpus is empty
-        let mut initial_corpus = File::create(self.corpus() + "/init")?;
-        writeln!(&mut initial_corpus, "00000000")?;
-        drop(initial_corpus);
+        let is_empty = fs::read_dir(self.corpus())?.next().is_none(); // check if corpus has some seeds
+        if is_empty {
+            let mut initial_corpus = File::create(self.corpus() + "/init")?;
+            writeln!(&mut initial_corpus, "00000000")?;
+            drop(initial_corpus);
+        }
 
         let mut processes = self.spawn_new_fuzzers()?;
 
@@ -230,7 +249,9 @@ impl Fuzz {
     pub fn spawn_new_fuzzers(&self) -> Result<Vec<process::Child>, anyhow::Error> {
         // No fuzzers for you
         if self.no_afl && self.no_honggfuzz {
-            return Err(anyhow!("Pick at least one fuzzer"));
+            return Err(anyhow!(
+                "Pick at least one fuzzer.\nNote: -b/--binary implies --no-honggfuzz"
+            ));
         }
 
         info!("Spawning new fuzzers");
@@ -243,7 +264,7 @@ impl Fuzz {
         let (afl_jobs, honggfuzz_jobs) = {
             if self.no_afl {
                 (0, self.jobs)
-            } else if self.no_honggfuzz {
+            } else if self.no_honggfuzz || self.fuzz_binary() {
                 (self.jobs, 0)
             } else {
                 // we assign roughly 2/3 to AFL++, 1/3 to honggfuzz, however do
@@ -340,7 +361,16 @@ impl Fuzz {
                     0 => "AFL_FINAL_SYNC",
                     _ => "_DUMMY_VAR",
                 };
-
+                let target_path = match self.fuzz_binary() {
+                    true => self.target.clone(),
+                    false => {
+                        if self.release {
+                            format!("./target/afl/release/{}", self.target)
+                        } else {
+                            format!("./target/afl/debug/{}", self.target)
+                        }
+                    }
+                };
                 fuzzer_handles.push(
                     process::Command::new(cargo.clone())
                         .args(
@@ -367,7 +397,7 @@ impl Fuzz {
                             .filter(|a| a != &&""),
                         )
                         .args(self.afl_flags.clone())
-                        .arg(format!("./target/afl/debug/{}", self.target))
+                        .arg(target_path)
                         .env("AFL_AUTORESUME", "1")
                         .env("AFL_TESTCACHE_SIZE", "100")
                         .env("AFL_FAST_CAL", "1")
@@ -800,7 +830,7 @@ impl fmt::Display for FuzzingConfig {
 
 pub fn kill_subprocesses_recursively(pid: &str) -> Result<(), Error> {
     let subprocesses = process::Command::new("pgrep")
-        .arg(&format!("-P{pid}"))
+        .arg(format!("-P{pid}"))
         .output()?;
 
     for subprocess in std::str::from_utf8(&subprocesses.stdout)?.split('\n') {
