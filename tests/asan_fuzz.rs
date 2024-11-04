@@ -29,8 +29,12 @@ fn kill_subprocesses_recursively(pid: &str) {
 }
 
 #[test]
-#[cfg_attr(not(nightly), ignore)]
 fn asan_crashes() {
+    // Not optimal but seems to work fine
+    if !env!("CARGO").contains("nightly") {
+        println!("Not running nightly, skipping");
+        return;
+    }
     let unix_time = format!(
         "{}",
         SystemTime::now()
@@ -68,7 +72,7 @@ fn asan_crashes() {
         .current_dir(&fuzzer_directory)
         .spawn()
         .expect("failed to run `cargo ziggy fuzz`");
-    thread::sleep(Duration::from_secs(10));
+    thread::sleep(Duration::from_secs(20));
     kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
 
     assert!(temp_dir_path
