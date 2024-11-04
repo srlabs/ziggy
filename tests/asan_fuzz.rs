@@ -55,6 +55,7 @@ fn asan_crashes() {
     let build_status = process::Command::new(&cargo_ziggy)
         .arg("ziggy")
         .arg("build")
+        .arg("--no-honggfuzz")
         .current_dir(&fuzzer_directory)
         .status()
         .expect("failed to run `cargo ziggy build`");

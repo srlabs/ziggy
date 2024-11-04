@@ -96,7 +96,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "asan"
+name = "asan-fuzz"
 version = "0.1.0"
 dependencies = [
  "ziggy",
