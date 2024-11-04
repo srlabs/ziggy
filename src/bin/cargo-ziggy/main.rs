@@ -100,7 +100,7 @@ pub struct Build {
     #[clap(long = "release", action)]
     release: bool,
 
-    /// Build with ASAN
+    /// Build with ASAN (nightly only)
     #[clap(long = "asan", action)]
     asan: bool,
 }
@@ -177,7 +177,7 @@ pub struct Fuzz {
     #[clap(short, long)]
     binary: Option<PathBuf>,
 
-    /// Build with ASAN
+    /// Build with ASAN (nightly only)
     #[clap(long = "asan", action)]
     asan: bool,
 
@@ -210,7 +210,7 @@ pub struct Run {
     )]
     ziggy_output: PathBuf,
 
-    /// Build with ASAN
+    /// Build with ASAN (nightly only)
     #[clap(long = "asan", action)]
     asan: bool,
 }
