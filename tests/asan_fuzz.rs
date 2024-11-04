@@ -69,12 +69,12 @@ fn asan_crashes() {
         .arg("fuzz")
         .arg("--asan")
         .env("ZIGGY_OUTPUT", format!("{}", temp_dir_path.display()))
-        // .env("AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES", "1")
-        // .env("AFL_SKIP_CPUFREQ", "1")
+        .env("AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES", "1")
+        .env("AFL_SKIP_CPUFREQ", "1")
         .current_dir(&fuzzer_directory)
         .spawn()
         .expect("failed to run `cargo ziggy fuzz`");
-    thread::sleep(Duration::from_secs(20));
+    thread::sleep(Duration::from_secs(40));
     kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
 
     assert!(temp_dir_path
