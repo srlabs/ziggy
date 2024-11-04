@@ -53,6 +53,7 @@ fn asan_crashes() {
 
     // cargo ziggy build
     let build_status = process::Command::new(&cargo_ziggy)
+        .arg("+nightly")
         .arg("ziggy")
         .arg("build")
         .arg("--no-honggfuzz")
@@ -64,6 +65,7 @@ fn asan_crashes() {
 
     // cargo ziggy fuzz --asan
     let fuzzer = process::Command::new(&cargo_ziggy)
+        .arg("+nightly")
         .arg("ziggy")
         .arg("fuzz")
         .arg("--asan")
