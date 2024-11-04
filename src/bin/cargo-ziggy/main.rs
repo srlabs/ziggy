@@ -99,6 +99,10 @@ pub struct Build {
     /// Compile in release mode (--release)
     #[clap(long = "release", action)]
     release: bool,
+
+    /// Build with ASAN (nightly only)
+    #[clap(long = "asan", action)]
+    asan: bool,
 }
 
 #[derive(Args)]
@@ -172,6 +176,14 @@ pub struct Fuzz {
     /// Fuzz an already AFL++ instrumented binary; the ziggy way
     #[clap(short, long)]
     binary: Option<PathBuf>,
+
+    /// Build with ASAN (nightly only)
+    #[clap(long = "asan", action)]
+    asan: bool,
+
+    /// Foreign fuzzer directories to sync with (AFL++ -F option)
+    #[clap(long = "foreign-sync", short = 'F', action)]
+    foreign_sync_dirs: Vec<PathBuf>,
 }
 
 #[derive(Args)]
@@ -197,6 +209,10 @@ pub struct Run {
         short, long, env = "ZIGGY_OUTPUT", value_parser, value_name = "DIR", default_value = DEFAULT_OUTPUT_DIR
     )]
     ziggy_output: PathBuf,
+
+    /// Build with ASAN (nightly only)
+    #[clap(long = "asan", action)]
+    asan: bool,
 }
 
 #[derive(Args, Clone)]

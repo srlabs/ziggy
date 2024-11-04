@@ -4,20 +4,20 @@ on:
   push:
   pull_request:
 
-env: 
+env:
   CARGO_TERM_COLOR: always
 
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Cargo sort
         run: cargo install cargo-sort && cargo sort --check
       - name: Format
         run: cargo fmt --check
       - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings 
+        run: cargo clippy --workspace --all-targets -- -D warnings
   build_and_test:
     name: Rust project - latest
     runs-on: ubuntu-latest
@@ -28,10 +28,11 @@ jobs:
           - beta
           - nightly
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: sudo apt-get update
       - run: sudo apt-get install binutils-dev libunwind-dev gnuplot
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      - run: cargo install cargo-afl honggfuzz grcov 
+      - run: rustup component add rust-src
+      - run: cargo install cargo-afl honggfuzz grcov
       - run: cargo install --path . --verbose
-      - run: cargo test --verbose
+      - run: cargo test --verbose -- --show-output
