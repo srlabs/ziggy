@@ -76,8 +76,8 @@ impl Build {
         }
 
         if !self.no_honggfuzz {
-            assert_eq!(
-                self.no_afl, self.asan,
+            assert!(
+                !self.asan,
                 "Cannot build honggfuzz with ASAN for the moment. use --no-honggfuzz"
             );
             eprintln!("    {} honggfuzz", style("Building").red().bold());
