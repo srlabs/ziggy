@@ -1,5 +1,15 @@
 # Changes
 
+## 1.3.0 - 2024-11-05
+
+- Fix bugs (#102 and #103)
+- Add `--asan` fuzz option (#104)
+- Add `--coverage-worker` fuzz option (#96 and #105)
+- Improve message if AFL++ needs config (#106)
+- Remove dual minimization (#107)
+- Update `afl.rs` to `0.15.11`
+- Thank you @R9295 and @kevin-valerio for these changes!
+
 ## 1.2.1 - 2024-10-02
 
 - Add a "binary fuzzing mode" (#99)
