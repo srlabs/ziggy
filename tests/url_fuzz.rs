@@ -118,6 +118,18 @@ fn integration() {
         .join("logs")
         .join("minimization_afl.log")
         .is_file());
+
+    // cargo ziggy minimize -e honggfuzz
+    let minimization = process::Command::new(&cargo_ziggy)
+        .arg("ziggy")
+        .arg("minimize")
+        .arg("-ehonggfuzz")
+        .env("ZIGGY_OUTPUT", format!("{}", temp_dir_path.display()))
+        .current_dir(&fuzzer_directory)
+        .status()
+        .expect("failed to run `cargo ziggy minimize`");
+
+    assert!(minimization.success());
     assert!(temp_dir_path
         .join("url-fuzz")
         .join("logs")

@@ -1,6 +1,10 @@
 use crate::{find_target, Build, FuzzingEngines, Minimize};
 use anyhow::{Context, Result};
-use std::{env, fs::File, process, thread, time::Duration};
+use std::{
+    env,
+    fs::{self, File},
+    process,
+};
 
 impl Minimize {
     pub fn minimize(&mut self) -> Result<(), anyhow::Error> {
@@ -17,22 +21,11 @@ impl Minimize {
 
         info!("Minimizing corpus");
 
+        let entries = fs::read_dir(self.input_corpus())?;
+        let original_count = entries.filter_map(|entry| entry.ok()).count();
+        println!("Running minimization on a corpus of {original_count} files");
+
         match self.engine {
-            FuzzingEngines::All => {
-                let min_afl = self.clone();
-                let handle_afl = thread::spawn(move || {
-                    min_afl.minimize_afl().unwrap();
-                });
-                thread::sleep(Duration::from_millis(1000));
-
-                let min_honggfuzz = self.clone();
-                let handle_honggfuzz = thread::spawn(move || {
-                    min_honggfuzz.minimize_honggfuzz().unwrap();
-                });
-
-                handle_afl.join().unwrap();
-                handle_honggfuzz.join().unwrap();
-            }
             FuzzingEngines::AFLPlusPlus => {
                 self.minimize_afl()?;
             }
@@ -40,12 +33,33 @@ impl Minimize {
                 self.minimize_honggfuzz()?;
             }
         }
+
+        let min_entries = fs::read_dir(self.output_corpus())?;
+        let minimized_count = min_entries.filter_map(|entry| entry.ok()).count();
+        println!("Minimized corpus contains {minimized_count} files");
+
         Ok(())
+    }
+
+    fn input_corpus(&self) -> String {
+        self.input_corpus
+            .display()
+            .to_string()
+            .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
+            .replace("{target_name}", &self.target)
+    }
+
+    fn output_corpus(&self) -> String {
+        self.output_corpus
+            .display()
+            .to_string()
+            .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
+            .replace("{target_name}", &self.target)
     }
 
     // AFL++ minimization
     fn minimize_afl(&self) -> Result<(), anyhow::Error> {
-        info!("Minimizing with AFL++");
+        println!("Minimizing with AFL++");
         // The cargo executable
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
@@ -60,19 +74,9 @@ impl Minimize {
                 "afl",
                 "cmin",
                 "-i",
-                &self
-                    .input_corpus
-                    .display()
-                    .to_string()
-                    .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
-                    .replace("{target_name}", &self.target),
+                &self.input_corpus(),
                 "-o",
-                &self
-                    .output_corpus
-                    .display()
-                    .to_string()
-                    .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
-                    .replace("{target_name}", &self.target),
+                &self.output_corpus(),
                 "-T",
                 &jobs_option,
                 "--",
@@ -95,7 +99,7 @@ impl Minimize {
 
     // HONGGFUZZ minimization
     fn minimize_honggfuzz(&self) -> Result<(), anyhow::Error> {
-        info!("Minimizing with honggfuzz");
+        println!("Minimizing with honggfuzz");
         // The cargo executable
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
@@ -113,19 +117,7 @@ impl Minimize {
             )
             .env(
                 "HFUZZ_RUN_ARGS",
-                format!(
-                    "-i{} -M -o{}",
-                    self.input_corpus
-                        .display()
-                        .to_string()
-                        .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
-                        .replace("{target_name}", &self.target),
-                    self.output_corpus
-                        .display()
-                        .to_string()
-                        .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
-                        .replace("{target_name}", &self.target),
-                ),
+                format!("-i{} -M -o{}", &self.input_corpus(), &self.output_corpus(),),
             )
             .stderr(File::create(format!(
                 "{}/{}/logs/minimization_honggfuzz.log",

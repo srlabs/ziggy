@@ -27,7 +27,6 @@ pub const DEFAULT_UNMODIFIED_TARGET: &str = "automatically guessed";
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 pub enum FuzzingEngines {
-    All,
     AFLPlusPlus,
     Honggfuzz,
 }
@@ -239,7 +238,7 @@ pub struct Minimize {
     #[clap(short, long, value_name = "NUM", default_value_t = 1)]
     jobs: u32,
 
-    #[clap(short, long, value_enum, default_value_t = FuzzingEngines::All)]
+    #[clap(short, long, value_enum, default_value_t = FuzzingEngines::AFLPlusPlus)]
     engine: FuzzingEngines,
 }
 
