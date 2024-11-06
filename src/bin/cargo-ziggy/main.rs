@@ -172,6 +172,14 @@ pub struct Fuzz {
     #[clap(short = 'C', long, default_value = "generic")]
     config: FuzzingConfig,
 
+    /// With a coverage worker
+    #[clap(long)]
+    coverage_worker: bool,
+
+    /// Coverage generation interval in minutes
+    #[clap(long, default_value = "15")]
+    coverage_interval: u64,
+
     /// Fuzz an already AFL++ instrumented binary; the ziggy way
     #[clap(short, long)]
     binary: Option<PathBuf>,
@@ -343,7 +351,6 @@ pub struct AddSeeds {
 fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
     let Cargo::Ziggy(command) = Cargo::parse();
-
     match command {
         Ziggy::Build(args) => args.build().context("Failed to build the fuzzers"),
         Ziggy::Fuzz(mut args) => args.fuzz().context("Failure running fuzzers"),

@@ -8,7 +8,9 @@ use std::{
     fs::File,
     io::Write,
     path::Path,
-    process, thread,
+    process::{self, Stdio},
+    sync::{Arc, Mutex},
+    thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use strip_ansi_escapes::strip_str;
@@ -157,11 +159,102 @@ impl Fuzz {
         let mut last_sync_time = Instant::now();
         let mut afl_output_ok = false;
 
+        if self.no_afl && self.coverage_worker {
+            return Err(anyhow!("cannot use --no-afl with --coverage-worker!"));
+        }
+
+        // We prepare builds for the coverage worker
+        if self.coverage_worker {
+            info!("cleaning old coverage files");
+            Cover::clean_old_cov()?;
+            info!("building coverage worker");
+            Cover::build_runner()?;
+        }
+        let cov_start_time = Arc::new(Mutex::new(None));
+        let cov_end_time = Arc::new(Mutex::new(Instant::now()));
+        let coverage_now_running = Arc::new(Mutex::new(false));
+        let workspace_root = cargo_metadata::MetadataCommand::new()
+            .exec()?
+            .workspace_root
+            .to_string();
+        let target = self.target.clone();
+        let main_corpus = self.corpus();
+        let output_target = self.output_target();
+
         loop {
             let sleep_duration = Duration::from_secs(1);
             thread::sleep(sleep_duration);
 
-            self.print_stats();
+            let coverage_status = match (
+                self.coverage_worker,
+                *coverage_now_running.lock().unwrap(),
+                cov_end_time.lock().unwrap().elapsed().as_secs() / 60,
+            ) {
+                (true, false, wait) if wait < self.coverage_interval => {
+                    format!("waiting {} minutes", self.coverage_interval - wait)
+                }
+                (true, false, _) => String::from("starting"),
+                (true, true, _) => String::from("running"),
+                (false, _, _) => String::from("disabled"),
+            };
+
+            self.print_stats(&coverage_status);
+
+            if coverage_status.as_str() == "starting" {
+                *coverage_now_running.lock().unwrap() = true;
+
+                let main_corpus = main_corpus.clone();
+                let target = target.clone();
+                let workspace_root = workspace_root.clone();
+                let output_target = output_target.clone();
+                let cov_start_time = Arc::clone(&cov_start_time);
+                let cov_end_time = Arc::clone(&cov_end_time);
+                let coverage_now_running = Arc::clone(&coverage_now_running);
+
+                thread::spawn(move || {
+                    let mut seen_new_entry = false;
+                    let prev_start_time = {
+                        let unlocked = cov_start_time.lock().unwrap();
+                        *unlocked
+                    };
+                    *cov_start_time.lock().unwrap() = Some(Instant::now());
+                    let entries = std::fs::read_dir(&main_corpus).unwrap();
+                    for entry in entries.flatten().map(|e| e.path()) {
+                        // We only want to run corpus entries created since the last time we ran.
+                        let created = entry
+                            .metadata()
+                            .unwrap()
+                            .created()
+                            .unwrap()
+                            .elapsed()
+                            .unwrap_or_default();
+                        if prev_start_time
+                            .map(|s| s.elapsed())
+                            .unwrap_or(Duration::MAX)
+                            >= created
+                        {
+                            let _ = process::Command::new(format!(
+                                "./target/coverage/debug/{}",
+                                &target
+                            ))
+                            .arg(format!("{}", entry.display()))
+                            .stdout(Stdio::null())
+                            .stderr(Stdio::null())
+                            .status();
+                            seen_new_entry = true;
+                        }
+                    }
+                    if seen_new_entry {
+                        let coverage_dir = output_target + "/coverage";
+                        let _ = fs::remove_dir_all(&coverage_dir);
+                        Cover::run_grcov(&target.clone(), "html", &coverage_dir, &workspace_root)
+                            .unwrap();
+                    }
+
+                    *cov_end_time.lock().unwrap() = Instant::now();
+                    *coverage_now_running.lock().unwrap() = false;
+                });
+            }
 
             if !afl_output_ok {
                 if let Ok(afl_log) =
@@ -616,7 +709,7 @@ impl Fuzz {
         Ok(())
     }
 
-    pub fn print_stats(&self) {
+    pub fn print_stats(&self, cov_worker_status: &str) {
         let fuzzer_name = format!(" {} ", self.target);
 
         let reset = "\x1b[0m";
@@ -807,7 +900,16 @@ impl Fuzz {
             screen += &format!("│  {gray}total execs :{reset} {hf_total_execs:17.17} │{gray}timeouts saved :{reset} {hf_timeouts:17.17} │\n");
             screen += &format!("│                                  │   {gray}no find for :{reset} {hf_new_finds:17.17} │\n");
         }
-        screen += "└──────────────────────────────────────────────────────────────────────┘";
+        if self.coverage_worker {
+            screen += &format!(
+                "├─ {blue}coverage{reset} {green}enabled{reset} ───────────┬───────────────────────────────────────┘\n"
+            );
+            // TODO Add countdown
+            screen += &format!("│{gray}status :{reset} {cov_worker_status:20.20} │\n");
+            screen += "└──────────────────────────────┘";
+        } else {
+            screen += "└──────────────────────────────────────────────────────────────────────┘\n";
+        }
         eprintln!("{screen}");
     }
 }
