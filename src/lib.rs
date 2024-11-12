@@ -10,18 +10,30 @@ pub use honggfuzz::fuzz as honggfuzz_fuzz;
 // We open the input file and feed the data to the harness closure.
 #[doc(hidden)]
 #[cfg(not(any(feature = "afl", feature = "honggfuzz", feature = "coverage")))]
-pub fn read_file_and_fuzz<F>(mut closure: F, file: String)
+pub fn read_file_and_fuzz<F>(closure: F, file: String)
 where
-    F: FnMut(&[u8]),
+    F: FnOnce(&[u8]) + std::panic::UnwindSafe,
 {
-    use std::{fs::File, io::Read};
+    use std::{fs::File, io::{Write, Read}, panic::catch_unwind, process::exit};
     println!("Now running file {file}");
     let mut buffer: Vec<u8> = Vec::new();
     match File::open(file) {
         Ok(mut f) => {
             match f.read_to_end(&mut buffer) {
                 Ok(_) => {
-                    closure(buffer.as_slice());
+                    println!("Running");
+                    match catch_unwind(|| closure(&buffer.clone())) {
+                        Err(error) => {
+                            println!("ERROR {error:?}\n");
+                            let _ = std::io::stdout().lock().flush();
+                            exit(321);
+                        },
+                        Ok(_) => {
+                            println!("OK");
+                            let _ = std::io::stdout().lock().flush();
+                            exit(123);
+                        },
+                    };
                 }
                 Err(e) => {
                     println!("Could not get data from file: {e}");

@@ -12,6 +12,7 @@ members = [
     "examples/arbitrary",
     "examples/asan",
     "examples/url",
+    "examples/segfault",
 ]
 
 [dependencies]
