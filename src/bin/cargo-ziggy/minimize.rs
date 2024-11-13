@@ -19,8 +19,6 @@ impl Minimize {
         self.target =
             find_target(&self.target).context("⚠️  couldn't find target when minimizing")?;
 
-        info!("Minimizing corpus");
-
         let entries = fs::read_dir(self.input_corpus())?;
         let original_count = entries.filter_map(|entry| entry.ok()).count();
         println!("Running minimization on a corpus of {original_count} files");

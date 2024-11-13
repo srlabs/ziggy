@@ -92,8 +92,6 @@ impl Fuzz {
             build.build().context("Failed to build the fuzzers")?;
         }
 
-        info!("Running fuzzer");
-
         self.target = if self.fuzz_binary() {
             self.binary
                 .as_ref()
@@ -165,9 +163,7 @@ impl Fuzz {
 
         // We prepare builds for the coverage worker
         if self.coverage_worker {
-            info!("cleaning old coverage files");
             Cover::clean_old_cov()?;
-            info!("building coverage worker");
             Cover::build_runner()?;
         }
         let cov_start_time = Arc::new(Mutex::new(None));
@@ -333,7 +329,6 @@ impl Fuzz {
                 .all(|p| p.try_wait().unwrap_or(None).is_some())
             {
                 stop_fuzzers(&mut processes)?;
-                warn!("Fuzzers stopped, check for errors!");
                 return Ok(());
             }
         }
@@ -347,8 +342,6 @@ impl Fuzz {
                 "Pick at least one fuzzer.\nNote: -b/--binary implies --no-honggfuzz"
             ));
         }
-
-        info!("Spawning new fuzzers");
 
         let mut fuzzer_handles = vec![];
 
@@ -954,7 +947,6 @@ pub fn kill_subprocesses_recursively(pid: &str) -> Result<(), Error> {
             .context("Error in kill_subprocesses_recursively for pid {pid}")?;
     }
 
-    info!("Killing pid {pid}");
     unsafe {
         libc::kill(pid.parse::<i32>().unwrap(), libc::SIGTERM);
     }
@@ -963,12 +955,8 @@ pub fn kill_subprocesses_recursively(pid: &str) -> Result<(), Error> {
 
 // Stop all fuzzer processes
 pub fn stop_fuzzers(processes: &mut Vec<process::Child>) -> Result<(), Error> {
-    info!("Stopping fuzzer processes");
-
     for process in processes {
         kill_subprocesses_recursively(&process.id().to_string())?;
-        info!("Process kill: {:?}", process.kill());
-        info!("Process wait: {:?}", process.wait());
     }
     Ok(())
 }

@@ -19,10 +19,6 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 #[cfg(feature = "cli")]
 use std::{fs, path::PathBuf};
 
-#[cfg(feature = "cli")]
-#[macro_use]
-extern crate log;
-
 pub const DEFAULT_UNMODIFIED_TARGET: &str = "automatically guessed";
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -349,7 +345,6 @@ pub struct AddSeeds {
 
 #[cfg(feature = "cli")]
 fn main() -> Result<(), anyhow::Error> {
-    env_logger::init();
     let Cargo::Ziggy(command) = Cargo::parse();
     match command {
         Ziggy::Build(args) => args.build().context("Failed to build the fuzzers"),
@@ -370,17 +365,10 @@ fn main() -> Result<(), anyhow::Error> {
 pub fn find_target(target: &String) -> Result<String, anyhow::Error> {
     // If the target is already set, we're done here
     if target != DEFAULT_UNMODIFIED_TARGET {
-        info!("    Using given target {target}");
         return Ok(target.into());
     }
 
-    info!("Guessing target");
-
     let new_target_result = guess_target();
-
-    if let Ok(ref new_target) = new_target_result {
-        info!("    Using target {new_target}");
-    }
 
     new_target_result.context("Target is not obvious")
 }

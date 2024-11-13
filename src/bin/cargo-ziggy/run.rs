@@ -20,7 +20,6 @@ impl Run {
         let mut rust_doc_flags = env::var("RUSTDOCFLAGS").unwrap_or_default();
 
         if self.asan {
-            info!("Building runner with ASAN");
             args.push(&asan_target_str);
             args.extend(["-Z", "build-std"]);
             rust_flags.push_str(" -Zsanitizer=address ");
@@ -51,7 +50,6 @@ impl Run {
         eprintln!("    {} runner", style("Finished").cyan().bold());
 
         if self.recursive {
-            info!("Finding nested input directories recursively...");
             let mut all_dirs = HashSet::new();
             for input in &self.inputs {
                 all_dirs.insert(input.clone());
@@ -64,7 +62,6 @@ impl Run {
             }
         }
 
-        info!("Running inputs");
         let run_args: Vec<String> = self
             .inputs
             .iter()

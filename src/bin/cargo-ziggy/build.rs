@@ -18,7 +18,6 @@ impl Build {
 
         // The cargo executable
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
-        info!("Starting build command");
 
         if !self.no_afl {
             eprintln!("    {} afl", style("Building").red().bold());
@@ -33,7 +32,6 @@ impl Build {
             if self.release {
                 assert!(!self.release, "cannot use --release for ASAN builds");
                 afl_args.push("--release");
-                info!("Building in release mode");
             }
 
             let opt_level = env::var("AFL_OPT_LEVEL").unwrap_or("0".to_string());
@@ -43,7 +41,6 @@ impl Build {
             let opt_level_str = format!("-Copt-level={opt_level}");
 
             if self.asan {
-                info!("Building with ASAN");
                 assert_eq!(opt_level, "0", "AFL_OPT_LEVEL must be 0 for ASAN builds");
                 afl_args.push(&asan_target_str);
                 afl_args.extend(["-Z", "build-std"]);
@@ -87,7 +84,6 @@ impl Build {
             // Add the --release argument if self.release is true
             if self.release {
                 hfuzz_args.push("--release");
-                info!("Building in release mode");
             }
 
             // Second fuzzer we build: Honggfuzz

@@ -34,8 +34,6 @@ impl Cover {
                 .as_str(),
         );
 
-        info!("Corpus directory is {}", shared_corpus.display());
-
         let _ = process::Command::new(format!("./target/coverage/debug/{}", &self.target))
             .arg(format!("{}", shared_corpus.display()))
             .spawn()
