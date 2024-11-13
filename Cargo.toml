@@ -11,6 +11,7 @@ members = [
     ".",
     "examples/arbitrary",
     "examples/asan",
+    "examples/partial",
     "examples/url",
 ]
 
