@@ -1,13 +1,16 @@
+use crate::build::ASAN_TARGET;
 use crate::*;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Error};
 use console::{style, Term};
 use glob::glob;
 use std::{
     env,
-    fs::{self, File},
+    fs::File,
     io::Write,
-    path::{Path, PathBuf},
-    process, thread,
+    path::Path,
+    process::{self, Stdio},
+    sync::{Arc, Mutex},
+    thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use strip_ansi_escapes::strip_str;
@@ -65,36 +68,58 @@ impl Fuzz {
         format!("{}/{}", self.ziggy_output.display(), self.target)
     }
 
-    /// Returns true iff AFL++ is enabled
+    /// Returns true if AFL++ is enabled
     pub fn afl(&self) -> bool {
         !self.no_afl
     }
 
-    /// Returns true iff LibAFL is enabled
+    /// Returns true if LibAFL is enabled
     pub fn libafl(&self) -> bool {
         !self.no_libafl && (self.no_afl || self.jobs > 1)
     }
 
-    /// Returns true iff Honggfuzz is enabled
+    /// Returns true if Honggfuzz is enabled
+    // This definition could be a one-liner but it was expanded for clarity
     pub fn honggfuzz(&self) -> bool {
-        !self.no_honggfuzz
-            && ((self.no_afl && self.no_libafl)
-                || ((self.no_afl || self.no_libafl) && self.jobs > 1)
-                || (self.jobs > 2))
+        if self.fuzz_binary() {
+            // We cannot use honggfuzz in binary mode
+            false
+        } else if self.no_afl && self.no_libafl {
+            // If we have "no_afl" and "no_libafl" set then honggfuzz is always enabled
+            true
+        } else if self.no_afl || self.no_libafl {
+            return !self.no_honggfuzz && self.jobs > 1
+        } else {
+            return !self.no_honggfuzz && self.jobs > 2
+        }
+    }
+
+    fn fuzz_binary(&self) -> bool {
+        self.binary.is_some()
     }
 
     // Manages the continuous running of fuzzers
     pub fn fuzz(&mut self) -> Result<(), anyhow::Error> {
-        let build = Build {
-            no_afl: !self.afl(),
-            no_libafl: !self.libafl(),
-            no_honggfuzz: !self.honggfuzz(),
+       if !self.fuzz_binary() {
+            let build = Build {
+                no_afl: !self.afl(),
+                no_libafl: !self.libafl(),
+                no_honggfuzz: !self.honggfuzz(),
+                release: self.release,
+                asan: self.asan,
+            };
+            build.build().context("Failed to build the fuzzers")?;
+        }
+
+        self.target = if self.fuzz_binary() {
+            self.binary
+                .as_ref()
+                .expect("invariant; should never occur")
+                .display()
+                .to_string()
+        } else {
+            find_target(&self.target).context("⚠️  couldn't find target when fuzzing")?
         };
-        build.build().context("Failed to build the fuzzers")?;
-
-        info!("Running fuzzer");
-
-        self.target = find_target(&self.target).context("⚠️  couldn't find target when fuzzing")?;
 
         let time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
 
@@ -133,20 +158,15 @@ impl Fuzz {
                 .stderr(process::Stdio::piped())
                 .spawn()?
                 .wait()?;
-
-            // We create an initial corpus file, so that AFL++ starts-up properly
-            let mut initial_corpus = File::create(self.corpus() + "/init")?;
-            writeln!(
-                &mut initial_corpus,
-                "00000000000000000000********0000########111111111111111111111111"
-            )?;
-            drop(initial_corpus);
         }
 
         // We create an initial corpus file, so that AFL++ starts-up properly if corpus is empty
-        let mut initial_corpus = File::create(self.corpus() + "/init")?;
-        writeln!(&mut initial_corpus, "00000000")?;
-        drop(initial_corpus);
+        let is_empty = fs::read_dir(self.corpus())?.next().is_none(); // check if corpus has some seeds
+        if is_empty {
+            let mut initial_corpus = File::create(self.corpus() + "/init")?;
+            writeln!(&mut initial_corpus, "00000000")?;
+            drop(initial_corpus);
+        }
 
         let mut processes = self.spawn_new_fuzzers()?;
 
@@ -156,11 +176,100 @@ impl Fuzz {
         let mut last_sync_time = Instant::now();
         let mut afl_output_ok = false;
 
+        if self.no_afl && self.coverage_worker {
+            return Err(anyhow!("cannot use --no-afl with --coverage-worker!"));
+        }
+
+        // We prepare builds for the coverage worker
+        if self.coverage_worker {
+            Cover::clean_old_cov()?;
+            Cover::build_runner()?;
+        }
+        let cov_start_time = Arc::new(Mutex::new(None));
+        let cov_end_time = Arc::new(Mutex::new(Instant::now()));
+        let coverage_now_running = Arc::new(Mutex::new(false));
+        let workspace_root = cargo_metadata::MetadataCommand::new()
+            .exec()?
+            .workspace_root
+            .to_string();
+        let target = self.target.clone();
+        let main_corpus = self.corpus();
+        let output_target = self.output_target();
+
         loop {
             let sleep_duration = Duration::from_secs(1);
             thread::sleep(sleep_duration);
 
-            self.print_stats();
+            let coverage_status = match (
+                self.coverage_worker,
+                *coverage_now_running.lock().unwrap(),
+                cov_end_time.lock().unwrap().elapsed().as_secs() / 60,
+            ) {
+                (true, false, wait) if wait < self.coverage_interval => {
+                    format!("waiting {} minutes", self.coverage_interval - wait)
+                }
+                (true, false, _) => String::from("starting"),
+                (true, true, _) => String::from("running"),
+                (false, _, _) => String::from("disabled"),
+            };
+
+            self.print_stats(&coverage_status);
+
+            if coverage_status.as_str() == "starting" {
+                *coverage_now_running.lock().unwrap() = true;
+
+                let main_corpus = main_corpus.clone();
+                let target = target.clone();
+                let workspace_root = workspace_root.clone();
+                let output_target = output_target.clone();
+                let cov_start_time = Arc::clone(&cov_start_time);
+                let cov_end_time = Arc::clone(&cov_end_time);
+                let coverage_now_running = Arc::clone(&coverage_now_running);
+
+                thread::spawn(move || {
+                    let mut seen_new_entry = false;
+                    let prev_start_time = {
+                        let unlocked = cov_start_time.lock().unwrap();
+                        *unlocked
+                    };
+                    *cov_start_time.lock().unwrap() = Some(Instant::now());
+                    let entries = std::fs::read_dir(&main_corpus).unwrap();
+                    for entry in entries.flatten().map(|e| e.path()) {
+                        // We only want to run corpus entries created since the last time we ran.
+                        let created = entry
+                            .metadata()
+                            .unwrap()
+                            .created()
+                            .unwrap()
+                            .elapsed()
+                            .unwrap_or_default();
+                        if prev_start_time
+                            .map(|s| s.elapsed())
+                            .unwrap_or(Duration::MAX)
+                            >= created
+                        {
+                            let _ = process::Command::new(format!(
+                                "./target/coverage/debug/{}",
+                                &target
+                            ))
+                            .arg(format!("{}", entry.display()))
+                            .stdout(Stdio::null())
+                            .stderr(Stdio::null())
+                            .status();
+                            seen_new_entry = true;
+                        }
+                    }
+                    if seen_new_entry {
+                        let coverage_dir = output_target + "/coverage";
+                        let _ = fs::remove_dir_all(&coverage_dir);
+                        Cover::run_grcov(&target.clone(), "html", &coverage_dir, &workspace_root)
+                            .unwrap();
+                    }
+
+                    *cov_end_time.lock().unwrap() = Instant::now();
+                    *coverage_now_running.lock().unwrap() = false;
+                });
+            }
 
             if !afl_output_ok {
                 if let Ok(afl_log) =
@@ -168,16 +277,15 @@ impl Fuzz {
                 {
                     if afl_log.contains("ready to roll") {
                         afl_output_ok = true;
-                    } else if afl_log.contains("echo core >/proc/sys/kernel/core_pattern") {
+                    } else if afl_log.contains("echo core >/proc/sys/kernel/core_pattern")
+                        || afl_log.contains("cd /sys/devices/system/cpu")
+                    {
                         stop_fuzzers(&mut processes)?;
-                        eprintln!("AFL++ needs you to run the following command before it can start fuzzing:\n");
-                        eprintln!("    echo core >/proc/sys/kernel/core_pattern\n");
-                        return Ok(());
-                    } else if afl_log.contains("cd /sys/devices/system/cpu") {
-                        stop_fuzzers(&mut processes)?;
-                        eprintln!("AFL++ needs you to run the following commands before it can start fuzzing:\n");
-                        eprintln!("    cd /sys/devices/system/cpu");
-                        eprintln!("    echo performance | tee cpu*/cpufreq/scaling_governor\n");
+                        eprintln!("We highly recommend you configure your system for better performance:\n");
+                        eprintln!("    cargo afl system-config\n");
+                        eprintln!(
+                            "Or set AFL_SKIP_CPUFREQ and AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES\n"
+                        );
                         return Ok(());
                     }
                 }
@@ -246,7 +354,6 @@ impl Fuzz {
                 .all(|p| p.try_wait().unwrap_or(None).is_some())
             {
                 stop_fuzzers(&mut processes)?;
-                warn!("Fuzzers stopped, check for errors!");
                 return Ok(());
             }
         }
@@ -298,10 +405,10 @@ impl Fuzz {
     pub fn spawn_new_fuzzers(&self) -> Result<Vec<process::Child>, anyhow::Error> {
         // No fuzzers for you
         if self.no_afl && self.no_honggfuzz && self.no_libafl {
-            return Err(anyhow!("Pick at least one fuzzer"));
+            return Err(anyhow!(
+                "Pick at least one fuzzer.\nNote: -b/--binary implies --no-honggfuzz"
+            ));
         }
-
-        info!("Spawning new fuzzers");
 
         let mut fuzzer_handles = vec![];
 
@@ -329,13 +436,15 @@ impl Fuzz {
             ];
 
             for job_num in 0..afl_jobs {
+                let is_main_instance = job_num == 0;
                 // We set the fuzzer name, and if it's the main or a secondary fuzzer
-                let fuzzer_name = match job_num {
-                    0 => String::from("-Mmainaflfuzzer"),
-                    n => format!("-Ssecondaryfuzzer{n}"),
+                let fuzzer_name = match is_main_instance {
+                    true => String::from("-Mmainaflfuzzer"),
+                    false => format!("-Ssecondaryfuzzer{job_num}"),
                 };
-                let use_shared_corpus = match job_num {
-                    0 => format!("-F{}", &self.corpus()),
+                // We only sync to the shared corpus if Honggfuzz is also running
+                let use_shared_corpus = match (self.no_honggfuzz, job_num) {
+                    (false, 0) => format!("-F{}", &self.corpus()),
                     _ => String::new(),
                 };
                 let use_initial_corpus_dir = match (&self.initial_corpus, job_num) {
@@ -380,12 +489,7 @@ impl Fuzz {
                     2..=3 => "-Pexplore",
                     _ => "-Pexploit",
                 };
-                /* wait for afl crate update
-                let mutation_option = match job_num / 2 {
-                    0 => "-abinary",
-                    _ => "-adefault",
-                };
-                */
+                let input_format_option = self.config.input_format_flag();
                 let log_destination = || match job_num {
                     0 => File::create(format!("{}/logs/afl.log", self.output_target()))
                         .unwrap()
@@ -399,6 +503,25 @@ impl Fuzz {
                     0 => "AFL_FINAL_SYNC",
                     _ => "_DUMMY_VAR",
                 };
+                let target_path = match self.fuzz_binary() {
+                    true => self.target.clone(),
+                    false => {
+                        if self.release {
+                            format!("./target/afl/release/{}", self.target)
+                        } else if self.asan {
+                            format!("./target/afl/{ASAN_TARGET}/debug/{}", self.target)
+                        } else {
+                            format!("./target/afl/debug/{}", self.target)
+                        }
+                    }
+                };
+
+                let mut afl_flags = self.afl_flags.clone();
+                if is_main_instance {
+                    for path in &self.foreign_sync_dirs {
+                        afl_flags.push(format!("-F {}", path.display()))
+                    }
+                }
 
                 fuzzer_handles.push(
                     process::Command::new(cargo.clone())
@@ -413,19 +536,20 @@ impl Fuzz {
                                 &format!("-g{}", self.min_length),
                                 &format!("-G{}", self.max_length),
                                 &use_shared_corpus,
-                                // &format!("-V{}", self.minimization_timeout + SECONDS_TO_WAIT_AFTER_KILL, &use_initial_corpus_dir),
                                 &use_initial_corpus_dir,
                                 old_queue_cycling,
                                 cmplog_options,
                                 mopt_mutator,
                                 mutation_option,
+                                input_format_option,
                                 &timeout_option_afl,
                                 &dictionary_option,
-                                &format!("./target/afl/debug/{}", self.target),
                             ]
                             .iter()
                             .filter(|a| a != &&""),
                         )
+                        .args(afl_flags)
+                        .arg(target_path)
                         .env("AFL_AUTORESUME", "1")
                         .env("AFL_TESTCACHE_SIZE", "100")
                         .env("AFL_FAST_CAL", "1")
@@ -436,8 +560,8 @@ impl Fuzz {
                         .env("AFL_NO_WARN_INSTABILITY", "1")
                         .env("AFL_FUZZER_STATS_UPDATE_INTERVAL", "10")
                         .env("AFL_IMPORT_FIRST", "1")
-                        .env(final_sync, "1") // upcoming in v4.09c
-                        .env("AFL_IGNORE_SEED_PROBLEMS", "1") // upcoming in v4.09c
+                        .env(final_sync, "1")
+                        .env("AFL_IGNORE_SEED_PROBLEMS", "1")
                         .stdout(log_destination())
                         .stderr(log_destination())
                         .spawn()?,
@@ -629,9 +753,7 @@ impl Fuzz {
             .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
 
         let engine = match (self.no_afl, self.no_honggfuzz, self.jobs) {
-            (false, false, 1) => FuzzingEngines::AFLPlusPlus,
-            (false, false, _) => FuzzingEngines::All,
-            (false, true, _) => FuzzingEngines::AFLPlusPlus,
+            (false, _, _) => FuzzingEngines::AFLPlusPlus,
             (true, false, _) => FuzzingEngines::Honggfuzz,
             (true, true, _) => return Err(anyhow!("Pick at least one fuzzer")),
         };
@@ -669,7 +791,7 @@ impl Fuzz {
         Ok(())
     }
 
-    pub fn print_stats(&self) {
+    pub fn print_stats(&self, cov_worker_status: &str) {
         let fuzzer_name = format!(" {} ", self.target);
 
         let reset = "\x1b[0m";
@@ -914,14 +1036,49 @@ impl Fuzz {
             screen += &format!("│  {gray}total execs :{reset} {hf_total_execs:17.17} │{gray}timeouts saved :{reset} {hf_timeouts:17.17} │\n");
             screen += &format!("│                                  │   {gray}no find for :{reset} {hf_new_finds:17.17} │\n");
         }
-        screen += "└──────────────────────────────────────────────────────────────────────┘";
+        if self.coverage_worker {
+            screen += &format!(
+                "├─ {blue}coverage{reset} {green}enabled{reset} ───────────┬───────────────────────────────────────┘\n"
+            );
+            // TODO Add countdown
+            screen += &format!("│{gray}status :{reset} {cov_worker_status:20.20} │\n");
+            screen += "└──────────────────────────────┘";
+        } else {
+            screen += "└──────────────────────────────────────────────────────────────────────┘\n";
+        }
         eprintln!("{screen}");
     }
 }
 
-pub fn kill_subprocesses_recursively(pid: &str) -> Result<(), anyhow::Error> {
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
+pub enum FuzzingConfig {
+    Generic,
+    Binary,
+    Text,
+    Blockchain,
+}
+
+impl FuzzingConfig {
+    fn input_format_flag(&self) -> &str {
+        match self {
+            Self::Text => "-atext",
+            Self::Binary => "-abinary",
+            _ => "",
+        }
+    }
+}
+
+use std::fmt;
+
+impl fmt::Display for FuzzingConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+pub fn kill_subprocesses_recursively(pid: &str) -> Result<(), Error> {
     let subprocesses = process::Command::new("pgrep")
-        .arg(&format!("-P{pid}"))
+        .arg(format!("-P{pid}"))
         .output()?;
 
     for subprocess in std::str::from_utf8(&subprocesses.stdout)?.split('\n') {
@@ -933,7 +1090,6 @@ pub fn kill_subprocesses_recursively(pid: &str) -> Result<(), anyhow::Error> {
             .context("Error in kill_subprocesses_recursively for pid {pid}")?;
     }
 
-    info!("Killing pid {pid}");
     unsafe {
         libc::kill(pid.parse::<i32>().unwrap(), libc::SIGTERM);
     }
@@ -941,13 +1097,9 @@ pub fn kill_subprocesses_recursively(pid: &str) -> Result<(), anyhow::Error> {
 }
 
 // Stop all fuzzer processes
-pub fn stop_fuzzers(processes: &mut Vec<process::Child>) -> Result<(), anyhow::Error> {
-    info!("Stopping fuzzer processes");
-
+pub fn stop_fuzzers(processes: &mut Vec<process::Child>) -> Result<(), Error> {
     for process in processes {
         kill_subprocesses_recursively(&process.id().to_string())?;
-        info!("Process kill: {:?}", process.kill());
-        info!("Process wait: {:?}", process.wait());
     }
     Ok(())
 }

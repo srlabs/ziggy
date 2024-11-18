@@ -7,7 +7,7 @@ use std::{
 
 fn kill_subprocesses_recursively(pid: &str) {
     let subprocesses = process::Command::new("pgrep")
-        .arg(&format!("-P{pid}"))
+        .arg(format!("-P{pid}"))
         .output()
         .unwrap();
 
@@ -118,12 +118,25 @@ fn integration() {
         .join("logs")
         .join("minimization_afl.log")
         .is_file());
+
+    // cargo ziggy minimize -e honggfuzz
+    let minimization = process::Command::new(&cargo_ziggy)
+        .arg("ziggy")
+        .arg("minimize")
+        .arg("-ehonggfuzz")
+        .env("ZIGGY_OUTPUT", format!("{}", temp_dir_path.display()))
+        .current_dir(&fuzzer_directory)
+        .status()
+        .expect("failed to run `cargo ziggy minimize`");
+
+    assert!(minimization.success());
     assert!(temp_dir_path
         .join("url-fuzz")
         .join("logs")
         .join("minimization_honggfuzz.log")
         .is_file());
 
+    /* Removed until https://github.com/mozilla/grcov/issues/1240 has a fix
     // cargo ziggy cover
     let coverage = process::Command::new(&cargo_ziggy)
         .arg("ziggy")
@@ -139,6 +152,7 @@ fn integration() {
         .join("coverage")
         .join("index.html")
         .is_file());
+    */
 
     // cargo ziggy plot
     let plot = process::Command::new(&cargo_ziggy)

@@ -1,5 +1,57 @@
 # Changes
 
+## 1.3.0 - 2024-11-05
+
+- Fix bugs (#102 and #103)
+- Add `--asan` fuzz option (#104)
+- Add `--coverage-worker` fuzz option (#96 and #105)
+- Improve message if AFL++ needs config (#106)
+- Remove dual minimization (#107)
+- Update `afl.rs` to `0.15.11`
+- Thank you @R9295 and @kevin-valerio for these changes!
+
+## 1.2.1 - 2024-10-02
+
+- Add a "binary fuzzing mode" (#99)
+- Fix `RUSTFLAG` bug (#100)
+- Fix release mode bug (#101)
+- Update `afl.rs` to `0.15.10`
+- Thank you @R9295 and @Ollrogge for these changes!
+
+## 1.2.0 - 2024-09-16
+
+- Add recursive option to `cargo ziggy run` (#93)
+- Add support for different grcov coverage output types (#94)
+- Add support for building a target in `--release` mode (#95)
+- Fix CI (#98)
+- Thank you @R9295 and @kevin-valerio for these changes!
+
+## 1.1.0 - 2024-05-22
+
+- Upgrade honggfuzz version
+
+## 1.0.2 - 2024-05-17
+
+- Downgrade dependency that was [yanked](https://github.com/rust-lang/libc/issues/3608#issuecomment-2116310436)
+
+## 1.0.1 - 2024-05-07
+
+- Only make AFL++ sync to shared corpus if Honggfuzz is also running
+- Remove serde_json and toml dependencies
+- Update dependencies
+
+## 1.0.0 - 2024-02-05
+
+- Improve `-a` flag to let you pass multiple arguments to AFL++
+- Add `-C` configuration flag
+- Improve url fuzzer to showcase different fuzzing metodologies
+
+## 0.8.3 - 2024-01-18
+
+- Add new flag for passing arguments directly to AFL++
+- Run the build code before launching minimization
+- Fix GitHub CI
+
 ## 0.8.2 - 2023-11-20
 
 - Add option to optionally keep coverage data
