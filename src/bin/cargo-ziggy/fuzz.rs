@@ -88,9 +88,9 @@ impl Fuzz {
             // If we have "no_afl" and "no_libafl" set then honggfuzz is always enabled
             true
         } else if self.no_afl || self.no_libafl {
-            return !self.no_honggfuzz && self.jobs > 1
+            return !self.no_honggfuzz && self.jobs > 1;
         } else {
-            return !self.no_honggfuzz && self.jobs > 2
+            return !self.no_honggfuzz && self.jobs > 2;
         }
     }
 
@@ -100,7 +100,7 @@ impl Fuzz {
 
     // Manages the continuous running of fuzzers
     pub fn fuzz(&mut self) -> Result<(), anyhow::Error> {
-       if !self.fuzz_binary() {
+        if !self.fuzz_binary() {
             let build = Build {
                 no_afl: !self.afl(),
                 no_libafl: !self.libafl(),
@@ -586,7 +586,7 @@ impl Fuzz {
                 .env("LIBAFL_SHARED_CORPUS", self.corpus())
                 .env(
                     "LIBAFL_CRASHES",
-                    &format!("{}/libafl/crashes", self.output_target()),
+                    format!("{}/libafl/crashes", self.output_target()),
                 )
                 .env("LIBAFL_CORES", format!("{libafl_jobs}"))
                 .stderr(File::create(format!(

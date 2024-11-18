@@ -24,9 +24,9 @@ fork = { version = "0.1.23", optional = true }
 free-cpus = { version = "2.0.0", optional = true }
 glob = { version = "0.3.1", optional = true }
 honggfuzz = { version = "0.5.56", optional = true }
-libafl = { version = "0.11.2", optional = true } 
-libafl_bolts = { version = "0.11.2", optional = true }
-libafl_targets = { version = "0.11.2", optional = true, features = ["sancov_pcguard_hitcounts"] }
+libafl = { version = "0.14.0", optional = true } 
+libafl_bolts = { version = "0.14.0", optional = true }
+libafl_targets = { version = "0.14.0", optional = true, features = ["sancov_pcguard_hitcounts"] }
 libc = { version = "0.2.153", optional = true }
 semver = { version = "1.0.23", optional = true }
 strip-ansi-escapes = { version = "0.2.0", optional = true }
