@@ -1135,6 +1135,14 @@ mod tests {
             no_libafl: false,
             no_honggfuzz: false,
             start_time: Instant::now(),
+            afl_flags: vec![],
+            asan: false,
+            binary: None,
+            config: crate::FuzzingConfig::Generic,
+            coverage_interval: 15,
+            coverage_worker: false,
+            foreign_sync_dirs: vec![],
+            release: false,
         };
         for i in 0..1024 {
             fuzz.jobs = i;
