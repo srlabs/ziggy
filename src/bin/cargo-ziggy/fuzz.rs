@@ -35,6 +35,18 @@ use strip_ansi_escapes::strip_str;
 /// ```
 /// The `all_afl_corpora` directory corresponds to the `output/target_name/afl/**/queue/` directories.
 
+struct FuzzerWeights {
+    afl: u32,
+    libafl: u32,
+    honggfuzz: u32,
+}
+
+const FUZZER_WEIGHTS: FuzzerWeights = FuzzerWeights {
+    afl: 3,
+    libafl: 2,
+    honggfuzz: 1,
+};
+
 impl Fuzz {
     pub fn corpus(&self) -> String {
         self.corpus
@@ -61,18 +73,24 @@ impl Fuzz {
         !self.no_afl
     }
 
+    /// Returns true if LibAFL is enabled
+    pub fn libafl(&self) -> bool {
+        !self.no_libafl && (self.no_afl || self.jobs > 1)
+    }
+
     /// Returns true if Honggfuzz is enabled
     // This definition could be a one-liner but it was expanded for clarity
     pub fn honggfuzz(&self) -> bool {
         if self.fuzz_binary() {
             // We cannot use honggfuzz in binary mode
             false
-        } else if self.no_afl {
-            // If we have "no_afl" set then honggfuzz is always enabled
+        } else if self.no_afl && self.no_libafl {
+            // If we have "no_afl" and "no_libafl" set then honggfuzz is always enabled
             true
+        } else if self.no_afl || self.no_libafl {
+            return !self.no_honggfuzz && self.jobs > 1;
         } else {
-            // If honggfuzz is not disabled, we use it if there are more than 1 jobs
-            !self.no_honggfuzz && self.jobs > 1
+            return !self.no_honggfuzz && self.jobs > 2;
         }
     }
 
@@ -85,6 +103,7 @@ impl Fuzz {
         if !self.fuzz_binary() {
             let build = Build {
                 no_afl: !self.afl(),
+                no_libafl: !self.libafl(),
                 no_honggfuzz: !self.honggfuzz(),
                 release: self.release,
                 asan: self.asan,
@@ -282,16 +301,22 @@ impl Fuzz {
                     self.output_target(),
                     self.target
                 )
-                .into()]);
+                .into()])
+                .chain(vec![
+                    format!("{}/libafl/crashes", self.output_target()).into()
+                ]);
 
             for crash_dir in crash_dirs {
                 if let Ok(crashes) = fs::read_dir(crash_dir) {
                     for crash_input in crashes.flatten() {
                         let file_name = crash_input.file_name();
                         let to_path = crash_path.join(&file_name);
+                        let file_name_str = file_name.to_str().unwrap_or_default();
                         if to_path.exists()
                             || ["", "README.txt", "HONGGFUZZ.REPORT.TXT", "input"]
-                                .contains(&file_name.to_str().unwrap_or_default())
+                                .contains(&file_name_str)
+                            || file_name_str.contains(".lafl_lock")
+                            || file_name_str.contains(".metadata")
                         {
                             continue;
                         }
@@ -334,10 +359,52 @@ impl Fuzz {
         }
     }
 
+    pub fn compute_job_repartition(&self) -> (u32, u32, u32) {
+        let afl_weight = if self.afl() { FUZZER_WEIGHTS.afl } else { 0 };
+        let libafl_weight = if self.libafl() {
+            FUZZER_WEIGHTS.libafl
+        } else {
+            0
+        };
+        let honggfuzz_weight = if self.honggfuzz() {
+            FUZZER_WEIGHTS.honggfuzz
+        } else {
+            0
+        };
+        let total_weights = afl_weight + libafl_weight + honggfuzz_weight;
+
+        let mut honggfuzz_jobs = honggfuzz_weight * self.jobs / total_weights;
+        let mut afl_jobs = afl_weight * self.jobs / total_weights;
+        let mut libafl_jobs = libafl_weight * self.jobs / total_weights;
+
+        // We adjust the numbers because of potential rounding errors
+        while honggfuzz_jobs + afl_jobs + libafl_jobs < self.jobs {
+            if self.honggfuzz() {
+                honggfuzz_jobs += 1;
+            } else if self.libafl() {
+                libafl_jobs += 1;
+            } else if self.afl() {
+                afl_jobs += 1;
+            }
+        }
+
+        // If Honggfuzz is not the only fuzzer, we will not allow it to get more than 4 parallel jobs.
+        if honggfuzz_jobs > 4 && (self.afl() || self.libafl()) {
+            if self.afl() {
+                afl_jobs += honggfuzz_jobs - 4;
+            } else if self.libafl() {
+                libafl_jobs += honggfuzz_jobs - 4;
+            }
+            honggfuzz_jobs = 4;
+        }
+
+        (afl_jobs, libafl_jobs, honggfuzz_jobs)
+    }
+
     // Spawns new fuzzers
     pub fn spawn_new_fuzzers(&self) -> Result<Vec<process::Child>, anyhow::Error> {
         // No fuzzers for you
-        if self.no_afl && self.no_honggfuzz {
+        if self.no_afl && self.no_honggfuzz && self.no_libafl {
             return Err(anyhow!(
                 "Pick at least one fuzzer.\nNote: -b/--binary implies --no-honggfuzz"
             ));
@@ -348,21 +415,8 @@ impl Fuzz {
         // The cargo executable
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
-        let (afl_jobs, honggfuzz_jobs) = {
-            if self.no_afl {
-                (0, self.jobs)
-            } else if self.no_honggfuzz || self.fuzz_binary() {
-                (self.jobs, 0)
-            } else {
-                // we assign roughly 2/3 to AFL++, 1/3 to honggfuzz, however do
-                // not apply more than 4 jobs to honggfuzz
-                match self.jobs {
-                    1 => (1, 0),
-                    2..=12 => (self.jobs - ((self.jobs + 2) / 3), (self.jobs + 2) / 3),
-                    _ => (self.jobs - 4, 4),
-                }
-            }
-        };
+        // We compute the jobs assigned to each fuzzer, according to FUZZER_WEIGHTS
+        let (afl_jobs, libafl_jobs, honggfuzz_jobs) = self.compute_job_repartition();
 
         if honggfuzz_jobs > 4 {
             eprintln!("Warning: running more honggfuzz jobs than 4 is not effective");
@@ -514,6 +568,41 @@ impl Fuzz {
                 )
             }
             eprintln!("{} afl           ", style("    Launched").green().bold());
+        }
+
+        if libafl_jobs > 0 {
+            let _ = process::Command::new("mkdir")
+                .args(["-p", &format!("{}/libafl/logs", self.output_target())])
+                .stderr(process::Stdio::piped())
+                .spawn()?
+                .wait()?;
+
+            fuzzer_handles.push(
+                process::Command::new(format!(
+                    "./target/libafl/x86_64-unknown-linux-gnu/release/{}",
+                    self.target
+                ))
+                .env("LIBAFL_TARGET_NAME", &self.target)
+                .env("LIBAFL_SHARED_CORPUS", self.corpus())
+                .env(
+                    "LIBAFL_CRASHES",
+                    format!("{}/libafl/crashes", self.output_target()),
+                )
+                .env("LIBAFL_CORES", format!("{libafl_jobs}"))
+                .stderr(File::create(format!(
+                    "{}/logs/libafl.log",
+                    self.output_target(),
+                ))?)
+                .stdout(File::create(format!(
+                    "{}/logs/libafl.log",
+                    self.output_target()
+                ))?)
+                .spawn()?,
+            );
+            eprintln!(
+                "{} libafl                 ",
+                style("    Launched").green().bold()
+            );
         }
 
         if honggfuzz_jobs > 0 {
@@ -772,7 +861,49 @@ impl Fuzz {
             }
         }
 
-        // Second step: Get stats from honggfuzz logs
+        // Second step: Get stats from libafl
+        let mut libafl_status = format!("{green}running{reset} ─");
+        let mut libafl_clients = String::new();
+        let mut libafl_speed = String::new();
+        let mut libafl_coverage = String::new();
+        let mut libafl_crashes = String::new();
+        let mut libafl_total_execs = String::new();
+
+        if !self.libafl() {
+            libafl_status = format!("{yellow}disabled{reset} ");
+        } else {
+            let hf_stats_process = process::Command::new("tail")
+                .args(["-n10", &format!("{}/logs/libafl.log", self.output_target())])
+                .output();
+            if let Ok(process) = hf_stats_process {
+                let s = std::str::from_utf8(&process.stdout).unwrap_or_default();
+                for raw_line in s.split('\n') {
+                    let global = raw_line.contains("GLOBAL");
+                    let stripped_line = strip_str(raw_line);
+                    let line = stripped_line.trim();
+                    for stat in line.split(", ") {
+                        if global {
+                            if let Some(clients) = stat.strip_prefix("clients: ") {
+                                libafl_clients = format!(
+                                    "{}",
+                                    clients.parse::<usize>().unwrap_or(1).saturating_sub(1)
+                                )
+                            } else if let Some(objectives) = stat.strip_prefix("objectives: ") {
+                                libafl_crashes = objectives.to_string();
+                            } else if let Some(executions) = stat.strip_prefix("executions: ") {
+                                libafl_total_execs = executions.to_string();
+                            } else if let Some(exec_sec) = stat.strip_prefix("exec/sec: ") {
+                                libafl_speed = exec_sec.to_string();
+                            }
+                        } else if let Some(edges) = stat.strip_prefix("edges: ") {
+                            libafl_coverage = edges.to_string();
+                        }
+                    }
+                }
+            }
+        }
+
+        // Third step: Get stats from honggfuzz logs
         let mut hf_status = format!("{green}running{reset} ─");
         let mut hf_total_execs = String::new();
         let mut hf_threads = String::new();
@@ -849,7 +980,7 @@ impl Fuzz {
             }
         }
 
-        // Third step: Get global stats
+        // Fourth step: Get global stats
         let mut total_run_time = time_humanize::HumanTime::from(self.start_time.elapsed())
             .to_text_en(
                 time_humanize::Accuracy::Rough,
@@ -881,7 +1012,19 @@ impl Fuzz {
             screen += &format!("│ {gray}top inputs todo :{reset} {afl_faves:17.17} │   {gray}no find for :{reset} {afl_new_finds:17.17}   │\n");
         }
         screen += &format!(
-            "├─ {blue}honggfuzz{reset} {hf_status:0}─────────────────────────────────────────────────┬────┘\n"
+            "├─ {blue}libafl{reset} {libafl_status:0}──────────────────────────────────────────────────────┬──┘\n"
+        );
+        if !libafl_status.contains("disabled") {
+            screen += &format!("│         {gray}clients :{reset} {libafl_clients:17.17} │{gray}best coverage :{reset} {libafl_coverage:17.17} │\n");
+            if libafl_crashes == "0" {
+                screen += &format!("│{gray}cumulative speed :{reset} {libafl_speed:17.17} │{gray}crashes saved :{reset} {libafl_crashes:17.17} │\n");
+            } else {
+                screen += &format!("│{gray}cumulative speed :{reset} {libafl_speed:17.17} │{gray}crashes saved :{reset} {red}{libafl_crashes:17.17}{reset} │\n");
+            }
+            screen += &format!("│     {gray}total execs :{reset} {libafl_total_execs:17.17} │                                  │\n");
+        }
+        screen += &format!(
+            "├─ {blue}honggfuzz{reset} {hf_status:0}─────────────────────────────────────────────────┬─┘\n"
         );
         if !hf_status.contains("disabled") {
             screen += &format!("│      {gray}threads :{reset} {hf_threads:17.17} │      {gray}coverage :{reset} {hf_coverage:17.17} │\n");
@@ -970,4 +1113,51 @@ pub fn extract_file_id(file: &Path) -> Option<(u32, String)> {
     let str_id = id_part.strip_prefix("id:")?;
     let file_id = str_id.parse::<u32>().ok()?;
     Some((file_id, String::from(file_name)))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{path::PathBuf, time::Instant};
+    #[test]
+    fn job_repartition_works() {
+        let mut fuzz = crate::Fuzz {
+            target: String::new(),
+            corpus: PathBuf::new(),
+            initial_corpus: None,
+            ziggy_output: PathBuf::new(),
+            jobs: 0,
+            timeout: None,
+            minimize: false,
+            dictionary: None,
+            max_length: 0,
+            min_length: 0,
+            no_afl: false,
+            no_libafl: false,
+            no_honggfuzz: false,
+            start_time: Instant::now(),
+            afl_flags: vec![],
+            asan: false,
+            binary: None,
+            config: crate::FuzzingConfig::Generic,
+            coverage_interval: 15,
+            coverage_worker: false,
+            foreign_sync_dirs: vec![],
+            release: false,
+        };
+        for i in 0..1024 {
+            fuzz.jobs = i;
+            fuzz.no_afl = i % 7 == 0;
+            fuzz.no_libafl = i % 11 == 0;
+            fuzz.no_honggfuzz = i % 5 == 0;
+            if i % 385 == 0 {
+                continue;
+            }
+            let (afl_jobs, libafl_jobs, honggfuzz_jobs) = fuzz.compute_job_repartition();
+            assert_eq!(
+                afl_jobs + libafl_jobs + honggfuzz_jobs,
+                fuzz.jobs,
+                "Jobs total mismatch"
+            );
+        }
+    }
 }

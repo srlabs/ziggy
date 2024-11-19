@@ -21,8 +21,12 @@ cargo_metadata = { version = "0.18.1", optional = true }
 clap = { version = "4.5.4", features = ["cargo", "derive", "env"], optional = true }
 console = { version = "0.15.8", optional = true }
 fork = { version = "0.1.23", optional = true }
+free-cpus = { version = "2.0.0", optional = true }
 glob = { version = "0.3.1", optional = true }
 honggfuzz = { version = "0.5.56", optional = true }
+libafl = { version = "0.14.0", optional = true } 
+libafl_bolts = { version = "0.14.0", optional = true }
+libafl_targets = { version = "0.14.0", optional = true, features = ["sancov_pcguard_hitcounts"] }
 libc = { version = "0.2.153", optional = true }
 semver = { version = "1.0.23", optional = true }
 strip-ansi-escapes = { version = "0.2.0", optional = true }
@@ -41,6 +45,7 @@ cli = [
     "time-humanize",
     "cargo_metadata",
 ]
+with_libafl = ["libafl", "libafl_targets", "libafl_bolts", "free-cpus"]
 coverage = ["fork", "libc"]
 
 [lints.clippy]

@@ -10,6 +10,7 @@ impl Minimize {
     pub fn minimize(&mut self) -> Result<(), anyhow::Error> {
         let build = Build {
             no_afl: self.engine == FuzzingEngines::Honggfuzz,
+            no_libafl: true,
             no_honggfuzz: self.engine == FuzzingEngines::AFLPlusPlus,
             release: false,
             asan: false,
