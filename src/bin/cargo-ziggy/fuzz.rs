@@ -16,9 +16,7 @@ use std::{
 use strip_ansi_escapes::strip_str;
 
 /// Main logic for managing fuzzers and the fuzzing process in ziggy.
-
 /// ## Initial minimization logic
-
 /// When launching fuzzers, if initial corpora exist, they are merged together and we minimize it
 /// with both AFL++ and Honggfuzz.
 /// ```text
@@ -34,7 +32,6 @@ use strip_ansi_escapes::strip_str;
 ///   honggfuzz -i corpus -o corpus
 /// ```
 /// The `all_afl_corpora` directory corresponds to the `output/target_name/afl/**/queue/` directories.
-
 impl Fuzz {
     pub fn corpus(&self) -> String {
         self.corpus
