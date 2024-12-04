@@ -87,7 +87,7 @@ impl Cover {
             .unwrap_or_else(|_| String::from("--cfg=coverage -Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort"));
         coverage_rustflags.push_str(&env::var("RUSTFLAGS").unwrap_or_default());
 
-        process::Command::new(cargo)
+        let build = process::Command::new(cargo)
             .args([
                 "rustc",
                 "--target-dir=target/coverage",
@@ -101,6 +101,9 @@ impl Cover {
             .context("⚠️  couldn't spawn rustc for coverage")?
             .wait()
             .context("⚠️  couldn't wait for the rustc during coverage")?;
+        if !build.success() {
+            return Err(anyhow!("⚠️  build failed"));
+        }
         Ok(())
     }
 
