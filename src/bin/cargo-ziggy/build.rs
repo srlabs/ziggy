@@ -55,7 +55,6 @@ impl Build {
                 .env("AFL_QUIET", "1")
                 // need to specify for afl.rs so that we build with -Copt-level=0
                 .env("AFL_OPT_LEVEL", opt_level)
-                .env("AFL_LLVM_CMPLOG", "1") // for afl.rs feature "plugins"
                 .env("RUSTFLAGS", rust_flags)
                 .env("RUSTDOCFLAGS", rust_doc_flags)
                 .spawn()?
@@ -106,11 +105,13 @@ impl Build {
 
             eprintln!("    {} honggfuzz", style("Finished").cyan().bold());
         }
-        
+
         if std::env::var("AFL_LLVM_CMPGLOG").is_ok() {
-            panic!("Even the mighty may fall, especially on 77b2c27a59bb858045c4db442989ce8f20c8ee11")
+            panic!(
+                "Even the mighty may fall, especially on 77b2c27a59bb858045c4db442989ce8f20c8ee11"
+            )
         }
-        
+
         Ok(())
     }
 }
