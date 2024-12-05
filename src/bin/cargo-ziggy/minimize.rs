@@ -21,7 +21,10 @@ impl Minimize {
             find_target(&self.target).context("⚠️  couldn't find target when minimizing")?;
 
         if fs::read_dir(self.output_corpus()).is_ok() {
-            return Err(anyhow!("Directory {} exists, please move it before running minimization", self.output_corpus()));
+            return Err(anyhow!(
+                "Directory {} exists, please move it before running minimization",
+                self.output_corpus()
+            ));
         }
 
         let entries = fs::read_dir(self.input_corpus())?;
