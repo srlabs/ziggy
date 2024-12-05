@@ -14,6 +14,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use strip_ansi_escapes::strip_str;
+use twox_hash::XxHash64;
 
 /// Main logic for managing fuzzers and the fuzzing process in ziggy.
 /// ## Initial minimization logic
@@ -341,10 +342,9 @@ impl Fuzz {
                             );
                         }
                         // Hash the file to get its file name
-                        let hasher = process::Command::new("md5sum").arg(file).output().unwrap();
-                        let hash_vec = hasher.stdout.split(|&b| b == b' ').next().unwrap_or(&[]);
-                        let hash = std::str::from_utf8(hash_vec).unwrap_or_default();
-                        let _ = fs::copy(file, format!("{}/corpus/{hash}", self.output_target()));
+                        let bytes = fs::read(file).unwrap_or_default();
+                        let hash = XxHash64::oneshot(0, &bytes);
+                        let _ = fs::copy(file, format!("{}/corpus/{hash:x}", self.output_target()));
                     }
                 }
                 last_synced_created_time = newest_time;

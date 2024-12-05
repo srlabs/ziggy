@@ -6,6 +6,7 @@ use std::{
     process, thread,
     time::Duration,
 };
+use twox_hash::XxHash64;
 
 impl Minimize {
     pub fn minimize(&mut self) -> Result<(), anyhow::Error> {
@@ -58,13 +59,9 @@ impl Minimize {
         // We rename every file to its md5 hash
         let min_entries = fs::read_dir(self.output_corpus())?;
         for file in min_entries.flatten() {
-            let hasher = process::Command::new("md5sum")
-                .arg(file.path())
-                .output()
-                .unwrap();
-            let hash_vec = hasher.stdout.split(|&b| b == b' ').next().unwrap_or(&[]);
-            let hash = std::str::from_utf8(hash_vec).unwrap_or_default();
-            let _ = fs::rename(file.path(), format!("{}/{hash}", self.output_corpus()));
+            let bytes = fs::read(file.path()).unwrap_or_default();
+            let hash = XxHash64::oneshot(0, &bytes);
+            let _ = fs::rename(file.path(), format!("{}/{hash:x}", self.output_corpus()));
         }
 
         let min_entries_hashed = fs::read_dir(self.output_corpus())?;
