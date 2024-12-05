@@ -1,5 +1,5 @@
 use crate::{find_target, Build, FuzzingEngines, Minimize};
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use std::{
     env,
     fs::{self, File},
@@ -19,6 +19,10 @@ impl Minimize {
 
         self.target =
             find_target(&self.target).context("⚠️  couldn't find target when minimizing")?;
+
+        if fs::read_dir(self.output_corpus()).is_ok() {
+            return Err(anyhow!("Directory {} exists, please move it before running minimization", self.output_corpus()));
+        }
 
         let entries = fs::read_dir(self.input_corpus())?;
         let original_count = entries.filter_map(|entry| entry.ok()).count();
