@@ -3,7 +3,8 @@ use anyhow::{Context, Result};
 use std::{
     env,
     fs::{self, File},
-    process,
+    process, thread,
+    time::Duration,
 };
 
 impl Minimize {
@@ -24,6 +25,21 @@ impl Minimize {
         println!("Running minimization on a corpus of {original_count} files");
 
         match self.engine {
+            FuzzingEngines::All => {
+                let min_afl = self.clone();
+                let handle_afl = thread::spawn(move || {
+                    min_afl.minimize_afl().unwrap();
+                });
+                thread::sleep(Duration::from_millis(1000));
+
+                let min_honggfuzz = self.clone();
+                let handle_honggfuzz = thread::spawn(move || {
+                    min_honggfuzz.minimize_honggfuzz().unwrap();
+                });
+
+                handle_afl.join().unwrap();
+                handle_honggfuzz.join().unwrap();
+            }
             FuzzingEngines::AFLPlusPlus => {
                 self.minimize_afl()?;
             }
@@ -32,8 +48,20 @@ impl Minimize {
             }
         }
 
+        // We rename every file to its md5 hash
         let min_entries = fs::read_dir(self.output_corpus())?;
-        let minimized_count = min_entries.filter_map(|entry| entry.ok()).count();
+        for file in min_entries.flatten() {
+            let hasher = process::Command::new("md5sum")
+                .arg(file.path())
+                .output()
+                .unwrap();
+            let hash_vec = hasher.stdout.split(|&b| b == b' ').next().unwrap_or(&[]);
+            let hash = std::str::from_utf8(hash_vec).unwrap_or_default();
+            let _ = fs::rename(file.path(), format!("{}/{hash}", self.output_corpus()));
+        }
+
+        let min_entries_hashed = fs::read_dir(self.output_corpus())?;
+        let minimized_count = min_entries_hashed.filter_map(|entry| entry.ok()).count();
         println!("Minimized corpus contains {minimized_count} files");
 
         Ok(())

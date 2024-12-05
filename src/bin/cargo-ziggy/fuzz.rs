@@ -697,7 +697,9 @@ impl Fuzz {
             .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
 
         let engine = match (self.no_afl, self.no_honggfuzz, self.jobs) {
-            (false, _, _) => FuzzingEngines::AFLPlusPlus,
+            (false, false, 1) => FuzzingEngines::AFLPlusPlus,
+            (false, false, _) => FuzzingEngines::All,
+            (false, true, _) => FuzzingEngines::AFLPlusPlus,
             (true, false, _) => FuzzingEngines::Honggfuzz,
             (true, true, _) => return Err(anyhow!("Pick at least one fuzzer")),
         };
