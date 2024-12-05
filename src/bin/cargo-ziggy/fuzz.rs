@@ -299,8 +299,8 @@ impl Fuzz {
 
             // If both fuzzers are running, we copy over AFL++'s queue for consumption by Honggfuzz.
             // We also copy-over each live corpus to the shared corpus directory, where each file
-            // name is the md5 hash of the file. This happens every 10 seconds.
-            if last_sync_time.elapsed().as_secs() > 10 {
+            // name is the md5 hash of the file. This happens every 10 minutes.
+            if last_sync_time.elapsed().as_secs() > 10 * 60 {
                 let mut files = vec![];
                 if self.afl() {
                     files.append(
