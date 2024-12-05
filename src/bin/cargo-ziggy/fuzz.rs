@@ -344,13 +344,7 @@ impl Fuzz {
                         let hasher = process::Command::new("md5sum").arg(file).output().unwrap();
                         let hash_vec = hasher.stdout.split(|&b| b == b' ').next().unwrap_or(&[]);
                         let hash = std::str::from_utf8(hash_vec).unwrap_or_default();
-                        let _ = process::Command::new("cp")
-                            .args([
-                                format!("{}", file.display()),
-                                format!("{}/corpus/{hash}", self.output_target()),
-                            ])
-                            .output()
-                            .unwrap();
+                        let _ = fs::copy(file, format!("{}/corpus/{hash}", self.output_target()));
                     }
                 }
                 last_synced_created_time = newest_time;
