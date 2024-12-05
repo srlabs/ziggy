@@ -150,7 +150,7 @@ impl Fuzz {
 
         self.start_time = Instant::now();
 
-        let mut last_synced_queue_id: u32 = 0;
+        let mut last_synced_created_time: Option<SystemTime> = None;
         let mut last_sync_time = Instant::now();
         let mut afl_output_ok = false;
 
@@ -300,24 +300,60 @@ impl Fuzz {
             // If both fuzzers are running, we copy over AFL++'s queue for consumption by Honggfuzz.
             // Otherwise, if only AFL++ is up we copy AFL++'s queue to the global corpus.
             // We do this every 10 seconds
-            if self.afl() && last_sync_time.elapsed().as_secs() > 10 {
-                let afl_corpus = glob(&format!(
-                    "{}/afl/mainaflfuzzer/queue/*",
-                    self.output_target(),
-                ))?
-                .flatten();
-                for file in afl_corpus {
-                    if let Some((file_id, file_name)) = extract_file_id(&file) {
-                        if file_id > last_synced_queue_id {
-                            let copy_destination = match self.honggfuzz() {
-                                true => format!("{}/queue/{file_name}", self.output_target()),
-                                false => format!("{}/corpus/{file_name}", self.output_target()),
-                            };
-                            let _ = fs::copy(&file, copy_destination);
-                            last_synced_queue_id = file_id;
+            if last_sync_time.elapsed().as_secs() > 10 {
+                let mut files = vec![];
+                if self.afl() {
+                    files.append(
+                        &mut glob(&format!(
+                            "{}/afl/mainaflfuzzer/queue/*",
+                            self.output_target(),
+                        ))?
+                        .flatten()
+                        .collect(),
+                    );
+                }
+                if self.honggfuzz() {
+                    files.append(
+                        &mut glob(&format!("{}/honggfuzz/corpus/*", self.output_target(),))?
+                            .flatten()
+                            .collect(),
+                    );
+                }
+                let mut newest_time = last_synced_created_time;
+                let valid_files = files.iter().filter(|file| {
+                    if let Ok(metadata) = file.metadata() {
+                        let created = metadata.created().unwrap();
+                        if last_synced_created_time.is_none_or(|time| created > time) {
+                            if newest_time.is_none_or(|time| created > time) {
+                                newest_time = Some(created);
+                            }
+                            return true;
                         }
                     }
+                    false
+                });
+                for file in valid_files {
+                    if let Some(file_name) = file.file_name() {
+                        if self.honggfuzz() {
+                            let _ = fs::copy(
+                                file,
+                                format!("{}/queue/{:?}", self.output_target(), file_name),
+                            );
+                        }
+                        // Hash the file to get its file name
+                        let hasher = process::Command::new("md5sum").arg(file).output().unwrap();
+                        let hash_vec = hasher.stdout.split(|&b| b == b' ').next().unwrap_or(&[]);
+                        let hash = std::str::from_utf8(hash_vec).unwrap_or_default();
+                        let _ = process::Command::new("cp")
+                            .args([
+                                format!("{}", file.display()),
+                                format!("{}/corpus/{hash}", self.output_target()),
+                            ])
+                            .output()
+                            .unwrap();
+                    }
                 }
+                last_synced_created_time = newest_time;
                 last_sync_time = Instant::now();
             }
 
@@ -565,9 +601,9 @@ impl Fuzz {
                     .env(
                         "HFUZZ_RUN_ARGS",
                         format!(
-                            "--input={} -o{} -n{honggfuzz_jobs} -F{} --dynamic_input={}/queue {timeout_option} {dictionary_option}",
+                            "--input={} -o{}/honggfuzz/corpus -n{honggfuzz_jobs} -F{} --dynamic_input={}/queue {timeout_option} {dictionary_option}",
                             &self.corpus(),
-                            &self.corpus(),
+                            &self.output_target(),
                             self.max_length,
                             self.output_target(),
                         ),
@@ -956,15 +992,4 @@ pub fn stop_fuzzers(processes: &mut Vec<process::Child>) -> Result<(), Error> {
         kill_subprocesses_recursively(&process.id().to_string())?;
     }
     Ok(())
-}
-
-pub fn extract_file_id(file: &Path) -> Option<(u32, String)> {
-    let file_name = file.file_name()?.to_str()?;
-    if file_name.len() < 9 {
-        return None;
-    }
-    let (id_part, _) = file_name.split_at(9);
-    let str_id = id_part.strip_prefix("id:")?;
-    let file_id = str_id.parse::<u32>().ok()?;
-    Some((file_id, String::from(file_name)))
 }
