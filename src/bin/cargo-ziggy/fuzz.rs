@@ -298,8 +298,8 @@ impl Fuzz {
             }
 
             // If both fuzzers are running, we copy over AFL++'s queue for consumption by Honggfuzz.
-            // Otherwise, if only AFL++ is up we copy AFL++'s queue to the global corpus.
-            // We do this every 10 seconds
+            // We also copy-over each live corpus to the shared corpus directory, where each file
+            // name is the md5 hash of the file. This happens every 10 seconds.
             if last_sync_time.elapsed().as_secs() > 10 {
                 let mut files = vec![];
                 if self.afl() {
