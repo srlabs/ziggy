@@ -1,5 +1,5 @@
 use std::{
-    env,
+    env, fs,
     path::PathBuf,
     process, thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -28,6 +28,7 @@ fn kill_subprocesses_recursively(pid: &str) {
     }
 }
 
+#[allow(clippy::zombie_processes)]
 #[test]
 fn integration() {
     let unix_time = format!(
@@ -119,6 +120,8 @@ fn integration() {
         .join("minimization_afl.log")
         .is_file());
 
+    fs::remove_dir_all(temp_dir_path.join("url-fuzz").join("corpus_minimized")).unwrap();
+
     // cargo ziggy minimize -e honggfuzz
     let minimization = process::Command::new(&cargo_ziggy)
         .arg("ziggy")
@@ -136,7 +139,6 @@ fn integration() {
         .join("minimization_honggfuzz.log")
         .is_file());
 
-    /* Removed until https://github.com/mozilla/grcov/issues/1240 has a fix
     // cargo ziggy cover
     let coverage = process::Command::new(&cargo_ziggy)
         .arg("ziggy")
@@ -152,7 +154,6 @@ fn integration() {
         .join("coverage")
         .join("index.html")
         .is_file());
-    */
 
     // cargo ziggy plot
     let plot = process::Command::new(&cargo_ziggy)

@@ -36,6 +36,10 @@ impl Cover {
 
         let _ = process::Command::new(format!("./target/coverage/debug/{}", &self.target))
             .arg(format!("{}", shared_corpus.display()))
+            .env(
+                "LLVM_PROFILE_FILE",
+                "target/coverage/debug/deps/coverage-%p-%m.profraw",
+            )
             .spawn()
             .unwrap()
             .wait_with_output()
@@ -84,23 +88,23 @@ impl Cover {
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
         let mut coverage_rustflags = env::var("COVERAGE_RUSTFLAGS")
-            .unwrap_or_else(|_| String::from("--cfg=coverage -Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort"));
+            .unwrap_or_else(|_| String::from("-Cinstrument-coverage"));
         coverage_rustflags.push_str(&env::var("RUSTFLAGS").unwrap_or_default());
 
-        process::Command::new(cargo)
+        let build = process::Command::new(cargo)
             .args([
                 "rustc",
                 "--target-dir=target/coverage",
                 "--features=ziggy/coverage",
             ])
             .env("RUSTFLAGS", coverage_rustflags)
-            .env("RUSTDOCFLAGS", "-Cpanic=unwind")
-            .env("CARGO_INCREMENTAL", "0")
-            .env("RUSTC_BOOTSTRAP", "1") // Trick to avoid forcing user to use rust nightly
             .spawn()
             .context("⚠️  couldn't spawn rustc for coverage")?
             .wait()
             .context("⚠️  couldn't wait for the rustc during coverage")?;
+        if !build.success() {
+            return Err(anyhow!("⚠️  build failed"));
+        }
         Ok(())
     }
 
@@ -129,11 +133,10 @@ impl Cover {
     }
 
     pub fn clean_old_cov() -> Result<(), anyhow::Error> {
-        if let Ok(gcda_files) = glob("target/coverage/debug/deps/*.gcda") {
-            for file in gcda_files.flatten() {
+        if let Ok(profile_files) = glob("target/coverage/debug/deps/*.profraw") {
+            for file in profile_files.flatten() {
                 let file_string = &file.display();
-                fs::remove_file(&file)
-                    .context(format!("⚠️  couldn't find {} during coverage", file_string))?;
+                fs::remove_file(&file).context(format!("⚠️  couldn't remove {}", file_string))?;
             }
         }
         Ok(())
