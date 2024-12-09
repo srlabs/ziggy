@@ -62,15 +62,28 @@ impl Run {
             }
         }
 
-        let run_args: Vec<String> = self
+        let input_files: Vec<PathBuf> = self
             .inputs
             .iter()
             .map(|x| {
-                x.display()
+                let canonical_name = x
+                    .display()
                     .to_string()
                     .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
-                    .replace("{target_name}", &target)
+                    .replace("{target_name}", &target);
+                // For each directory we read, we get all files in that directory
+                let path = PathBuf::from(canonical_name);
+                match path.is_dir() {
+                    true => fs::read_dir(path)
+                        .expect("could not read directory")
+                        .filter_map(|entry| entry.ok())
+                        .map(|entry| entry.path())
+                        .filter(|path| path.is_file())
+                        .collect::<Vec<_>>(),
+                    false => vec![path],
+                }
             })
+            .flatten()
             .collect();
 
         let runner_path = match self.asan {
@@ -78,13 +91,15 @@ impl Run {
             false => format!("./target/runner/debug/{}", target),
         };
 
-        process::Command::new(runner_path)
-            .args(run_args)
-            .env("RUST_BACKTRACE", "full")
-            .spawn()
-            .context("⚠️  couldn't spawn the runner process")?
-            .wait()
-            .context("⚠️  couldn't wait for the runner process")?;
+        for file in input_files {
+            process::Command::new(&runner_path)
+                .arg(file)
+                .env("RUST_BACKTRACE", "full")
+                .spawn()
+                .context("⚠️  couldn't spawn the runner process")?
+                .wait()
+                .context("⚠️  couldn't wait for the runner process")?;
+        }
 
         Ok(())
     }
