@@ -65,7 +65,7 @@ impl Run {
         let input_files: Vec<PathBuf> = self
             .inputs
             .iter()
-            .map(|x| {
+            .flat_map(|x| {
                 let canonical_name = x
                     .display()
                     .to_string()
@@ -83,7 +83,6 @@ impl Run {
                     false => vec![path],
                 }
             })
-            .flatten()
             .collect();
 
         let runner_path = match self.asan {
