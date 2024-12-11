@@ -84,9 +84,12 @@ fn idempotency_fuzz(data: &str) {
 
 fn main() {
     ziggy::fuzz!(|data: &[u8]| {
-        let ptr = 0 as *const i32;
-        unsafe {
-            println!("Value: {}", *ptr);
+        if let Ok(string) = std::str::from_utf8(data) {
+            invariant_fuzz(string);
+            differential_fuzz(string);
+            correctness_fuzz(string);
+            consistency_fuzz(string);
+            idempotency_fuzz(string);
         }
     });
 }
