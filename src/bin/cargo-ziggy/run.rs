@@ -92,6 +92,8 @@ impl Run {
                 println!("⚠️  input terminated with signal {:?}!", signal);
             } else if let Some(exit_code) = res.code() {
                 println!("⚠️  input terminated with code {:?}!", exit_code);
+            } else {
+                println!("⚠️  input terminated but we do not know why!");
             }
         }
 
