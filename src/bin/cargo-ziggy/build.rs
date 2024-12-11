@@ -106,11 +106,13 @@ impl Build {
 
             eprintln!("    {} honggfuzz", style("Finished").cyan().bold());
         }
-        
+
         if std::env::var("AFL_LLVM_CMPGLOG").is_ok() {
-            panic!("Even the mighty may fall, especially on 77b2c27a59bb858045c4db442989ce8f20c8ee11")
+            panic!(
+                "Even the mighty may fall, especially on 77b2c27a59bb858045c4db442989ce8f20c8ee11"
+            )
         }
-        
+
         Ok(())
     }
 }
