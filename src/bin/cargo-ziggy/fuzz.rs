@@ -14,11 +14,10 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use strip_ansi_escapes::strip_str;
+use twox_hash::XxHash64;
 
 /// Main logic for managing fuzzers and the fuzzing process in ziggy.
-
 /// ## Initial minimization logic
-
 /// When launching fuzzers, if initial corpora exist, they are merged together and we minimize it
 /// with both AFL++ and Honggfuzz.
 /// ```text
@@ -34,7 +33,6 @@ use strip_ansi_escapes::strip_str;
 ///   honggfuzz -i corpus -o corpus
 /// ```
 /// The `all_afl_corpora` directory corresponds to the `output/target_name/afl/**/queue/` directories.
-
 impl Fuzz {
     pub fn corpus(&self) -> String {
         self.corpus
@@ -153,7 +151,7 @@ impl Fuzz {
 
         self.start_time = Instant::now();
 
-        let mut last_synced_queue_id: u32 = 0;
+        let mut last_synced_created_time: Option<SystemTime> = None;
         let mut last_sync_time = Instant::now();
         let mut afl_output_ok = false;
 
@@ -301,26 +299,55 @@ impl Fuzz {
             }
 
             // If both fuzzers are running, we copy over AFL++'s queue for consumption by Honggfuzz.
-            // Otherwise, if only AFL++ is up we copy AFL++'s queue to the global corpus.
-            // We do this every 10 seconds
-            if self.afl() && last_sync_time.elapsed().as_secs() > 10 {
-                let afl_corpus = glob(&format!(
-                    "{}/afl/mainaflfuzzer/queue/*",
-                    self.output_target(),
-                ))?
-                .flatten();
-                for file in afl_corpus {
-                    if let Some((file_id, file_name)) = extract_file_id(&file) {
-                        if file_id > last_synced_queue_id {
-                            let copy_destination = match self.honggfuzz() {
-                                true => format!("{}/queue/{file_name}", self.output_target()),
-                                false => format!("{}/corpus/{file_name}", self.output_target()),
-                            };
-                            let _ = fs::copy(&file, copy_destination);
-                            last_synced_queue_id = file_id;
+            // We also copy-over each live corpus to the shared corpus directory, where each file
+            // name is the md5 hash of the file. This happens every 10 minutes.
+            if last_sync_time.elapsed().as_secs() > 10 * 60 {
+                let mut files = vec![];
+                if self.afl() {
+                    files.append(
+                        &mut glob(&format!(
+                            "{}/afl/mainaflfuzzer/queue/*",
+                            self.output_target(),
+                        ))?
+                        .flatten()
+                        .collect(),
+                    );
+                }
+                if self.honggfuzz() {
+                    files.append(
+                        &mut glob(&format!("{}/honggfuzz/corpus/*", self.output_target(),))?
+                            .flatten()
+                            .collect(),
+                    );
+                }
+                let mut newest_time = last_synced_created_time;
+                let valid_files = files.iter().filter(|file| {
+                    if let Ok(metadata) = file.metadata() {
+                        let created = metadata.created().unwrap();
+                        if last_synced_created_time.is_none_or(|time| created > time) {
+                            if newest_time.is_none_or(|time| created > time) {
+                                newest_time = Some(created);
+                            }
+                            return true;
                         }
                     }
+                    false
+                });
+                for file in valid_files {
+                    if let Some(file_name) = file.file_name() {
+                        if self.honggfuzz() {
+                            let _ = fs::copy(
+                                file,
+                                format!("{}/queue/{:?}", self.output_target(), file_name),
+                            );
+                        }
+                        // Hash the file to get its file name
+                        let bytes = fs::read(file).unwrap_or_default();
+                        let hash = XxHash64::oneshot(0, &bytes);
+                        let _ = fs::copy(file, format!("{}/corpus/{hash:x}", self.output_target()));
+                    }
                 }
+                last_synced_created_time = newest_time;
                 last_sync_time = Instant::now();
             }
 
@@ -568,9 +595,9 @@ impl Fuzz {
                     .env(
                         "HFUZZ_RUN_ARGS",
                         format!(
-                            "--input={} -o{} -n{honggfuzz_jobs} -F{} --dynamic_input={}/queue {timeout_option} {dictionary_option}",
+                            "--input={} -o{}/honggfuzz/corpus -n{honggfuzz_jobs} -F{} --dynamic_input={}/queue {timeout_option} {dictionary_option}",
                             &self.corpus(),
-                            &self.corpus(),
+                            &self.output_target(),
                             self.max_length,
                             self.output_target(),
                         ),
@@ -664,7 +691,9 @@ impl Fuzz {
             .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
 
         let engine = match (self.no_afl, self.no_honggfuzz, self.jobs) {
-            (false, _, _) => FuzzingEngines::AFLPlusPlus,
+            (false, false, 1) => FuzzingEngines::AFLPlusPlus,
+            (false, false, _) => FuzzingEngines::All,
+            (false, true, _) => FuzzingEngines::AFLPlusPlus,
             (true, false, _) => FuzzingEngines::Honggfuzz,
             (true, true, _) => return Err(anyhow!("Pick at least one fuzzer")),
         };
@@ -959,15 +988,4 @@ pub fn stop_fuzzers(processes: &mut Vec<process::Child>) -> Result<(), Error> {
         kill_subprocesses_recursively(&process.id().to_string())?;
     }
     Ok(())
-}
-
-pub fn extract_file_id(file: &Path) -> Option<(u32, String)> {
-    let file_name = file.file_name()?.to_str()?;
-    if file_name.len() < 9 {
-        return None;
-    }
-    let (id_part, _) = file_name.split_at(9);
-    let str_id = id_part.strip_prefix("id:")?;
-    let file_id = str_id.parse::<u32>().ok()?;
-    Some((file_id, String::from(file_name)))
 }

@@ -28,6 +28,7 @@ fn kill_subprocesses_recursively(pid: &str) {
     }
 }
 
+#[allow(clippy::zombie_processes)]
 #[test]
 fn asan_crashes() {
     // Not optimal but seems to work fine

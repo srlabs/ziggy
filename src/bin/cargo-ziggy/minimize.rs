@@ -1,10 +1,12 @@
 use crate::{find_target, Build, FuzzingEngines, Minimize};
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use std::{
     env,
     fs::{self, File},
-    process,
+    process, thread,
+    time::Duration,
 };
+use twox_hash::XxHash64;
 
 impl Minimize {
     pub fn minimize(&mut self) -> Result<(), anyhow::Error> {
@@ -19,11 +21,33 @@ impl Minimize {
         self.target =
             find_target(&self.target).context("⚠️  couldn't find target when minimizing")?;
 
+        if fs::read_dir(self.output_corpus()).is_ok() {
+            return Err(anyhow!(
+                "Directory {} exists, please move it before running minimization",
+                self.output_corpus()
+            ));
+        }
+
         let entries = fs::read_dir(self.input_corpus())?;
         let original_count = entries.filter_map(|entry| entry.ok()).count();
         println!("Running minimization on a corpus of {original_count} files");
 
         match self.engine {
+            FuzzingEngines::All => {
+                let min_afl = self.clone();
+                let handle_afl = thread::spawn(move || {
+                    min_afl.minimize_afl().unwrap();
+                });
+                thread::sleep(Duration::from_millis(1000));
+
+                let min_honggfuzz = self.clone();
+                let handle_honggfuzz = thread::spawn(move || {
+                    min_honggfuzz.minimize_honggfuzz().unwrap();
+                });
+
+                handle_afl.join().unwrap();
+                handle_honggfuzz.join().unwrap();
+            }
             FuzzingEngines::AFLPlusPlus => {
                 self.minimize_afl()?;
             }
@@ -32,8 +56,16 @@ impl Minimize {
             }
         }
 
+        // We rename every file to its md5 hash
         let min_entries = fs::read_dir(self.output_corpus())?;
-        let minimized_count = min_entries.filter_map(|entry| entry.ok()).count();
+        for file in min_entries.flatten() {
+            let bytes = fs::read(file.path()).unwrap_or_default();
+            let hash = XxHash64::oneshot(0, &bytes);
+            let _ = fs::rename(file.path(), format!("{}/{hash:x}", self.output_corpus()));
+        }
+
+        let min_entries_hashed = fs::read_dir(self.output_corpus())?;
+        let minimized_count = min_entries_hashed.filter_map(|entry| entry.ok()).count();
         println!("Minimized corpus contains {minimized_count} files");
 
         Ok(())
