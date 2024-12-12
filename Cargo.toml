@@ -42,6 +42,7 @@ cli = [
     "cargo_metadata",
     "twox-hash",
 ]
+coverage = []
 
 [lints.clippy]
 needless_doctest_main = "allow"
