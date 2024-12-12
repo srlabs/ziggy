@@ -60,7 +60,7 @@ ziggy = { version = "1.2", default-features = false }
 
 Then use the `fuzz!` macro inside your `main` to create a harness.
 
-```rust
+```rust ignore
 fn main() {
     ziggy::fuzz!(|data: &[u8]| {
         println!("{data:?}");
