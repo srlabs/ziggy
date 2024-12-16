@@ -219,7 +219,7 @@ pub struct Run {
     asan: bool,
 
     /// Stop the run after the first crash is encountered
-    #[clap(short='x', long)]
+    #[clap(short = 'x', long)]
     stop_on_crash: bool,
 }
 
