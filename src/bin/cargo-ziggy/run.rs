@@ -4,6 +4,7 @@ use console::style;
 use std::{
     collections::HashSet,
     env, fs,
+    os::unix::process::ExitStatusExt,
     path::{Path, PathBuf},
     process,
 };
@@ -91,13 +92,23 @@ impl Run {
         };
 
         for file in input_files {
-            process::Command::new(&runner_path)
+            let res = process::Command::new(&runner_path)
                 .arg(file)
                 .env("RUST_BACKTRACE", "full")
                 .spawn()
                 .context("⚠️  couldn't spawn the runner process")?
                 .wait()
                 .context("⚠️  couldn't wait for the runner process")?;
+
+            if !res.success() {
+                if let Some(signal) = res.signal() {
+                    println!("⚠️  input terminated with signal {:?}!", signal);
+                } else if let Some(exit_code) = res.code() {
+                    println!("⚠️  input terminated with code {:?}!", exit_code);
+                } else {
+                    println!("⚠️  input terminated but we do not know why!");
+                }
+            }
         }
 
         Ok(())
