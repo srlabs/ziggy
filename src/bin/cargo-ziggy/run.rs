@@ -108,6 +108,9 @@ impl Run {
                 } else {
                     println!("⚠️  input terminated but we do not know why!");
                 }
+                if self.stop_on_crash {
+                    return Ok(());
+                }
             }
         }
 

@@ -217,6 +217,10 @@ pub struct Run {
     /// Build with ASAN (nightly only)
     #[clap(long = "asan", action)]
     asan: bool,
+
+    /// Stop the run after the first crash is encountered
+    #[clap(short='x', long)]
+    stop_on_crash: bool,
 }
 
 #[derive(Args, Clone)]
