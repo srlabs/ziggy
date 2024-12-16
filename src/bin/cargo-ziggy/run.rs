@@ -63,14 +63,26 @@ impl Run {
             }
         }
 
-        let run_args: Vec<String> = self
+        let input_files: Vec<PathBuf> = self
             .inputs
             .iter()
-            .map(|x| {
-                x.display()
+            .flat_map(|x| {
+                let canonical_name = x
+                    .display()
                     .to_string()
                     .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
-                    .replace("{target_name}", &target)
+                    .replace("{target_name}", &target);
+                // For each directory we read, we get all files in that directory
+                let path = PathBuf::from(canonical_name);
+                match path.is_dir() {
+                    true => fs::read_dir(path)
+                        .expect("could not read directory")
+                        .filter_map(|entry| entry.ok())
+                        .map(|entry| entry.path())
+                        .filter(|path| path.is_file())
+                        .collect::<Vec<_>>(),
+                    false => vec![path],
+                }
             })
             .collect();
 
@@ -79,21 +91,26 @@ impl Run {
             false => format!("./target/runner/debug/{}", target),
         };
 
-        let res = process::Command::new(runner_path)
-            .args(run_args)
-            .env("RUST_BACKTRACE", "full")
-            .spawn()
-            .context("⚠️  couldn't spawn the runner process")?
-            .wait()
-            .context("⚠️  couldn't wait for the runner process")?;
+        for file in input_files {
+            let res = process::Command::new(&runner_path)
+                .arg(file)
+                .env("RUST_BACKTRACE", "full")
+                .spawn()
+                .context("⚠️  couldn't spawn the runner process")?
+                .wait()
+                .context("⚠️  couldn't wait for the runner process")?;
 
-        if !res.success() {
-            if let Some(signal) = res.signal() {
-                println!("⚠️  input terminated with signal {:?}!", signal);
-            } else if let Some(exit_code) = res.code() {
-                println!("⚠️  input terminated with code {:?}!", exit_code);
-            } else {
-                println!("⚠️  input terminated but we do not know why!");
+            if !res.success() {
+                if let Some(signal) = res.signal() {
+                    println!("⚠️  input terminated with signal {:?}!", signal);
+                } else if let Some(exit_code) = res.code() {
+                    println!("⚠️  input terminated with code {:?}!", exit_code);
+                } else {
+                    println!("⚠️  input terminated but we do not know why!");
+                }
+                if self.stop_on_crash {
+                    return Ok(());
+                }
             }
         }
 

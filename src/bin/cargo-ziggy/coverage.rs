@@ -23,27 +23,35 @@ impl Cover {
             Cover::clean_old_cov()?;
         }
 
-        let mut shared_corpus = PathBuf::new();
-
-        shared_corpus.push(
+        let input_path = PathBuf::from(
             self.input
                 .display()
                 .to_string()
                 .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
-                .replace("{target_name}", &self.target)
-                .as_str(),
+                .replace("{target_name}", &self.target),
         );
 
-        let _ = process::Command::new(format!("./target/coverage/debug/{}", &self.target))
-            .arg(format!("{}", shared_corpus.display()))
-            .env(
-                "LLVM_PROFILE_FILE",
-                "target/coverage/debug/deps/coverage-%p-%m.profraw",
-            )
-            .spawn()
-            .unwrap()
-            .wait_with_output()
-            .unwrap();
+        let coverage_corpus = match input_path.is_dir() {
+            true => fs::read_dir(input_path)
+                .unwrap()
+                .flatten()
+                .map(|e| e.path())
+                .collect(),
+            false => vec![input_path],
+        };
+
+        for file in coverage_corpus {
+            let _ = process::Command::new(format!("./target/coverage/debug/{}", &self.target))
+                .arg(file.display().to_string())
+                .env(
+                    "LLVM_PROFILE_FILE",
+                    "target/coverage/debug/deps/coverage-%p-%m.profraw",
+                )
+                .spawn()
+                .unwrap()
+                .wait_with_output()
+                .unwrap();
+        }
 
         let source_or_workspace_root = match &self.source {
             Some(s) => s.display().to_string(),
