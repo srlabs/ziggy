@@ -37,27 +37,16 @@ impl Build {
             let opt_level = env::var("AFL_OPT_LEVEL").unwrap_or("0".to_string());
             let mut rust_flags = env::var("RUSTFLAGS").unwrap_or_default();
             let mut rust_doc_flags = env::var("RUSTDOCFLAGS").unwrap_or_default();
-            let asan_target_str = format!("--target={ASAN_TARGET}");
-            let opt_level_str = format!("-Copt-level={opt_level}");
-
-            if self.asan {
-                assert_eq!(opt_level, "0", "AFL_OPT_LEVEL must be 0 for ASAN builds");
-                afl_args.push(&asan_target_str);
-                afl_args.extend(["-Z", "build-std"]);
-                rust_flags.push_str(" -Zsanitizer=address ");
-                rust_flags.push_str(&opt_level_str);
-                rust_doc_flags.push_str(" -Zsanitizer=address ")
-            };
 
             // First fuzzer we build: AFL++
             let run = process::Command::new(cargo.clone())
-                .args(afl_args)
+                .args(&afl_args)
                 .env("AFL_QUIET", "1")
                 // need to specify for afl.rs so that we build with -Copt-level=0
-                .env("AFL_OPT_LEVEL", opt_level)
+                .env("AFL_OPT_LEVEL", &opt_level)
                 .env("AFL_LLVM_CMPLOG", "1") // for afl.rs feature "plugins"
-                .env("RUSTFLAGS", rust_flags)
-                .env("RUSTDOCFLAGS", rust_doc_flags)
+                .env("RUSTFLAGS", &rust_flags)
+                .env("RUSTDOCFLAGS", &rust_doc_flags)
                 .spawn()?
                 .wait()
                 .context("Error spawning afl build command")?;
@@ -68,6 +57,38 @@ impl Build {
                     run.code()
                 ));
             }
+
+            let asan_target_str = format!("--target={ASAN_TARGET}");
+            let opt_level_str = format!("-Copt-level={opt_level}");
+
+            // If ASAN is enabled, build both a sanitized binary and a non-sanitized binary.
+            if self.asan {
+                assert_eq!(opt_level, "0", "AFL_OPT_LEVEL must be 0 for ASAN builds");
+                afl_args.push(&asan_target_str);
+                afl_args.extend(["-Z", "build-std"]);
+                rust_flags.push_str(" -Zsanitizer=address ");
+                rust_flags.push_str(&opt_level_str);
+                rust_doc_flags.push_str(" -Zsanitizer=address ");
+
+                let run = process::Command::new(cargo.clone())
+                    .args(afl_args)
+                    .env("AFL_QUIET", "1")
+                    // need to specify for afl.rs so that we build with -Copt-level=0
+                    .env("AFL_OPT_LEVEL", opt_level)
+                    .env("AFL_LLVM_CMPLOG", "1") // for afl.rs feature "plugins"
+                    .env("RUSTFLAGS", rust_flags)
+                    .env("RUSTDOCFLAGS", rust_doc_flags)
+                    .spawn()?
+                    .wait()
+                    .context("Error spawning afl build command")?;
+
+                if !run.success() {
+                    return Err(anyhow!(
+                        "Error building afl fuzzer: Exited with {:?}",
+                        run.code()
+                    ));
+                }
+            };
 
             eprintln!("    {} afl", style("Finished").cyan().bold());
         }
