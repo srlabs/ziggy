@@ -30,7 +30,7 @@ impl Build {
 
             // Add the --release argument if self.release is true
             if self.release {
-                assert!(!self.release, "cannot use --release for ASAN builds");
+                assert!(!self.asan, "cannot use --release for ASAN builds");
                 afl_args.push("--release");
             }
 
@@ -63,6 +63,7 @@ impl Build {
 
             // If ASAN is enabled, build both a sanitized binary and a non-sanitized binary.
             if self.asan {
+                eprintln!("    {} afl (ASan)", style("Building").red().bold());
                 assert_eq!(opt_level, "0", "AFL_OPT_LEVEL must be 0 for ASAN builds");
                 afl_args.push(&asan_target_str);
                 afl_args.extend(["-Z", "build-std"]);
