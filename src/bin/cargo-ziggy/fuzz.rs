@@ -481,7 +481,7 @@ impl Fuzz {
                     false => {
                         if self.release {
                             format!("./target/afl/release/{}", self.target)
-                        } else if self.asan {
+                        } else if self.asan && job_num == 0 {
                             format!("./target/afl/{ASAN_TARGET}/debug/{}", self.target)
                         } else {
                             format!("./target/afl/debug/{}", self.target)
