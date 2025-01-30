@@ -17,6 +17,7 @@ members = [
 [dependencies]
 afl = { version = "0.15.11", default-features = false, optional = true }
 anyhow = { version = "1.0.83", optional = true }
+arbitrary = "1.4.1"
 cargo_metadata = { version = "0.18.1", optional = true }
 clap = { version = "4.5.4", features = ["cargo", "derive", "env"], optional = true }
 console = { version = "0.15.8", optional = true }
@@ -24,6 +25,7 @@ fork = { version = "0.1.23", optional = true }
 glob = { version = "0.3.1", optional = true }
 honggfuzz = { version = "0.5.56", optional = true }
 libc = { version = "0.2.153", optional = true }
+once_cell = "1.20.2"
 semver = { version = "1.0.23", optional = true }
 strip-ansi-escapes = { version = "0.2.0", optional = true }
 time-humanize = { version = "0.1.3", optional = true }
