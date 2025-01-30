@@ -9,7 +9,7 @@ pub use honggfuzz::fuzz as honggfuzz_fuzz;
 // This is our inner harness handler function for the runner.
 // We open the input file and feed the data to the harness closure.
 #[doc(hidden)]
-#[cfg(not(any(feature = "afl", feature = "honggfuzz", feature = "coverage")))]
+#[cfg(not(feature = "coverage"))]
 pub fn read_file_and_fuzz<F>(mut closure: F, file: String)
 where
     F: FnMut(&[u8]),
@@ -85,7 +85,6 @@ where
 // We read input files and directories from the command line and run the inner harness `fuzz`.
 #[doc(hidden)]
 #[macro_export]
-#[cfg(not(any(feature = "afl", feature = "honggfuzz")))]
 macro_rules! read_args_and_fuzz {
     ( |$buf:ident| $body:block ) => {
         use std::{env, fs};
@@ -134,8 +133,7 @@ macro_rules! read_args_and_fuzz {
 /// # }
 /// ```
 #[macro_export]
-#[cfg(not(any(feature = "afl", feature = "honggfuzz")))]
-macro_rules! fuzz {
+macro_rules! inner_fuzz {
     (|$buf:ident| $body:block) => {
         $crate::read_args_and_fuzz!(|$buf| $body);
     };
@@ -157,11 +155,25 @@ macro_rules! fuzz {
     };
 }
 
+/// We need this wrapper
+#[macro_export]
+#[cfg(not(any(feature = "afl", feature = "honggfuzz")))]
+macro_rules! fuzz {
+    ( $($x:tt)* ) => {
+        $crate::inner_fuzz!($($x)*);
+    }
+}
+
 #[macro_export]
 #[cfg(feature = "afl")]
 macro_rules! fuzz {
-    ( $($x:tt)* ) => {
-        $crate::afl_fuzz!($($x)*);
+      ( $($x:tt)* ) => {
+        static USE_ARGS: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::args().len() > 1);
+        if *USE_ARGS {
+            $crate::inner_fuzz!($($x)*);
+        } else {
+            $crate::afl_fuzz!($($x)*);
+        }
     };
 }
 
