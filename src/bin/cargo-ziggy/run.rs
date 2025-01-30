@@ -20,6 +20,10 @@ impl Run {
         let mut rust_flags = env::var("RUSTFLAGS").unwrap_or_default();
         let mut rust_doc_flags = env::var("RUSTDOCFLAGS").unwrap_or_default();
 
+        for feature in &self.features {
+            args.extend(["-F", feature.as_str()]);
+        }
+
         if self.asan {
             args.push(&asan_target_str);
             args.extend(["-Z", "build-std"]);
