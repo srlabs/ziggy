@@ -1,14 +1,10 @@
 #![doc = include_str!("../README.md")]
 #[cfg(feature = "afl")]
 pub use afl::fuzz as afl_fuzz;
-#[cfg(feature = "afl")]
-pub use once_cell;
 #[cfg(feature = "coverage")]
 pub use fork;
 #[cfg(feature = "honggfuzz")]
 pub use honggfuzz::fuzz as honggfuzz_fuzz;
-//#[cfg(not(any(feature = "afl", feature = "honggfuzz")))]
-pub use arbitrary;
 
 // This is our inner harness handler function for the runner.
 // We open the input file and feed the data to the harness closure.
@@ -137,8 +133,8 @@ macro_rules! read_args_and_fuzz {
 /// # }
 /// ```
 #[macro_export]
-#[cfg(not(any(feature = "afl", feature = "honggfuzz")))]
-macro_rules! fuzz {
+#[cfg(not(feature = "coverage"))]
+macro_rules! inner_fuzz {
     (|$buf:ident| $body:block) => {
         $crate::read_args_and_fuzz!(|$buf| $body);
     };
@@ -148,8 +144,8 @@ macro_rules! fuzz {
     (|$buf:ident: $dty: ty| $body:block) => {
         $crate::read_args_and_fuzz!(|$buf| {
             let $buf: $dty = {
-                let mut data = $crate::arbitrary::Unstructured::new($buf);
-                if let Ok(d) = $crate::arbitrary::Arbitrary::arbitrary(&mut data).map_err(|_| "") {
+                let mut data = ::arbitrary::Unstructured::new($buf);
+                if let Ok(d) = ::arbitrary::Arbitrary::arbitrary(&mut data).map_err(|_| "") {
                     d
                 } else {
                     return;
@@ -160,18 +156,26 @@ macro_rules! fuzz {
     };
 }
 
+/// We need this wrapper
+#[macro_export]
+#[cfg(not(any(feature = "afl", feature = "honggfuzz")))]
+macro_rules! fuzz {
+    ( $($x:tt)* ) => {
+        $crate::inner_fuzz!($($x)*);
+    }
+}
+
 #[macro_export]
 #[cfg(feature = "afl")]
 macro_rules! fuzz {
-    (|$buf:ident: $ty:ty| $body:block) => {{
-        static USE_ARGS: $crate::once_cell::sync::Lazy<bool> = $crate::once_cell::sync::Lazy::new(|| std::env::args().len() > 1);
-
+      ( $($x:tt)* ) => {
+        static USE_ARGS: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::args().len() > 1);
         if *USE_ARGS {
-            $crate::read_args_and_fuzz!(|$buf| $body);
+            $crate::inner_fuzz!($($x)*);
         } else {
-            $crate::afl_fuzz!(|$buf: $ty| $body);
+            $crate::afl_fuzz!($($x)*);
         }
-    }};
+    };
 }
 
 #[macro_export]

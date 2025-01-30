@@ -709,7 +709,6 @@ version = "1.3.0"
 dependencies = [
  "afl",
  "anyhow",
- "arbitrary",
  "cargo_metadata",
  "clap",
  "console",
