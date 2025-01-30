@@ -217,6 +217,10 @@ pub struct Run {
     /// Build with ASAN (nightly only)
     #[clap(long = "asan", action)]
     asan: bool,
+
+    /// Activate these features on the target
+    #[clap(short = 'F', long, num_args = 0..)]
+    features: Vec<String>,
 }
 
 #[derive(Args, Clone)]
