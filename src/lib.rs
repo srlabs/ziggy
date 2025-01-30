@@ -9,7 +9,6 @@ pub use honggfuzz::fuzz as honggfuzz_fuzz;
 // This is our inner harness handler function for the runner.
 // We open the input file and feed the data to the harness closure.
 #[doc(hidden)]
-#[cfg(not(feature = "coverage"))]
 pub fn read_file_and_fuzz<F>(mut closure: F, file: String)
 where
     F: FnMut(&[u8]),
@@ -133,7 +132,6 @@ macro_rules! read_args_and_fuzz {
 /// # }
 /// ```
 #[macro_export]
-#[cfg(not(feature = "coverage"))]
 macro_rules! inner_fuzz {
     (|$buf:ident| $body:block) => {
         $crate::read_args_and_fuzz!(|$buf| $body);
