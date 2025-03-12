@@ -453,6 +453,10 @@ impl Fuzz {
                     Some(t) => format!("-t{}", t * 1000),
                     None => String::new(),
                 };
+                let memory_option_afl = match &self.memory_limit {
+                    Some(m) => format!("-m{}", m),
+                    None => String::new(),
+                };
                 let dictionary_option = match &self.dictionary {
                     Some(d) => format!("-x{}", &d.display().to_string()),
                     None => String::new(),
@@ -516,6 +520,7 @@ impl Fuzz {
                                 mutation_option,
                                 input_format_option,
                                 &timeout_option_afl,
+                                &memory_option_afl,
                                 &dictionary_option,
                             ]
                             .iter()
