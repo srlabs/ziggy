@@ -133,8 +133,12 @@ pub struct Fuzz {
     #[clap(short, long, value_name = "SECS")]
     timeout: Option<u32>,
 
+    /// Memory limit for the fuzz target (AFL++ only)
+    #[clap(short, long, value_name = "STRING")]
+    memory_limit: Option<String>,
+
     /// Perform initial minimization
-    #[clap(short, long, action, default_value_t = false)]
+    #[clap(short = 'M', long, action, default_value_t = false)]
     minimize: bool,
 
     /// Dictionary file (format:<http://llvm.org/docs/LibFuzzer.html#dictionaries>)
