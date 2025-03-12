@@ -581,6 +581,11 @@ impl Fuzz {
                 None => String::new(),
             };
 
+            let memory_option = match &self.memory_limit {
+                Some(m) => format!("--rlimit_as{}", m),
+                None => String::new(),
+            };
+
             // The `script` invocation is a trick to get the correct TTY output for honggfuzz
             fuzzer_handles.push(
                 process::Command::new("script")
@@ -600,7 +605,7 @@ impl Fuzz {
                     .env(
                         "HFUZZ_RUN_ARGS",
                         format!(
-                            "--input={} -o{}/honggfuzz/corpus -n{honggfuzz_jobs} -F{} --dynamic_input={}/queue {timeout_option} {dictionary_option}",
+                            "--input={} -o{}/honggfuzz/corpus -n{honggfuzz_jobs} -F{} --dynamic_input={}/queue {timeout_option} {dictionary_option} {memory_option}",
                             &self.corpus(),
                             &self.output_target(),
                             self.max_length,
