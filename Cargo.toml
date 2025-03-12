@@ -15,7 +15,7 @@ members = [
 ]
 
 [dependencies]
-afl = { version = "0.15.11", default-features = false, optional = true }
+afl = { version = "0.15.16", default-features = false, optional = true }
 anyhow = { version = "1.0.83", optional = true }
 cargo_metadata = { version = "0.18.1", optional = true }
 clap = { version = "4.5.4", features = ["cargo", "derive", "env"], optional = true }
