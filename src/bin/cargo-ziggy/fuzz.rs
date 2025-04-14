@@ -385,7 +385,7 @@ impl Fuzz {
                 // not apply more than 4 jobs to honggfuzz
                 match self.jobs {
                     1 => (1, 0),
-                    2..=12 => (self.jobs - ((self.jobs + 2) / 3), (self.jobs + 2) / 3),
+                    2..=12 => (self.jobs - self.jobs.div_ceil(3), self.jobs.div_ceil(3)),
                     _ => (self.jobs - 4, 4),
                 }
             }
