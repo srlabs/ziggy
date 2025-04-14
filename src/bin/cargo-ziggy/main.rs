@@ -133,7 +133,7 @@ pub struct Fuzz {
     #[clap(short, long, value_name = "SECS")]
     timeout: Option<u32>,
 
-    /// Memory limit for the fuzz target (AFL++ only)
+    /// Memory limit for the fuzz target. (If fuzzing with honggfuzz, a numeric value in MiB mus be specified)
     #[clap(short, long, value_name = "STRING")]
     memory_limit: Option<String>,
 
