@@ -15,6 +15,14 @@ impl Cover {
         self.target =
             find_target(&self.target).context("⚠️  couldn't find the target to start coverage")?;
 
+        if let Some(path) = &self.source {
+            if !path.try_exists()? {
+                return Err(anyhow!(
+                    "Source directory specified, but path does not exist!"
+                ));
+            }
+        }
+
         // build the runner
         Cover::build_runner()?;
 
