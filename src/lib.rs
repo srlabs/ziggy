@@ -5,7 +5,7 @@ pub use afl::fuzz as afl_fuzz;
 pub use fork;
 #[cfg(feature = "honggfuzz")]
 pub use honggfuzz::fuzz as honggfuzz_fuzz;
-
+  
 // This is our inner harness handler function for the runner.
 // We open the input file and feed the data to the harness closure.
 #[doc(hidden)]

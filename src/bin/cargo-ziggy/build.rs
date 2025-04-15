@@ -1,4 +1,5 @@
-use crate::Build;
+use crate::libfuzzer::TARGET_SUBDIR;
+use crate::{libfuzzer::Extractor, Build};
 use anyhow::{anyhow, Context, Result};
 use console::style;
 use std::{env, process};
@@ -20,6 +21,23 @@ impl Build {
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
         if !self.no_afl {
+            // We extract the Rust harness project wrapping libFuzzer API
+            if self.cpp {
+                eprintln!(
+                    "    {}  the Rust harness project wrapping libFuzzer API",
+                    style("Extracting").red().bold()
+                );
+                let extract: &Extractor = Extractor::new();
+                let working_dir = extract.extract();
+
+                eprintln!(
+                    "    {} into directory '{}'",
+                    style("Changing").cyan().bold(),
+                    working_dir.to_str().unwrap()
+                );
+                env::set_current_dir(working_dir)?;
+            }
+
             eprintln!("    {} afl", style("Building").red().bold());
             let mut afl_args = vec![
                 "afl",
@@ -97,7 +115,7 @@ impl Build {
         if !self.no_honggfuzz {
             assert!(
                 !self.asan,
-                "Cannot build honggfuzz with ASAN for the moment. use --no-honggfuzz"
+                "Cannot build honggfuzz with ASAN for the moment. Use --no-honggfuzz"
             );
             eprintln!("    {} honggfuzz", style("Building").red().bold());
 

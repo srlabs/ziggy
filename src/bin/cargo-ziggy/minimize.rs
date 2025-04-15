@@ -15,6 +15,7 @@ impl Minimize {
             no_honggfuzz: self.engine == FuzzingEngines::AFLPlusPlus,
             release: false,
             asan: false,
+            cpp: false,
         };
         build.build().context("Failed to build the fuzzers")?;
 

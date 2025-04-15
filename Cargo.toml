@@ -8,7 +8,7 @@ repository = "https://github.com/srlabs/ziggy/"
 
 [workspace]
 members = [
-    ".",
+    ".", 
     "examples/arbitrary",
     "examples/asan",
     "examples/url",
@@ -17,10 +17,10 @@ members = [
 [dependencies]
 afl = { version = "0.15.16", default-features = false, optional = true }
 anyhow = { version = "1.0.83", optional = true }
-cargo_metadata = { version = "0.18.1", optional = true }
+cargo_metadata = { version = "0.19.2", optional = true }
 clap = { version = "4.5.4", features = ["cargo", "derive", "env"], optional = true }
 console = { version = "0.15.8", optional = true }
-fork = { version = "0.1.23", optional = true }
+fork = { version = "0.2.0", optional = true }
 glob = { version = "0.3.1", optional = true }
 honggfuzz = { version = "0.5.57", optional = true }
 libc = { version = "0.2.153", optional = true }

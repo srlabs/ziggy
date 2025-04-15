@@ -86,6 +86,7 @@ impl Fuzz {
                 no_honggfuzz: !self.honggfuzz(),
                 release: self.release,
                 asan: self.asan,
+                cpp: self.cpp,
             };
             build.build().context("Failed to build the fuzzers")?;
         }

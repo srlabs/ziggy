@@ -2,6 +2,7 @@
 fn main() {}
 
 mod add_seeds;
+mod libfuzzer;
 mod build;
 mod coverage;
 mod fuzz;
@@ -99,6 +100,11 @@ pub struct Build {
     /// Build with ASAN (nightly only)
     #[clap(long = "asan", action)]
     asan: bool,
+
+    /// Fuzz a C++ project with libFuzzer implementation (user created a `LLVMFuzzerTestOneInput` harness)
+    #[clap(long = "cpp", action)]
+    cpp: bool,
+
 }
 
 #[derive(Args)]
@@ -188,6 +194,10 @@ pub struct Fuzz {
     /// Build with ASAN (nightly only)
     #[clap(long = "asan", action)]
     asan: bool,
+
+    /// Fuzz a C++ project with libFuzzer implementation (user created a `LLVMFuzzerTestOneInput` harness)
+    #[clap(long = "cpp", action)]
+    cpp: bool,
 
     /// Foreign fuzzer directories to sync with (AFL++ -F option)
     #[clap(long = "foreign-sync", short = 'F', action)]
