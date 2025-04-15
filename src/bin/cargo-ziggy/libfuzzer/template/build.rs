@@ -1,10 +1,15 @@
 use cmake::Config;
-use std::path::PathBuf;
-use std::{env, path::Path};
+use std::{env, path::Path, path::PathBuf};
 use which::which;
 
+/// ## Environment variables used:
+/// `ENABLE_ASAN` : Should we compile with ASAN
+/// `TARGET_LIB_NAME` : The name of the `project()` in the CMakeList, TODO: we could automatize it
+/// `AFL_COMPILER_MODE` : Using AFL++ LTO or FAST compiler
+/// `PROFILE` : Compile in Debug or Release mode
+
 fn main() {
-    let target_lib_name = env::var("TARGET_LIB_NAME_ENV").unwrap_or("FuzzTarget".to_string()); // Use FuzzTarget by default, since this is our example
+    let target_lib_name = env::var("TARGET_LIB_NAME").unwrap_or("FuzzTarget".to_string()); // Use FuzzTarget by default, since this is our example
 
     let cpp_project_path = Path::new(".."); // We are always in `PROJECT/fuzzer`, so we just `..`
     let enable_asan = env::var("ENABLE_ASAN").is_ok();
