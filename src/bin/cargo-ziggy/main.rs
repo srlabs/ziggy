@@ -4,6 +4,7 @@ fn main() {}
 mod add_seeds;
 mod build;
 mod coverage;
+mod coverage_cpp;
 mod fuzz;
 mod libfuzzer;
 mod minimize;
@@ -73,6 +74,9 @@ pub enum Ziggy {
     /// Generate code coverage information using the existing corpus
     Cover(Cover),
 
+    /// Only for C++ codebase! Generate code coverage information using the existing corpus
+    CoverCpp(CoverCpp),
+
     /// Plot AFL++ data using afl-plot
     Plot(Plot),
 
@@ -110,7 +114,7 @@ pub struct Build {
     lto: bool,
 
     /// Target name of the C++ library, as describe in your `project()` defined in CMakeList.txt. It is automatically guessed by default. Or, name your harness in your CMakeList as "FuzzTarget" to make it work.
-    #[clap(long = "target_name", value_name= "STRING")]
+    #[clap(long = "target_name", value_name = "STRING")]
     target_name: Option<String>,
 }
 
@@ -318,6 +322,39 @@ pub struct Cover {
 }
 
 #[derive(Args)]
+pub struct CoverCpp {
+    /// Target to generate coverage for
+    #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
+    target: String,
+
+    /// Output directory for code coverage report
+    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_COVERAGE_DIR)]
+    output: PathBuf,
+
+    /// Input corpus directory to run target on
+    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CORPUS_DIR)]
+    input: PathBuf,
+
+    /// Fuzzers output directory
+    #[clap(
+        short, long, env = "ZIGGY_OUTPUT", value_parser, value_name = "DIR", default_value = DEFAULT_OUTPUT_DIR
+    )]
+    ziggy_output: PathBuf,
+
+    /// Source directory of covered code
+    #[clap(short, long, value_parser, value_name = "DIR")]
+    source: Option<PathBuf>,
+
+    /// Keep coverage data files (WARNING: Do not use if source code has changed)
+    #[clap(short, long, default_value_t = false)]
+    keep: bool,
+
+    /// Comma separated list of output types. See grov --help to see supported output types. Default: html
+    #[clap(short = 't', long)]
+    output_types: Option<String>,
+}
+
+#[derive(Args)]
 pub struct Plot {
     /// Target to generate plot for
     #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
@@ -397,6 +434,9 @@ fn main() -> Result<(), anyhow::Error> {
         Ziggy::Triage(mut args) => args
             .triage()
             .context("Triaging with casr failed, try \"cargo install casr\""),
+        Ziggy::CoverCpp(mut args) => args
+            .generate_coverage()
+            .context("Failed to create C++ coverage report"),
     }
 }
 
