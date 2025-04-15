@@ -5,6 +5,9 @@
 #include <iostream>
 #include <string>
 
+extern "C" int LLVMFuzzerInitialize(int *argc, char ***argv) __attribute__((weak));
+extern "C" int LLVMFuzzerTestOneInput(const unsigned char*, size_t);
+
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* Data, size_t Size) {
     std::string input_str(reinterpret_cast<const char*>(Data), Size);
     std::cout << "Fuzzer string: " << input_str << std::endl;
@@ -35,3 +38,40 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* Data, size_t Size) {
 
     return 0;
 }
+
+
+/// This `main()` function is used to create coverage.
+#ifdef ENABLE_FUZZ_MAIN
+int main(int argc, char **argv) {
+  if (LLVMFuzzerInitialize) {
+    fprintf(stderr, "Running LLVMFuzzerInitialize ...\n");
+    LLVMFuzzerInitialize(&argc, &argv);
+  }
+
+  for (int i = 1; i < argc; i++) {
+    FILE *f = fopen(argv[i], "r");
+    if (f) {
+      fseek(f, 0, SEEK_END);
+      size_t len = ftell(f);
+      fseek(f, 0, SEEK_SET);
+      unsigned char *buf = (unsigned char *)malloc(len);
+
+      if (buf) {
+        size_t n_read = fread(buf, 1, len, f);
+        fclose(f);
+
+        if (n_read > 0) {
+          fprintf(stderr, "Running: %s (%d/%d) %zu bytes\n", argv[i], i,
+                  argc - 1, n_read);
+          LLVMFuzzerTestOneInput((const unsigned char *)buf, len);
+        }
+
+        free(buf);
+      }
+    }
+  }
+
+  fprintf(stderr, "Done.\n");
+  return 0;
+}
+#endif
