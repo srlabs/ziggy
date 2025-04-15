@@ -16,6 +16,8 @@ impl Minimize {
             release: false,
             asan: false,
             cpp: false,
+            lto: false,
+            target_name: None,
         };
         build.build().context("Failed to build the fuzzers")?;
 

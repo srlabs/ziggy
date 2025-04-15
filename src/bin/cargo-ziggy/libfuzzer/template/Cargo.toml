@@ -1,17 +1,19 @@
 [package]
-    name = "ziggy_wrapper"
-    version = "0.1.0"
-    edition = "2024"
+name = "ziggy_wrapper"
+version = "0.1.0"
+edition = "2024"
 
-    [dependencies]
-    # TODO: If using Ziggy from source, we use local path, if not we use remote Ziggy
-    # For now we are creating the libfuzzer wrapper so we let the relative path
-    ziggy = { path = "../../../", default-features = false }
-    libc = "0.2"
+[dependencies]
+# TODO: If using Ziggy from source, we use local path, if not we use remote Ziggy
+# For now we are creating the libfuzzer wrapper so we let the relative path
+ziggy = { path = "../../../", default-features = false }
+libc = "0.2"
 
 
-    [build-dependencies]
-    cmake = "0.1"
-    which = "7.0.3"
+[build-dependencies]
+cmake = "0.1"
+which = "7.0.3"
+anyhow = "1.0.98"
+regex = "1.11.1"
 
 [workspace]

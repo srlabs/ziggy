@@ -2,10 +2,10 @@
 fn main() {}
 
 mod add_seeds;
-mod libfuzzer;
 mod build;
 mod coverage;
 mod fuzz;
+mod libfuzzer;
 mod minimize;
 mod plot;
 mod run;
@@ -105,6 +105,13 @@ pub struct Build {
     #[clap(long = "cpp", action)]
     cpp: bool,
 
+    /// Compile the target with LTO. If you can't `cargo ziggy build`, try to switch this off.
+    #[clap(long = "lto", action)]
+    lto: bool,
+
+    /// Target name of the C++ library, as describe in your `project()` defined in CMakeList.txt. It is automatically guessed by default. Or, name your harness in your CMakeList as "FuzzTarget" to make it work.
+    #[clap(long = "target_name", value_name= "STRING")]
+    target_name: Option<String>,
 }
 
 #[derive(Args)]
@@ -131,7 +138,15 @@ pub struct Fuzz {
     )]
     ziggy_output: PathBuf,
 
-    /// Number of concurent fuzzing jobs
+    /// Compile the target with LTO. If you can't `cargo ziggy build`, try to switch this off.
+    #[clap(long = "lto", action)]
+    lto: bool,
+
+    /// Target name of the C++ library, as describe in your `project()` defined in CMakeList.txt. It is automatically guessed by default. Or, name your harness in your CMakeList as "FuzzTarget" to make it work.
+    #[clap(long = "target_name", value_name = "STRING")]
+    target_name: Option<String>,
+
+    /// Number of concurrent fuzzing jobs
     #[clap(short, long, value_name = "NUM", default_value_t = 1)]
     jobs: u32,
 

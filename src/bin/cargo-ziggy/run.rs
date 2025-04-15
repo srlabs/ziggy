@@ -25,6 +25,10 @@ impl Run {
             args.extend(["-F", feature.as_str()]);
         }
 
+        if self.cpp {
+            env::set_var("AFL_COMPILER_MODE", "runner");
+        }
+
         if self.asan {
             // Crash if we detect an ASAN bug
             append_env_var("ASAN_OPTIONS", "detect_leaks=1:abort_on_error=1");

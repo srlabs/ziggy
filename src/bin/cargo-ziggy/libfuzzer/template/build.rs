@@ -1,4 +1,7 @@
+use anyhow::anyhow;
 use cmake::Config;
+use regex::Regex;
+use std::fs;
 use std::{env, path::Path, path::PathBuf};
 use which::which;
 
@@ -9,22 +12,25 @@ use which::which;
 /// ## Environment variables used:
 /// Below are the different env. var. used to customize the fuzzing compilation
 ///     `ENABLE_ASAN` : Should we compile with ASAN
-///     `TARGET_LIB_NAME` : The name of the `project()` in the `CMakeList.txt` (TODO: we could automatize it)
+///     `ENABLE_UBSAN` : TODO: Should we compile with UBSAN
+///     `TARGET_LIB_NAME` : The name of the `project()` in the `CMakeList.txt`
 ///     `AFL_COMPILER_MODE` : Using AFL++ LTO or FAST compiler
 ///     `PROFILE` : Compile in Debug or Release mode
 
 fn main() {
-    let target_lib_name = env::var("TARGET_LIB_NAME").unwrap_or("FuzzTarget".to_string()); // Use FuzzTarget by default, since this is our example
-
     let cpp_project_path = Path::new(".."); // We are always in `PROJECT/fuzzer`, so we just `..`
+    let cmakelist = cpp_project_path.join("CMakeLists.txt");
+
+    // To fetch the target name, we do it in three ways. Either we get it from TARGET_LIB_NAME env, either we extract it automatically, or we use the one from the example
+    let target_lib_name = env::var("TARGET_LIB_NAME").unwrap_or(
+        extract_project_name_from_string(&cmakelist).unwrap_or("FuzzTarget".to_string()),
+    );
+
     let enable_asan = env::var("ENABLE_ASAN").is_ok();
     let mut config = cmake::Config::new(cpp_project_path);
 
     // Disable cache if the `CMakeLists.txt` changed
-    println!(
-        "cargo:rerun-if-changed={}",
-        cpp_project_path.join("CMakeLists.txt").display()
-    );
+    println!("cargo:rerun-if-changed={}", cmakelist.display());
 
     cmake_with_afl_compilers(&mut config);
 
@@ -71,6 +77,7 @@ fn cmake_with_afl_compilers(config: &mut Config) {
     // If user specify "lto", then we compile with AFL++ LTO fuzzers, otherwise classic fast fuzzers
     let (c_compiler, cxx_compiler) = match env::var("AFL_COMPILER_MODE").as_deref() {
         Ok("lto") => ("afl-clang-lto", "afl-clang-lto++"),
+        Ok("runner") => ("clang", "clang++"),
         _ => ("afl-clang-fast", "afl-clang-fast++"),
     };
 
@@ -99,7 +106,7 @@ fn append_env_var(name: &str, val: &str) {
         env::set_var(name, new_val);
     }
 }
-// Update CMake's `config` with ASAN flags TODO: UBSan
+// Update CMake's `config` with ASAN flags
 fn cmake_with_asan(config: &mut cmake::Config) {
     let asan_flags: &str = "-fsanitize=address";
 
@@ -119,4 +126,23 @@ fn check_compilers(c_compiler: &str, cxx_compiler: &str) {
     if which(cxx_compiler).is_err() {
         panic!("Compiler '{}' not found", cxx_compiler);
     }
+}
+
+fn extract_project_name_from_string(filepath: &PathBuf) -> anyhow::Result<String> {
+    // Regex to parse project name from CMakeList.txt
+    // - project(Name)
+    // - project(Name LANGUAGES)
+    // - project(Name LANGUAGES VERSION)
+    // - project ( Name ) with spaces
+
+    let content = fs::read_to_string(filepath)?;
+    let re = Regex::new(r"(?i)project\s*\(\s*([A-Za-z0-9_]+)(?:\s+[A-Za-z0-9_]+)*\s*\)")?;
+
+    if let Some(captures) = re.captures(&content) {
+        if let Some(project_match) = captures.get(1) {
+            return Ok(project_match.as_str().to_string());
+        }
+    }
+
+    Err(anyhow!("Could not find project name in CMakeLists.txt"))
 }

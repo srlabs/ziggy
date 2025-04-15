@@ -87,6 +87,8 @@ impl Fuzz {
                 release: self.release,
                 asan: self.asan,
                 cpp: self.cpp,
+                lto: self.lto,
+                target_name: self.target_name.clone(),
             };
             build.build().context("Failed to build the fuzzers")?;
         }

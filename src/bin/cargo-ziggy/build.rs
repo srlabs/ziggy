@@ -22,6 +22,12 @@ impl Build {
         if !self.no_afl {
             // We extract the Rust harness project wrapping libFuzzer API
             if self.cpp {
+                if self.lto {
+                    env::set_var("AFL_COMPILER_MODE", "lto");
+                }
+                if self.target_name.is_some() {
+                    env::set_var("TARGET_LIB_NAME", self.target_name.clone().unwrap());
+                }
                 if self.asan {
                     // This is required to differentiate ASAN runtimes from Rust's to Clang's one
                     // See https://github.com/rust-lang/rust/pull/121207
