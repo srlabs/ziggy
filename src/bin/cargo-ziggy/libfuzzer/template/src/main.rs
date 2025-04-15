@@ -3,6 +3,7 @@ unsafe extern "C" {
     fn LLVMFuzzerTestOneInput(data: *const u8, size: size_t);
 }
 /// This file just a wrapper. It will be extracted, compiled, and started by Ziggy to fuzz an underlying `LLVMFuzzerTestOneInput`.
+/// TODO: Handle `LLVMFuzzerInitialize`
 fn main() {
     ziggy::fuzz!(|data: &[u8]| {
         unsafe {

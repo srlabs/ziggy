@@ -3,12 +3,13 @@ use std::{env, path::Path, path::PathBuf};
 use which::which;
 
 /// # Documentation
+/// ## Goal
 /// The goal of this build.rs is to manage the compilation of the C++ target
 ///
 /// ## Environment variables used:
 /// Below are the different env. var. used to customize the fuzzing compilation
 ///     `ENABLE_ASAN` : Should we compile with ASAN
-///     `TARGET_LIB_NAME` : The name of the `project()` in the CMakeList (TODO: we could automatize it)
+///     `TARGET_LIB_NAME` : The name of the `project()` in the `CMakeList.txt` (TODO: we could automatize it)
 ///     `AFL_COMPILER_MODE` : Using AFL++ LTO or FAST compiler
 ///     `PROFILE` : Compile in Debug or Release mode
 
@@ -19,7 +20,7 @@ fn main() {
     let enable_asan = env::var("ENABLE_ASAN").is_ok();
     let mut config = cmake::Config::new(cpp_project_path);
 
-    // Disable cache if the CMakeLists.txt changed
+    // Disable cache if the `CMakeLists.txt` changed
     println!(
         "cargo:rerun-if-changed={}",
         cpp_project_path.join("CMakeLists.txt").display()
@@ -87,6 +88,7 @@ fn cmake_with_afl_compilers(config: &mut Config) {
         .very_verbose(true);
 }
 
+/// Append `val` to `name` environment variable
 fn append_env_var(name: &str, val: &str) {
     let mut new_val = env::var(name).unwrap_or_default();
     if !new_val.is_empty() {

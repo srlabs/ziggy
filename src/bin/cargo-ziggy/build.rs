@@ -23,12 +23,17 @@ impl Build {
             // We extract the Rust harness project wrapping libFuzzer API
             if self.cpp {
                 if self.asan {
-                    env::set_var("ENABLE_ASAN", "true");
+                    // This is required to differentiate ASAN runtimes from Rust's to Clang's one
+                    // See https://github.com/rust-lang/rust/pull/121207
+                    append_env_var("RUSTFLAGS", "-Z external-clangrt");
+                    env::set_var("ENABLE_ASAN", "1");
                 }
                 eprintln!(
                     "    {}  the Rust harness project wrapping libFuzzer API",
                     style("Extracting").red().bold()
                 );
+
+                // Extract the harness serving as a wrapper
                 let extract: &Extractor = Extractor::new();
                 let working_dir = extract.extract();
 
@@ -40,7 +45,7 @@ impl Build {
                 env::set_current_dir(working_dir)?;
             }
 
-            eprintln!("    {} afl", style("Building").red().bold());
+            eprintln!("    {} afl++", style("Building").red().bold());
             let mut afl_args = vec![
                 "afl",
                 "build",
@@ -52,6 +57,9 @@ impl Build {
             if self.release {
                 assert!(!self.asan, "cannot use --release for ASAN builds");
                 afl_args.push("--release");
+                env::set_var("PROFILE", "release");
+            } else {
+                env::set_var("PROFILE", "debug");
             }
 
             let opt_level = env::var("AFL_OPT_LEVEL").unwrap_or("0".to_string());
@@ -86,6 +94,7 @@ impl Build {
                 eprintln!("    {} afl (ASan)", style("Building").red().bold());
                 assert_eq!(opt_level, "0", "AFL_OPT_LEVEL must be 0 for ASAN builds");
                 afl_args.push(&asan_target_str);
+                afl_args.extend(["-Z", "build-std"]);
                 afl_args.extend(["-Z", "build-std"]);
                 rust_flags.push_str(" -Zsanitizer=address ");
                 rust_flags.push_str(&opt_level_str);
@@ -156,5 +165,17 @@ impl Build {
         }
 
         Ok(())
+    }
+}
+
+/// Append `val` to `name` environment variable
+pub fn append_env_var(name: &str, val: &str) {
+    let mut new_val = env::var(name).unwrap_or_default();
+    if !new_val.is_empty() {
+        new_val.push(' ');
+    }
+    new_val.push_str(val);
+    unsafe {
+        env::set_var(name, new_val);
     }
 }
