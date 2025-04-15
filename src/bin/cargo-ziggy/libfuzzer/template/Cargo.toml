@@ -1,4 +1,4 @@
-    [package]
+[package]
     name = "ziggy_wrapper"
     version = "0.1.0"
     edition = "2024"
@@ -12,6 +12,6 @@
 
     [build-dependencies]
     cmake = "0.1"
+    which = "7.0.3"
 
-
-    [workspace]
+[workspace]
