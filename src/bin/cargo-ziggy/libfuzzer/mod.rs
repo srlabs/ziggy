@@ -31,7 +31,7 @@ impl Extractor {
         for (relative_path_str, file_content) in FILES_TO_EXTRACT {
             let full_target_path = target_dir_path.join(relative_path_str);
             eprintln!(
-                "    extracting {} harness file  into {}",
+                "    {} extracting harness file into {}",
                 style("Finished").green().bold(),
                 full_target_path.display()
             );

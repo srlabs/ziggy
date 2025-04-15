@@ -97,9 +97,7 @@ fn append_env_var(name: &str, val: &str) {
         env::set_var(name, new_val);
     }
 }
-// Update CMake's `config` with ASAN flags
-//TODO: UBSan
-
+// Update CMake's `config` with ASAN flags TODO: UBSan
 fn cmake_with_asan(config: &mut cmake::Config) {
     let asan_flags: &str = "-fsanitize=address";
 
