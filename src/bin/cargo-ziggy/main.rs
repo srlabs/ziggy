@@ -232,6 +232,10 @@ pub struct Run {
     #[clap(long = "asan", action)]
     asan: bool,
 
+    /// Fuzz a C++ project with libFuzzer implementation (user created a `LLVMFuzzerTestOneInput` harness)
+    #[clap(long = "cpp", action)]
+    cpp: bool,
+
     /// Activate these features on the target
     #[clap(short = 'F', long, num_args = 0..)]
     features: Vec<String>,

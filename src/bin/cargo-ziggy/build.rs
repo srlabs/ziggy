@@ -26,7 +26,7 @@ impl Build {
                     // This is required to differentiate ASAN runtimes from Rust's to Clang's one
                     // See https://github.com/rust-lang/rust/pull/121207
                     append_env_var("RUSTFLAGS", "-Z external-clangrt");
-                    env::set_var("ENABLE_ASAN", "1");
+                    env::set_var("ENABLE_ASAN", "1"); // To trigger's C++ harness' `build.rs` ASAN mode
                 }
                 eprintln!(
                     "    {}  the Rust harness project wrapping libFuzzer API",
@@ -94,7 +94,6 @@ impl Build {
                 eprintln!("    {} afl (ASan)", style("Building").red().bold());
                 assert_eq!(opt_level, "0", "AFL_OPT_LEVEL must be 0 for ASAN builds");
                 afl_args.push(&asan_target_str);
-                afl_args.extend(["-Z", "build-std"]);
                 afl_args.extend(["-Z", "build-std"]);
                 rust_flags.push_str(" -Zsanitizer=address ");
                 rust_flags.push_str(&opt_level_str);

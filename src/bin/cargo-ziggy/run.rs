@@ -1,3 +1,4 @@
+use crate::build::append_env_var;
 use crate::{build::ASAN_TARGET, find_target, Run};
 use anyhow::{anyhow, Context, Result};
 use console::style;
@@ -25,6 +26,8 @@ impl Run {
         }
 
         if self.asan {
+            // Crash if we detect an ASAN bug
+            append_env_var("ASAN_OPTIONS", "detect_leaks=1:abort_on_error=1");
             args.push(&asan_target_str);
             args.extend(["-Z", "build-std"]);
             rust_flags.push_str(" -Zsanitizer=address ");
@@ -78,11 +81,15 @@ impl Run {
             })
             .collect();
 
-        let runner_path = match self.asan {
-            true => format!("./target/runner/{ASAN_TARGET}/debug/{}", target),
-            false => format!("./target/runner/debug/{}", target),
+        let runner_path = if self.cpp {
+            format!("./target/afl/{ASAN_TARGET}/debug/{}", target)
+        } else if self.asan {
+            format!("./target/runner/{ASAN_TARGET}/debug/{}", target)
+        } else {
+            format!("./target/runner/debug/{}", target)
         };
 
+        println!("Using runner {}", runner_path);
         let res = process::Command::new(runner_path)
             .args(run_args)
             .env("RUST_BACKTRACE", "full")

@@ -16,21 +16,22 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* Data, size_t Size) {
         input_str[2] == 'z' &&
         input_str[3] == 'z') {
 
-        std::cout << "That was the good input! Crashing now." << std::endl;
-        std::abort();
+       int* memory = new int[1];
+       memory[1] = 123;  // out-of-bounds write, triggering asan
+       delete[] memory;
     }
 
     // Test if ASAN works
-    const std::string target_str = "asan_crash";
-    if (input_str.size() >= target_str.size() &&
-        input_str.substr(0, target_str.size()) == target_str) {
-
-        std::cout << "Triggering asan! Crashing now." << std::endl;
-
-        int* memory = new int[1];
-        memory[1] = 123;  // out-of-bounds write, triggering asan
-        delete[] memory;
-    }
+//    const std::string target_str = "asan_crash";
+//    if (input_str.size() >= target_str.size() &&
+//        input_str.substr(0, target_str.size()) == target_str) {
+//
+//        std::cout << "Triggering asan! Crashing now." << std::endl;
+//
+//        int* memory = new int[1];
+//        memory[1] = 123;  // out-of-bounds write, triggering asan
+//        delete[] memory;
+//    }
 
     return 0;
 }
