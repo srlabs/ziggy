@@ -1,3 +1,4 @@
+use console::style;
 use std::{
     env,
     error::Error,
@@ -29,8 +30,11 @@ impl Extractor {
 
         for (relative_path_str, file_content) in FILES_TO_EXTRACT {
             let full_target_path = target_dir_path.join(relative_path_str);
-
-            println!("  Extracting to: {}", full_target_path.display());
+            eprintln!(
+                "    extracting {} harness file  into {}",
+                style("Finished").green().bold(),
+                full_target_path.display()
+            );
 
             if let Some(parent_dir) = full_target_path.parent() {
                 fs::create_dir_all(parent_dir).unwrap();
@@ -39,7 +43,11 @@ impl Extractor {
             fs::write(&full_target_path, *file_content).unwrap();
         }
 
-        println!("Extracted the harness to {}", target_dir_path.display());
+        eprintln!(
+            "    {} the harness to {}",
+            style("Extracted").cyan().bold(),
+            target_dir_path.display()
+        );
         target_dir_path
     }
 }

@@ -2,11 +2,15 @@ use cmake::Config;
 use std::{env, path::Path, path::PathBuf};
 use which::which;
 
+/// # Documentation
+/// The goal of this build.rs is to manage the compilation of the C++ target
+///
 /// ## Environment variables used:
-/// `ENABLE_ASAN` : Should we compile with ASAN
-/// `TARGET_LIB_NAME` : The name of the `project()` in the CMakeList, TODO: we could automatize it
-/// `AFL_COMPILER_MODE` : Using AFL++ LTO or FAST compiler
-/// `PROFILE` : Compile in Debug or Release mode
+/// Below are the different env. var. used to customize the fuzzing compilation
+///     `ENABLE_ASAN` : Should we compile with ASAN
+///     `TARGET_LIB_NAME` : The name of the `project()` in the CMakeList (TODO: we could automatize it)
+///     `AFL_COMPILER_MODE` : Using AFL++ LTO or FAST compiler
+///     `PROFILE` : Compile in Debug or Release mode
 
 fn main() {
     let target_lib_name = env::var("TARGET_LIB_NAME").unwrap_or("FuzzTarget".to_string()); // Use FuzzTarget by default, since this is our example
@@ -43,14 +47,15 @@ fn print_linkers(target_lib_name: &String, enable_asan: bool, config: &mut Confi
     let lib_dir = dst.join("lib");
     let build_dir = dst.join("build");
 
+    if enable_asan {
+        println!("cargo:rustc-link-lib=asan");
+    }
+
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
     println!("cargo:rustc-link-search=native={}", build_dir.display());
     println!("cargo:rustc-link-lib=static={}", target_lib_name);
     println!("cargo:rustc-link-lib=static=stdc++");
 
-    if enable_asan {
-        println!("cargo:rustc-link-lib=asan");
-    }
     lib_dir
 }
 
@@ -82,18 +87,28 @@ fn cmake_with_afl_compilers(config: &mut Config) {
         .very_verbose(true);
 }
 
+fn append_env_var(name: &str, val: &str) {
+    let mut new_val = env::var(name).unwrap_or_default();
+    if !new_val.is_empty() {
+        new_val.push(' ');
+    }
+    new_val.push_str(val);
+    unsafe {
+        env::set_var(name, new_val);
+    }
+}
 // Update CMake's `config` with ASAN flags
 //TODO: UBSan
-fn cmake_with_asan(config: &mut cmake::Config) {
-    const ASAN_FLAG: &str = "-fsanitize=address";
 
-    println!("cargo:info=Compiling ASAN");
-    config
-        .cflag(ASAN_FLAG)
-        .cxxflag(ASAN_FLAG)
-        .define("CMAKE_EXE_LINKER_FLAGS", ASAN_FLAG)
-        .define("CMAKE_SHARED_LINKER_FLAGS", ASAN_FLAG)
-        .define("CMAKE_MODULE_LINKER_FLAGS", ASAN_FLAG);
+fn cmake_with_asan(config: &mut cmake::Config) {
+    let asan_flags: &str = "-fsanitize=address";
+
+    config.cflag(asan_flags);
+    config.cxxflag(asan_flags);
+
+    append_env_var("CMAKE_EXE_LINKER_FLAGS", asan_flags);
+    append_env_var("CMAKE_SHARED_LINKER_FLAGS", asan_flags);
+    append_env_var("CMAKE_MODULE_LINKER_FLAGS", asan_flags);
 }
 
 /// Check if compilers exist in the system

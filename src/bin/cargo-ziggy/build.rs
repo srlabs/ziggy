@@ -1,4 +1,3 @@
-use crate::libfuzzer::TARGET_SUBDIR;
 use crate::{libfuzzer::Extractor, Build};
 use anyhow::{anyhow, Context, Result};
 use console::style;
@@ -23,6 +22,9 @@ impl Build {
         if !self.no_afl {
             // We extract the Rust harness project wrapping libFuzzer API
             if self.cpp {
+                if self.asan {
+                    env::set_var("ENABLE_ASAN", "true");
+                }
                 eprintln!(
                     "    {}  the Rust harness project wrapping libFuzzer API",
                     style("Extracting").red().bold()

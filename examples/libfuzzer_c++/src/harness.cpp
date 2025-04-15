@@ -28,7 +28,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* Data, size_t Size) {
         std::cout << "Triggering asan! Crashing now." << input_str << std::endl;
 
         int* memory = new int[1];
-        memory[1] = 123;  // Out-of-bounds write
+        memory[1] = 123;  // out-of-bounds write, triggering asan
         delete[] memory;
     }
 
