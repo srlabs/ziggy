@@ -35,7 +35,7 @@ impl Build {
                     env::set_var("ENABLE_ASAN", "1"); // To trigger's C++ harness' `build.rs` ASAN mode
                 }
                 eprintln!(
-                    "    {}  the Rust harness project wrapping libFuzzer API",
+                    "    {} the Rust harness project wrapping libFuzzer API",
                     style("Extracting").red().bold()
                 );
 

@@ -113,7 +113,7 @@ pub struct Build {
     #[clap(long = "lto", action)]
     lto: bool,
 
-    /// Target name of the C++ library, as describe in your `project()` defined in CMakeList.txt. It is automatically guessed by default. Or, name your harness in your CMakeList as "FuzzTarget" to make it work.
+    /// Target name of the C++ library, as defined in CMakeList.txt. It is automatically guessed by default. Or, name your harness in your CMakeList as "FuzzTarget" to make it work.
     #[clap(long = "target_name", value_name = "STRING")]
     target_name: Option<String>,
 }
@@ -434,9 +434,15 @@ fn main() -> Result<(), anyhow::Error> {
         Ziggy::Triage(mut args) => args
             .triage()
             .context("Triaging with casr failed, try \"cargo install casr\""),
-        Ziggy::CoverCpp(mut args) => args
-            .generate_coverage()
-            .context("Failed to create C++ coverage report"),
+        Ziggy::CoverCpp(mut args) => {
+
+            let mut cover_cpp = coverage_cpp::CoverCpp::new(
+                PathBuf::from("."),
+                args.input,
+                args.keep,
+            )?;
+            cover_cpp.generate_coverage_report().context("COuldn't generate report")
+        }
     }
 }
 

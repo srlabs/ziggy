@@ -8,12 +8,16 @@ edition = "2024"
 # For now we are creating the libfuzzer wrapper so we let the relative path
 ziggy = { path = "../../../", default-features = false }
 libc = "0.2"
-
+cmake = "0.1"
+which = "7.0.3"
+anyhow = "1.0.98"
+regex = "1.11.1"
 
 [build-dependencies]
 cmake = "0.1"
 which = "7.0.3"
 anyhow = "1.0.98"
 regex = "1.11.1"
+num_cpus = "1.0"
 
 [workspace]

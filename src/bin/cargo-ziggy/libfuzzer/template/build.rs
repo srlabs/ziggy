@@ -5,6 +5,7 @@ use std::fs;
 use std::{env, path::Path, path::PathBuf};
 use which::which;
 
+extern crate num_cpus;
 /// # Documentation
 /// ## Goal
 /// The goal of this build.rs is to manage the compilation of the C++ target
@@ -18,6 +19,7 @@ use which::which;
 ///     `PROFILE` : Compile in Debug or Release mode
 
 fn main() {
+    println!("Current dir- {:?}", env::current_dir().unwrap());
     let cpp_project_path = Path::new(".."); // We are always in `PROJECT/fuzzer`, so we just `..`
     let cmakelist = cpp_project_path.join("CMakeLists.txt");
 
@@ -28,6 +30,7 @@ fn main() {
 
     let enable_asan = env::var("ENABLE_ASAN").is_ok();
     let mut config = cmake::Config::new(cpp_project_path);
+    config.build_target(&target_lib_name); // `--target=FuzzTarget` to avoid compiling useless stuff
 
     // Disable cache if the `CMakeLists.txt` changed
     println!("cargo:rerun-if-changed={}", cmakelist.display());
@@ -87,11 +90,14 @@ fn cmake_with_afl_compilers(config: &mut Config) {
         env::set_var("CXX", cxx_compiler);
     }
 
+    let cpus = ::num_cpus::get().to_string();
+
     config
         .profile(cmake_build_profile)
         .define("CMAKE_C_COMPILER", c_compiler)
         .define("CMAKE_CXX_COMPILER", cxx_compiler)
-        .no_build_target(true)
+        .build_arg(format!("-j{}", &cpus)) // Maximum jobs Brrrrrrr...
+        .no_build_target(false)
         .very_verbose(true);
 }
 
@@ -108,6 +114,8 @@ fn append_env_var(name: &str, val: &str) {
 }
 // Update CMake's `config` with ASAN flags
 fn cmake_with_asan(config: &mut cmake::Config) {
+    eprintln!("    Adding correct flags for ASAN");
+
     let asan_flags: &str = "-fsanitize=address";
 
     config.cflag(asan_flags);

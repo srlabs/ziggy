@@ -1,4 +1,4 @@
-use crate::build::ASAN_TARGET;
+use crate::build::{append_env_var, ASAN_TARGET};
 use crate::*;
 use anyhow::{anyhow, Error};
 use console::{style, Term};
@@ -501,6 +501,10 @@ impl Fuzz {
                     for path in &self.foreign_sync_dirs {
                         afl_flags.push(format!("-F {}", path.display()))
                     }
+                }
+
+                if self.asan {
+                    append_env_var("ASAN_OPTIONS", "detect_leaks=1:abort_on_error=1:symbolize=0");
                 }
 
                 fuzzer_handles.push(
