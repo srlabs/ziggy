@@ -487,11 +487,23 @@ impl Fuzz {
                     true => self.target.clone(),
                     false => {
                         if self.release {
-                            format!("./target/afl/release/{}", self.target)
+                            let t = format!("./target/afl/release/{}", self.target);
+                            eprintln!(
+                                "{} release target: {t}",
+                                style("    Preparing").green().bold()
+                            );
+                            t
                         } else if self.asan && job_num == 0 {
-                            format!("./target/afl/{ASAN_TARGET}/debug/{}", self.target)
+                            let t = format!("./target/afl/{ASAN_TARGET}/debug/{}", self.target);
+                            eprintln!("{} ASAN target: {t}", style("    Preparing").green().bold());
+                            t
                         } else {
-                            format!("./target/afl/debug/{}", self.target)
+                            let t = format!("./target/afl/debug/{}", self.target);
+                            eprintln!(
+                                "{} AFL-instrumented target: {t}",
+                                style("    Preparing").green().bold()
+                            );
+                            t
                         }
                     }
                 };
@@ -504,7 +516,12 @@ impl Fuzz {
                 }
 
                 if self.asan {
-                    append_env_var("ASAN_OPTIONS", "detect_leaks=1:abort_on_error=1:symbolize=0");
+                    let flags = "detect_leaks=1:abort_on_error=1:symbolize=0";
+                    append_env_var("ASAN_OPTIONS", flags);
+                    eprintln!(
+                        "{} ASAN with ASAN_OPTIONS={flags}",
+                        style("    Cooking").green().bold()
+                    );
                 }
 
                 fuzzer_handles.push(
