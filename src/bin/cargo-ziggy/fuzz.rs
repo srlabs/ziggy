@@ -89,7 +89,7 @@ impl Fuzz {
                 cpp: self.cpp,
                 lto: self.lto,
                 target_name: self.target_name.clone(),
-                cmakelist_path: self.cmakelist_path.clone(), 
+                cmakelist_path: self.cmakelist_path.clone(),
                 additional_libs: self.additional_libs.clone(),
             };
             build.build().context("Failed to build the fuzzers")?;

@@ -29,7 +29,7 @@ impl Build {
                     env::set_var("TARGET_LIB_NAME", self.target_name.clone().unwrap());
                 }
                 env::set_var("CMAKELISTS_PATH", self.cmakelist_path.clone());
-                 
+
                 if self.additional_libs.is_some() {
                     env::set_var("ADDITIONAL_LIBS", self.additional_libs.clone().unwrap());
                 }

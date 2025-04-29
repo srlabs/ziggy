@@ -6,9 +6,10 @@ use std::fs;
 use std::{env, path::Path, path::PathBuf};
 use walkdir;
 use which::which;
-
 extern crate num_cpus;
+
 /// # Documentation
+///
 /// ## Objectives
 /// The goal of this build.rs is to manage the compilation of the C++ target
 ///
@@ -248,7 +249,6 @@ fn cmake_with_asan(config: &mut cmake::Config) {
     config.define("CMAKE_EXE_LINKER_FLAGS_INIT", asan_flags);
     config.define("CMAKE_SHARED_LINKER_FLAGS_INIT", asan_flags);
     config.define("CMAKE_MODULE_LINKER_FLAGS_INIT", asan_flags);
-
 }
 
 /// Check if compilers exist in the system

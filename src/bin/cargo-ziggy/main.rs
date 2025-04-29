@@ -121,7 +121,6 @@ pub struct Build {
     #[clap(long = "cmakelist-path", value_name = "DIR", requires = "cpp")]
     cmakelist_path: String,
 
-
     /// Other libraries to statically link, for instance `additional_libs=sodium,crypto`
     #[clap(long = "additional_libs", value_name = "STRING", requires = "cpp")]
     additional_libs: Option<String>,

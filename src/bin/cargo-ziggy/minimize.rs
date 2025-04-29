@@ -18,8 +18,8 @@ impl Minimize {
             cpp: false,
             lto: false,
             target_name: None,
-            cmakelist_path: "".to_string(), //TODO 
-            additional_libs: None, //TODO
+            cmakelist_path: "".to_string(), //TODO
+            additional_libs: None,          //TODO
         };
         build.build().context("Failed to build the fuzzers")?;
 
