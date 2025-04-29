@@ -1,5 +1,6 @@
 use crate::build::append_env_var;
-use crate::{build::ASAN_TARGET, find_target, Run};
+use crate::libfuzzer::TARGET_SUBDIR;
+use crate::{build::ASAN_TARGET, find_target, Build, Run};
 use anyhow::{anyhow, Context, Result};
 use console::style;
 use std::{
@@ -27,6 +28,18 @@ impl Run {
 
         if self.cpp {
             env::set_var("AFL_COMPILER_MODE", "runner");
+            let builder = Build {
+                no_afl: true,
+                no_honggfuzz: true,
+                release: false,
+                asan: self.asan,
+                cpp: true,
+                lto: false,
+                target_name: self.target_name.clone(),
+                cmakelist_path: self.cmakelist_path.clone(),
+                additional_libs: self.additional_libs.clone(),
+            };
+            builder.build_cpp()?;
         }
 
         if self.asan {
@@ -42,22 +55,25 @@ impl Run {
         // We build the runner
         eprintln!("    {} runner", style("Building").red().bold());
 
+        eprintln!(
+            "    {} `AFL_COMPILER_MODE={} ASAN_OPTIONS={} RUSTDOCFLAGS={rust_doc_flags} RUSTFLAGS={rust_flags} cargo {}`",
+            style("Compiling with").cyan().bold(),
+            env::var("AFL_COMPILER_MODE").unwrap_or("??".parse()?),
+            env::var("ASAN_OPTIONS").unwrap_or("??".parse()?), 
+            args.join(" ")
+        );
+
         // We run the compilation command
-        let run = process::Command::new(cargo)
+        let output = process::Command::new(cargo)
+            // .current_dir(TARGET_SUBDIR)
             .args(args)
             .env("RUSTFLAGS", rust_flags)
             .env("RUSTDOCFLAGS", rust_doc_flags)
-            .spawn()
-            .context("⚠️  couldn't spawn runner compilation")?
-            .wait()
-            .context("⚠️  couldn't wait for the runner compilation process")?;
+            .output()
+            .context("⚠️  couldn't execute runner compilation")?;
 
-        if !run.success() {
-            return Err(anyhow!(
-                "Error building runner: Exited with {:?}",
-                run.code()
-            ));
-        }
+        println!("\n{}", String::from_utf8_lossy(&output.stdout));
+        println!("\n{}", String::from_utf8_lossy(&output.stderr));
 
         eprintln!("    {} runner", style("Finished").cyan().bold());
 
@@ -86,14 +102,19 @@ impl Run {
             .collect();
 
         let runner_path = if self.cpp {
-            format!("./target/afl/{ASAN_TARGET}/debug/{}", target)
+            if self.asan {
+                format!("./{}/target/afl/debug/{target}", TARGET_SUBDIR) //TODO
+            } else {
+                format!("./{}/target/runner/debug/{target}", TARGET_SUBDIR)
+            }
         } else if self.asan {
-            format!("./target/runner/{ASAN_TARGET}/debug/{}", target)
+            format!("./target/runner/{ASAN_TARGET}/debug/{target}")
         } else {
-            format!("./target/runner/debug/{}", target)
+            format!("./target/runner/debug/{target}")
         };
 
-        println!("Using runner {}", runner_path);
+        //ENABLE_FUZZ_MAIN
+        println!("Using runner {runner_path}");
         let res = process::Command::new(runner_path)
             .args(run_args)
             .env("RUST_BACKTRACE", "full")

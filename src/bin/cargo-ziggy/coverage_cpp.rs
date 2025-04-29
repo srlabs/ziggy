@@ -1,7 +1,5 @@
 use anyhow::{anyhow, Context, Result};
-use cmake::Config;
 use glob::glob;
-use std::io::ErrorKind;
 use std::process::{Command, ExitStatus};
 use std::{
     env, fs,

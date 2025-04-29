@@ -1,7 +1,6 @@
 use crate::walkdir::WalkDir;
 use cmake::Config;
 use std::collections::HashSet;
-use std::fs;
 use std::{env, path::Path, path::PathBuf};
 use walkdir;
 use which::which;
@@ -26,7 +25,8 @@ fn main() {
     let curr_dir = env::current_dir().unwrap();
     println!("Working from {}", curr_dir.display());
 
-    let cmakelist_path = PathBuf::from(env::var("CMAKELISTS_PATH").unwrap());
+    let cmakelist_path =
+        PathBuf::from(env::var("CMAKELISTS_PATH").expect("CMAKELISTS_PATH not found"));
     let cmakelist_fullpath = cmakelist_path.join("CMakeLists.txt");
 
     let target_lib_name = env::var("TARGET_LIB_NAME").unwrap_or("FuzzTarget".to_string());
@@ -65,9 +65,9 @@ fn main() {
         env::set_var("CXX", cxx_compiler);
     }
     if is_lto {
-        let ar_tool = "llvm-ar";
-        let ranlib_tool = "llvm-ranlib";
-        let as_tool = "llvm-as";
+        let ar_tool = "/usr/bin/llvm-ar";
+        let ranlib_tool = "/usr/bin/llvm-ranlib";
+        let as_tool = "/usr/bin/llvm-as";
 
         program_exist(ar_tool);
         program_exist(ranlib_tool);
@@ -86,7 +86,7 @@ fn main() {
     }
 
     let enable_asan = env::var("ENABLE_ASAN").is_ok();
-    let mut config = cmake::Config::new(fs::canonicalize("..").unwrap()); // Path to the CMakeLists but without the CMakeLists.txt
+    let mut config = cmake::Config::new(&cmakelist_fullpath); // Path to the CMakeLists but without the CMakeLists.txt
 
     // Configure CMake
     configure_cmake_build(&mut config, c_compiler, cxx_compiler, is_lto);

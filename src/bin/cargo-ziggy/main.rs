@@ -208,21 +208,21 @@ pub struct Fuzz {
     #[clap(long = "asan", action)]
     asan: bool,
 
-    /// Foreign fuzzer directories to sync with (AFL++ -F option)
+    /// Foreign fuzzer directories to sync with (AFL++ `-F` option)
     #[clap(long = "foreign-sync", short = 'F', action)]
     foreign_sync_dirs: Vec<PathBuf>,
 
-    // C++ specific options below - these should only be used when --cpp is provided
+    // C++ specific options below - these should only be used when `--cpp` is provided
     /// Fuzz a C++ project with libFuzzer implementation (user created a `LLVMFuzzerTestOneInput` harness)
     #[clap(long = "cpp", action)]
     cpp: bool,
     /// Compile the target with LTO. If you can't `cargo ziggy build`, try to switch this off.
     #[clap(long = "lto", action, requires = "cpp")]
     lto: bool,
-    /// Target name of the C++ library, as defined in CMakeList.txt. It is automatically guessed by default. Or, name your harness in your CMakeList as "FuzzTarget" to make it work.
+    /// Target name of the C++ library, as defined in `CMakeList.txt`. It is automatically guessed by default. Or, name your harness in your CMakeList as "FuzzTarget" to make it work, i.e. `add_library(FuzzTarget STATIC src/harness.cpp)`
     #[clap(long = "target_name", value_name = "STRING", requires = "cpp")]
     target_name: Option<String>,
-    /// Path to the top-level CMakeLists.txt (e.g., `/home/kevin/toz/` if CMakeLists.txt is in that directory)
+    /// Path to the top-level CMakeLists.txt (e.g., `/home/kevin/toz/` if `CMakeLists.txt` is in that directory)
     #[clap(long = "cmakelist-path", value_name = "DIR", requires = "cpp")]
     cmakelist_path: Option<String>,
     /// Other libraries to statically link, for instance `additional_libs=sodium,crypto`
@@ -254,17 +254,28 @@ pub struct Run {
     )]
     ziggy_output: PathBuf,
 
+    /// Activate these features on the target
+    #[clap(short = 'F', long, num_args = 0..)]
+    features: Vec<String>,
+
     /// Build with ASAN (nightly only)
     #[clap(long = "asan", action)]
     asan: bool,
 
-    /// Run a C++ target with libFuzzer implementation (user created a `LLVMFuzzerTestOneInput` harness)
-    #[clap(long = "cpp", action, required = false, default_value = "false")]
+    // C++ specific options below - these should only be used when `--cpp` is provided
+    /// Fuzz a C++ project with libFuzzer implementation (user created a `LLVMFuzzerTestOneInput` harness)
+    #[clap(long = "cpp", action)]
     cpp: bool,
 
-    /// Activate these features on the target
-    #[clap(short = 'F', long, num_args = 0..)]
-    features: Vec<String>,
+    /// Target name of the C++ library, as defined in `CMakeList.txt`. It is automatically guessed by default. Or, name your harness in your CMakeList as "FuzzTarget" to make it work, i.e. `add_library(FuzzTarget STATIC src/harness.cpp)`
+    #[clap(long = "target_name", value_name = "STRING", requires = "cpp")]
+    target_name: Option<String>,
+    /// Path to the top-level CMakeLists.txt (e.g., `/home/kevin/toz/` if `CMakeLists.txt` is in that directory)
+    #[clap(long = "cmakelist-path", value_name = "DIR", requires = "cpp")]
+    cmakelist_path: Option<String>,
+    /// Other libraries to statically link, for instance `additional_libs=sodium,crypto`
+    #[clap(long = "additional_libs", value_name = "STRING", requires = "cpp")]
+    additional_libs: Option<String>,
 }
 
 #[derive(Args, Clone)]

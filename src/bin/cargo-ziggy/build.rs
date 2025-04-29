@@ -9,6 +9,58 @@ use std::{env, process};
 pub const ASAN_TARGET: &str = "x86_64-unknown-linux-gnu";
 
 impl Build {
+    pub fn build_cpp(&self) -> Result<(), anyhow::Error> {
+        if self.lto {
+            env::set_var("AFL_COMPILER_MODE", "lto");
+        }
+        if self.target_name.is_some() {
+            env::set_var("TARGET_LIB_NAME", self.target_name.clone().unwrap());
+        }
+        env::set_var(
+            "CMAKELISTS_PATH",
+            self.cmakelist_path.clone()
+                .expect("CMAKELISTS_PATH not defined, please make sure to use Ziggy with `--cmakelist-path=/path/to/your/project`"),
+        );
+
+        if self.additional_libs.is_some() {
+            env::set_var("ADDITIONAL_LIBS", self.additional_libs.clone().unwrap());
+        }
+        if self.asan {
+            // This is required to differentiate ASAN runtimes from Rust's to Clang's one
+            // See https://github.com/rust-lang/rust/pull/121207
+            append_env_var("RUSTFLAGS", "-Z external-clangrt");
+            env::set_var("ENABLE_ASAN", "1"); // To trigger's C++ harness' `build.rs` ASAN mode
+                                              // We do NOT want to stop compilation if we have ASAN bugs neither detect memory leaks
+            env::set_var("ASAN_OPTIONS", "abort_on_error=0:detect_leaks=0");
+            eprintln!(
+                "    {}{}",
+                style("RUSTFLAGS=").cyan().bold(),
+                env::var("RUSTFLAGS")?
+            );
+            eprintln!(
+                "    {}{}",
+                style("ASAN_OPTIONS=").cyan().bold(),
+                env::var("ASAN_OPTIONS")?
+            );
+        }
+        eprintln!(
+            "    {} the Rust harness project wrapping libFuzzer API",
+            style("Extracting").red().bold()
+        );
+
+        // Extract the harness serving as a wrapper
+        let extract: &Extractor = Extractor::new();
+        let working_dir = extract.extract();
+
+        eprintln!(
+            "    {} into directory '{}'",
+            style("Changing").cyan().bold(),
+            working_dir.to_str().unwrap()
+        );
+        env::set_current_dir(working_dir)?;
+        Ok(())
+    }
+
     /// Build the fuzzers
     pub fn build(&self) -> Result<(), anyhow::Error> {
         // No fuzzers for you
@@ -22,56 +74,10 @@ impl Build {
         if !self.no_afl {
             // We extract the Rust harness project wrapping libFuzzer API
             if self.cpp {
-                if self.lto {
-                    env::set_var("AFL_COMPILER_MODE", "lto");
-                }
-                if self.target_name.is_some() {
-                    env::set_var("TARGET_LIB_NAME", self.target_name.clone().unwrap());
-                }
-                env::set_var(
-                    "CMAKELISTS_PATH",
-                    self.cmakelist_path.clone()
-                        .expect("CMAKELISTS_PATH not defined, please make sure to use Ziggy with `--cmakelist-path=/path/to/your/project`") ,
-                );
-
-                if self.additional_libs.is_some() {
-                    env::set_var("ADDITIONAL_LIBS", self.additional_libs.clone().unwrap());
-                }
-                if self.asan {
-                    // This is required to differentiate ASAN runtimes from Rust's to Clang's one
-                    // See https://github.com/rust-lang/rust/pull/121207
-                    append_env_var("RUSTFLAGS", "-Z external-clangrt");
-                    env::set_var("ENABLE_ASAN", "1"); // To trigger's C++ harness' `build.rs` ASAN mode
-                                                      // We do NOT want to stop compilation if we have ASAN bugs neither detect memory leaks
-                    env::set_var("ASAN_OPTIONS", "abort_on_error=0:detect_leaks=0");
-                    eprintln!(
-                        "    {}{}",
-                        style("RUSTFLAGS=").cyan().bold(),
-                        env::var("RUSTFLAGS")?
-                    );
-                    eprintln!(
-                        "    {}{}",
-                        style("ASAN_OPTIONS=").cyan().bold(),
-                        env::var("ASAN_OPTIONS")?
-                    );
-                }
-                eprintln!(
-                    "    {} the Rust harness project wrapping libFuzzer API",
-                    style("Extracting").red().bold()
-                );
-
-                // Extract the harness serving as a wrapper
-                let extract: &Extractor = Extractor::new();
-                let working_dir = extract.extract();
-
-                eprintln!(
-                    "    {} into directory '{}'",
-                    style("Changing").cyan().bold(),
-                    working_dir.to_str().unwrap()
-                );
-                env::set_current_dir(working_dir)?;
+                self.build_cpp()?;
             }
 
+            // This part is about compiling with afl.rs
             eprintln!("    {} afl++", style("Building").red().bold());
             let mut afl_args = vec![
                 "afl",
@@ -80,7 +86,7 @@ impl Build {
                 "--target-dir=target/afl",
             ];
 
-            // Add the --release argument if self.release is true
+            // Add the `--release` argument if self.release is true
             if self.release {
                 assert!(!self.asan, "cannot use --release for ASAN builds");
                 afl_args.push("--release");
