@@ -58,8 +58,8 @@ impl Run {
         eprintln!(
             "    {} `AFL_COMPILER_MODE={} ASAN_OPTIONS={} RUSTDOCFLAGS={rust_doc_flags} RUSTFLAGS={rust_flags} cargo {}`",
             style("Compiling with").cyan().bold(),
-            env::var("AFL_COMPILER_MODE").unwrap_or("??".parse()?),
-            env::var("ASAN_OPTIONS").unwrap_or("??".parse()?), 
+            env::var("AFL_COMPILER_MODE").unwrap_or("".parse()?),
+            env::var("ASAN_OPTIONS").unwrap_or("".parse()?), 
             args.join(" ")
         );
 
@@ -103,25 +103,34 @@ impl Run {
 
         let runner_path = if self.cpp {
             if self.asan {
-                format!("./{}/target/afl/debug/{target}", TARGET_SUBDIR) //TODO
+                format!("{}/fuzzer/target/afl/debug/{target}", TARGET_SUBDIR) //TODO asan doesn't seem to work on running mode w/ cpp
             } else {
-                format!("./{}/target/runner/debug/{target}", TARGET_SUBDIR)
+                format!("{}/target/runner/debug/{target}", TARGET_SUBDIR)
             }
         } else if self.asan {
-            format!("./target/runner/{ASAN_TARGET}/debug/{target}")
+            format!("target/runner/{ASAN_TARGET}/debug/{target}")
         } else {
-            format!("./target/runner/debug/{target}")
+            format!("target/runner/debug/{target}")
         };
 
         //ENABLE_FUZZ_MAIN
-        println!("Using runner {runner_path}");
-        let res = process::Command::new(runner_path)
+        println!("Using runner {:?}", env::current_dir()?.join(&runner_path));
+        // We need to go `../` since we are in `fuzzer/`
+        if self.cpp {
+            env::set_current_dir("..")?;
+        }
+        let res = process::Command::new(&runner_path)
             .args(run_args)
             .env("RUST_BACKTRACE", "full")
             .spawn()
-            .context("⚠️  couldn't spawn the runner process")?
+            .unwrap()
             .wait()
             .context("⚠️  couldn't wait for the runner process")?;
+
+        // We go back to `fuzzer/`
+        if self.cpp {
+            env::set_current_dir(TARGET_SUBDIR)?;
+        }
 
         if !res.success() {
             if let Some(signal) = res.signal() {
