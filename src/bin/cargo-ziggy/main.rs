@@ -110,12 +110,21 @@ pub struct Build {
     cpp: bool,
 
     /// Compile the target with LTO. If you can't `cargo ziggy build`, try to switch this off.
-    #[clap(long = "lto", action)]
+    #[clap(long = "lto", action, requires = "cpp")]
     lto: bool,
 
     /// Target name of the C++ library, as defined in CMakeList.txt. It is automatically guessed by default. Or, name your harness in your CMakeList as "FuzzTarget" to make it work.
-    #[clap(long = "target_name", value_name = "STRING")]
+    #[clap(long = "target_name", value_name = "STRING", requires = "cpp")]
     target_name: Option<String>,
+
+    /// Path to the top-level CMakeLists.txt (e.g., `/home/kevin/toz/` if CMakeLists.txt is in that directory)
+    #[clap(long = "cmakelist-path", value_name = "DIR", requires = "cpp")]
+    cmakelist_path: String,
+
+
+    /// Other libraries to statically link, for instance `additional_libs=sodium,crypto`
+    #[clap(long = "additional_libs", value_name = "STRING", requires = "cpp")]
+    additional_libs: Option<String>,
 }
 
 #[derive(Args)]
@@ -143,12 +152,20 @@ pub struct Fuzz {
     ziggy_output: PathBuf,
 
     /// Compile the target with LTO. If you can't `cargo ziggy build`, try to switch this off.
-    #[clap(long = "lto", action)]
+    #[clap(long = "lto", action, requires = "cpp")]
     lto: bool,
+
+    /// Path to the top-level CMakeLists.txt (e.g., `/home/kevin/toz/` if CMakeLists.txt is in that directory)
+    #[clap(long = "cmakelist-path", value_name = "DIR", requires = "cpp")]
+    cmakelist_path: String,
 
     /// Target name of the C++ library, as describe in your `project()` defined in CMakeList.txt. It is automatically guessed by default. Or, name your harness in your CMakeList as "FuzzTarget" to make it work.
     #[clap(long = "target_name", value_name = "STRING")]
     target_name: Option<String>,
+
+    /// Other libraries to statically link, for instance `additional_libs=sodium,crypto`
+    #[clap(long = "additional_libs", value_name = "STRING", requires = "cpp")]
+    additional_libs: Option<String>,
 
     /// Number of concurrent fuzzing jobs
     #[clap(short, long, value_name = "NUM", default_value_t = 1)]
@@ -435,13 +452,11 @@ fn main() -> Result<(), anyhow::Error> {
             .triage()
             .context("Triaging with casr failed, try \"cargo install casr\""),
         Ziggy::CoverCpp(mut args) => {
-
-            let mut cover_cpp = coverage_cpp::CoverCpp::new(
-                PathBuf::from("."),
-                args.input,
-                args.keep,
-            )?;
-            cover_cpp.generate_coverage_report().context("COuldn't generate report")
+            let mut cover_cpp =
+                coverage_cpp::CoverCpp::new(PathBuf::from("."), args.input, args.keep)?;
+            cover_cpp
+                .generate_coverage_report()
+                .context("COuldn't generate report")
         }
     }
 }

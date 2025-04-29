@@ -1,10 +1,5 @@
 use console::style;
-use std::{
-    env,
-    error::Error,
-    fs,
-    path::{Path, PathBuf},
-};
+use std::{env, fs, path::PathBuf};
 
 const FILES_TO_EXTRACT: &[(&str, &[u8])] = &[
     ("Cargo.toml", include_bytes!("template/Cargo.toml")),
@@ -44,9 +39,8 @@ impl Extractor {
         }
 
         eprintln!(
-            "    {} the harness to {}",
-            style("Extracted").cyan().bold(),
-            target_dir_path.display()
+            "    {} finished successfully",
+            style("Extraction").cyan().bold(),
         );
         target_dir_path
     }

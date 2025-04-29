@@ -28,11 +28,28 @@ impl Build {
                 if self.target_name.is_some() {
                     env::set_var("TARGET_LIB_NAME", self.target_name.clone().unwrap());
                 }
+                env::set_var("CMAKELISTS_PATH", self.cmakelist_path.clone());
+                 
+                if self.additional_libs.is_some() {
+                    env::set_var("ADDITIONAL_LIBS", self.additional_libs.clone().unwrap());
+                }
                 if self.asan {
                     // This is required to differentiate ASAN runtimes from Rust's to Clang's one
                     // See https://github.com/rust-lang/rust/pull/121207
                     append_env_var("RUSTFLAGS", "-Z external-clangrt");
                     env::set_var("ENABLE_ASAN", "1"); // To trigger's C++ harness' `build.rs` ASAN mode
+                                                      // We do NOT want to stop compilation if we have ASAN bugs neither detect memory leaks
+                    env::set_var("ASAN_OPTIONS", "abort_on_error=0:detect_leaks=0");
+                    eprintln!(
+                        "    {}{}",
+                        style("RUSTFLAGS=").cyan().bold(),
+                        env::var("RUSTFLAGS")?
+                    );
+                    eprintln!(
+                        "    {}{}",
+                        style("ASAN_OPTIONS=").cyan().bold(),
+                        env::var("ASAN_OPTIONS")?
+                    );
                 }
                 eprintln!(
                     "    {} the Rust harness project wrapping libFuzzer API",
@@ -97,7 +114,7 @@ impl Build {
 
             // If ASAN is enabled, build both a sanitized binary and a non-sanitized binary.
             if self.asan {
-                eprintln!("    {} afl (ASan)", style("Building").red().bold());
+                eprintln!("    {} AFL++ (ASan)", style("Building").red().bold());
                 assert_eq!(opt_level, "0", "AFL_OPT_LEVEL must be 0 for ASAN builds");
                 afl_args.push(&asan_target_str);
                 afl_args.extend(["-Z", "build-std"]);
@@ -125,7 +142,7 @@ impl Build {
                 }
             };
 
-            eprintln!("    {} afl", style("Finished").cyan().bold());
+            eprintln!("    {} AFL++", style("Finished").cyan().bold());
         }
 
         if !self.no_honggfuzz {
@@ -163,7 +180,7 @@ impl Build {
             eprintln!("    {} honggfuzz", style("Finished").cyan().bold());
         }
 
-        if std::env::var("AFL_LLVM_CMPGLOG").is_ok() {
+        if env::var("AFL_LLVM_CMPGLOG").is_ok() {
             panic!(
                 "Even the mighty may fall, especially on 77b2c27a59bb858045c4db442989ce8f20c8ee11"
             )

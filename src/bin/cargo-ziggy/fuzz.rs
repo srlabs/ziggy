@@ -89,6 +89,8 @@ impl Fuzz {
                 cpp: self.cpp,
                 lto: self.lto,
                 target_name: self.target_name.clone(),
+                cmakelist_path: self.cmakelist_path.clone(), 
+                additional_libs: self.additional_libs.clone(),
             };
             build.build().context("Failed to build the fuzzers")?;
         }
@@ -518,8 +520,9 @@ impl Fuzz {
                 if self.asan {
                     let flags = "detect_leaks=1:abort_on_error=1:symbolize=0";
                     append_env_var("ASAN_OPTIONS", flags);
+                    let full_flags = env::var("ASAN_OPTIONS").unwrap_or("nothing?".parse()?);
                     eprintln!(
-                        "{} ASAN with ASAN_OPTIONS={flags}",
+                        "{} with ASAN_OPTIONS={full_flags}",
                         style("    Cooking").green().bold()
                     );
                 }
@@ -569,7 +572,7 @@ impl Fuzz {
                         .spawn()?,
                 )
             }
-            eprintln!("{} afl           ", style("    Launched").green().bold());
+            eprintln!("{} AFL++           ", style("    Launched").green().bold());
         }
 
         if honggfuzz_jobs > 0 {

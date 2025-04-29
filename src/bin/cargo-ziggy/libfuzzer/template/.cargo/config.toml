@@ -1,6 +1,6 @@
 [target.x86_64-unknown-linux-gnu]
 # TODO: If compiling with LTO, we should adapt the linker
-linker = "afl-clang-fast++"
+linker = "afl-clang-lto++"
 rustflags = [
     "-C", "link-arg=-fuse-ld=lld"
 ]
