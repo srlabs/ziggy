@@ -1,5 +1,4 @@
 use crate::walkdir::WalkDir;
-use anyhow::anyhow;
 use cmake::Config;
 use std::collections::HashSet;
 use std::fs;

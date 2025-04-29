@@ -28,7 +28,11 @@ impl Build {
                 if self.target_name.is_some() {
                     env::set_var("TARGET_LIB_NAME", self.target_name.clone().unwrap());
                 }
-                env::set_var("CMAKELISTS_PATH", self.cmakelist_path.clone());
+                env::set_var(
+                    "CMAKELISTS_PATH",
+                    self.cmakelist_path.clone()
+                        .expect("CMAKELISTS_PATH not defined, please make sure to use Ziggy with `--cmakelist-path=/path/to/your/project`") ,
+                );
 
                 if self.additional_libs.is_some() {
                     env::set_var("ADDITIONAL_LIBS", self.additional_libs.clone().unwrap());
