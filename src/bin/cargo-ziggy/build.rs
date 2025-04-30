@@ -1,4 +1,4 @@
-use crate::Build;
+use crate::{libfuzzer::Extractor, Build};
 use anyhow::{anyhow, Context, Result};
 use console::style;
 use std::{env, process};
@@ -9,6 +9,58 @@ use std::{env, process};
 pub const ASAN_TARGET: &str = "x86_64-unknown-linux-gnu";
 
 impl Build {
+    pub fn build_cpp(&self) -> Result<(), anyhow::Error> {
+        if self.lto {
+            env::set_var("AFL_COMPILER_MODE", "lto");
+        }
+        if self.target_name.is_some() {
+            env::set_var("TARGET_LIB_NAME", self.target_name.clone().unwrap());
+        }
+        env::set_var(
+            "CMAKELISTS_PATH",
+            self.cmakelist_path.clone()
+                .expect("CMAKELISTS_PATH not defined, please make sure to use Ziggy with `--cmakelist-path=/path/to/your/project`"),
+        );
+
+        if self.additional_libs.is_some() {
+            env::set_var("ADDITIONAL_LIBS", self.additional_libs.clone().unwrap());
+        }
+        if self.asan {
+            // This is required to differentiate ASAN runtimes from Rust's to Clang's one
+            // See https://github.com/rust-lang/rust/pull/121207
+            append_env_var("RUSTFLAGS", "-Z external-clangrt");
+            env::set_var("ENABLE_ASAN", "1"); // To trigger's C++ harness' `build.rs` ASAN mode
+                                              // We do NOT want to stop compilation if we have ASAN bugs neither detect memory leaks
+            env::set_var("ASAN_OPTIONS", "abort_on_error=0:detect_leaks=0");
+            eprintln!(
+                "    {}{}",
+                style("RUSTFLAGS=").cyan().bold(),
+                env::var("RUSTFLAGS")?
+            );
+            eprintln!(
+                "    {}{}",
+                style("ASAN_OPTIONS=").cyan().bold(),
+                env::var("ASAN_OPTIONS")?
+            );
+        }
+        eprintln!(
+            "    {} the Rust harness project wrapping libFuzzer API",
+            style("Extracting").red().bold()
+        );
+
+        // Extract the harness serving as a wrapper
+        let extract: &Extractor = Extractor::new();
+        let working_dir = extract.extract();
+
+        eprintln!(
+            "    {} into directory '{}'",
+            style("Changing").cyan().bold(),
+            working_dir.to_str().unwrap()
+        );
+        env::set_current_dir(working_dir)?;
+        Ok(())
+    }
+
     /// Build the fuzzers
     pub fn build(&self) -> Result<(), anyhow::Error> {
         // No fuzzers for you
@@ -20,7 +72,13 @@ impl Build {
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
         if !self.no_afl {
-            eprintln!("    {} afl", style("Building").red().bold());
+            // We extract the Rust harness project wrapping libFuzzer API
+            if self.cpp {
+                self.build_cpp()?;
+            }
+
+            // This part is about compiling with afl.rs
+            eprintln!("    {} afl++", style("Building").red().bold());
             let mut afl_args = vec![
                 "afl",
                 "build",
@@ -28,10 +86,13 @@ impl Build {
                 "--target-dir=target/afl",
             ];
 
-            // Add the --release argument if self.release is true
+            // Add the `--release` argument if self.release is true
             if self.release {
                 assert!(!self.asan, "cannot use --release for ASAN builds");
                 afl_args.push("--release");
+                env::set_var("PROFILE", "release");
+            } else {
+                env::set_var("PROFILE", "debug");
             }
 
             let opt_level = env::var("AFL_OPT_LEVEL").unwrap_or("0".to_string());
@@ -63,7 +124,7 @@ impl Build {
 
             // If ASAN is enabled, build both a sanitized binary and a non-sanitized binary.
             if self.asan {
-                eprintln!("    {} afl (ASan)", style("Building").red().bold());
+                eprintln!("    {} AFL++ (ASan)", style("Building").red().bold());
                 assert_eq!(opt_level, "0", "AFL_OPT_LEVEL must be 0 for ASAN builds");
                 afl_args.push(&asan_target_str);
                 afl_args.extend(["-Z", "build-std"]);
@@ -91,13 +152,13 @@ impl Build {
                 }
             };
 
-            eprintln!("    {} afl", style("Finished").cyan().bold());
+            eprintln!("    {} AFL++", style("Finished").cyan().bold());
         }
 
         if !self.no_honggfuzz {
             assert!(
                 !self.asan,
-                "Cannot build honggfuzz with ASAN for the moment. use --no-honggfuzz"
+                "Cannot build honggfuzz with ASAN for the moment. Use --no-honggfuzz"
             );
             eprintln!("    {} honggfuzz", style("Building").red().bold());
 
@@ -129,12 +190,24 @@ impl Build {
             eprintln!("    {} honggfuzz", style("Finished").cyan().bold());
         }
 
-        if std::env::var("AFL_LLVM_CMPGLOG").is_ok() {
+        if env::var("AFL_LLVM_CMPGLOG").is_ok() {
             panic!(
                 "Even the mighty may fall, especially on 77b2c27a59bb858045c4db442989ce8f20c8ee11"
             )
         }
 
         Ok(())
+    }
+}
+
+/// Append `val` to `name` environment variable
+pub fn append_env_var(name: &str, val: &str) {
+    let mut new_val = env::var(name).unwrap_or_default();
+    if !new_val.is_empty() {
+        new_val.push(' ');
+    }
+    new_val.push_str(val);
+    unsafe {
+        env::set_var(name, new_val);
     }
 }

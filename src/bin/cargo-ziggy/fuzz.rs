@@ -1,4 +1,4 @@
-use crate::build::ASAN_TARGET;
+use crate::build::{append_env_var, ASAN_TARGET};
 use crate::*;
 use anyhow::{anyhow, Error};
 use console::{style, Term};
@@ -86,6 +86,11 @@ impl Fuzz {
                 no_honggfuzz: !self.honggfuzz(),
                 release: self.release,
                 asan: self.asan,
+                cpp: self.cpp,
+                lto: self.lto,
+                target_name: self.target_name.clone(),
+                cmakelist_path: self.cmakelist_path.clone(),
+                additional_libs: self.additional_libs.clone(),
             };
             build.build().context("Failed to build the fuzzers")?;
         }
@@ -484,11 +489,23 @@ impl Fuzz {
                     true => self.target.clone(),
                     false => {
                         if self.release {
-                            format!("./target/afl/release/{}", self.target)
+                            let t = format!("./target/afl/release/{}", self.target);
+                            eprintln!(
+                                "{} release target: {t}",
+                                style("    Preparing").green().bold()
+                            );
+                            t
                         } else if self.asan && job_num == 0 {
-                            format!("./target/afl/{ASAN_TARGET}/debug/{}", self.target)
+                            let t = format!("./target/afl/{ASAN_TARGET}/debug/{}", self.target);
+                            eprintln!("{} ASAN target: {t}", style("    Preparing").green().bold());
+                            t
                         } else {
-                            format!("./target/afl/debug/{}", self.target)
+                            let t = format!("./target/afl/debug/{}", self.target);
+                            eprintln!(
+                                "{} AFL-instrumented target: {t}",
+                                style("    Preparing").green().bold()
+                            );
+                            t
                         }
                     }
                 };
@@ -498,6 +515,16 @@ impl Fuzz {
                     for path in &self.foreign_sync_dirs {
                         afl_flags.push(format!("-F {}", path.display()))
                     }
+                }
+
+                if self.asan {
+                    let flags = "detect_leaks=1:abort_on_error=1:symbolize=0";
+                    append_env_var("ASAN_OPTIONS", flags);
+                    let full_flags = env::var("ASAN_OPTIONS").unwrap_or("nothing?".parse()?);
+                    eprintln!(
+                        "{} with ASAN_OPTIONS={full_flags}",
+                        style("    Cooking").green().bold()
+                    );
                 }
 
                 fuzzer_handles.push(
@@ -545,7 +572,7 @@ impl Fuzz {
                         .spawn()?,
                 )
             }
-            eprintln!("{} afl           ", style("    Launched").green().bold());
+            eprintln!("{} AFL++           ", style("    Launched").green().bold());
         }
 
         if honggfuzz_jobs > 0 {

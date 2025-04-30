@@ -15,6 +15,11 @@ impl Minimize {
             no_honggfuzz: self.engine == FuzzingEngines::AFLPlusPlus,
             release: false,
             asan: false,
+            cpp: false,
+            lto: false,
+            target_name: None,
+            cmakelist_path: None,  //TODO
+            additional_libs: None, //TODO
         };
         build.build().context("Failed to build the fuzzers")?;
 

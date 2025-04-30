@@ -94,6 +94,14 @@ CARGO_HOME=.cargo cargo ziggy cover
 This will clone every dependency into a `.cargo` directory and this directory will be included in
 the generated coverage.
 
+## Fuzzing C++ codebase: LibFuzzer integration (beta)
+
+Ziggy has the capability to fuzz C++ codebase. You can run the example inside `examples/libfuzzer_c++` for this. In order to do so, you need to have a harness wrapping
+`LLVMFuzzerTestOneInput`. As the CMakeLists.txt shows it, you must compile your harness as a library, so Ziggy can use this library and fuzz its main entrypoint.
+
+Ziggy will ensure to compile your target with ASAN, CMPLOG, and generate proper coverage report. 
+This is still under construction, so might not work as expected.
+
 ## `ziggy` logs
 
 If you want to see `ziggy`'s internal logs, you can set `RUST_LOG=INFO`.
