@@ -5,8 +5,12 @@
 #include <iostream>
 #include <string>
 
-extern "C" int LLVMFuzzerInitialize(int *argc, char ***argv) __attribute__((weak));
-extern "C" int LLVMFuzzerTestOneInput(const unsigned char*, size_t);
+//// Fuzzer initialization. This function is obligatory, otherwise you'll have linker issues with Ziggy!
+/// If you don't want any initialization, just `return 0;`
+extern "C" int LLVMFuzzerInitialize(int *argc, char ***argv) {
+    std::cout << "Hello from LLVMFuzzerInitialize!" << std::endl;
+    return 0;
+}
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* Data, size_t Size) {
     std::string input_str(reinterpret_cast<const char*>(Data), Size);
