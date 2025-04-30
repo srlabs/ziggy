@@ -14,11 +14,12 @@ fn main() {
     unsafe {
         let init_result = LLVMFuzzerInitialize(&mut argc, argv);
         if init_result != 0 {
-            eprintln!("[ziggy] ERROR: LLVMFuzzerInitialize returned non-zero status: {init_result}. Aborting.");
+            eprintln!(
+                "[ziggy] ERROR: LLVMFuzzerInitialize returned non-zero status: {init_result}."
+            );
             std::process::exit(init_result);
         }
     }
-    println!("[ziggy-wrapper] Starting fuzzing loop...");
 
     ziggy::fuzz!(|data: &[u8]| {
         unsafe {

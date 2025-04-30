@@ -63,9 +63,10 @@ impl Run {
             args.join(" ")
         );
 
+        //`100` will just use the maximum. If you have more than `100`, then lucky you
+        args.extend(["--jobs", "100"]);
         // We run the compilation command
         let output = process::Command::new(cargo)
-            // .current_dir(TARGET_SUBDIR)
             .args(args)
             .env("RUSTFLAGS", rust_flags)
             .env("RUSTDOCFLAGS", rust_doc_flags)
