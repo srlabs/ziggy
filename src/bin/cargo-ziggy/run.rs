@@ -43,8 +43,8 @@ impl Run {
         }
 
         if self.asan {
-            // Crash if we detect an ASAN bug
-            append_env_var("ASAN_OPTIONS", "detect_leaks=1:abort_on_error=1");
+            // Detect no leaks and not aborting on errors when compiling, we only want this at runtime
+            env::set_var("ASAN_OPTIONS", "detect_leaks=0:abort_on_error=0");
             args.push(&asan_target_str);
             args.extend(["-Z", "build-std"]);
             rust_flags.push_str(" -Zsanitizer=address ");
@@ -94,18 +94,28 @@ impl Run {
             .inputs
             .iter()
             .map(|x| {
-                x.display()
+                let a = x
+                    .display()
                     .to_string()
                     .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
-                    .replace("{target_name}", &target)
+                    .replace("{target_name}", &target);
+                if !PathBuf::from(&a).exists() {
+                    if self.cpp {
+
+                        // panic!("Use `-i fuzzer/output/ziggy/corpus` ({a:?} doesn't exist)");
+                    } else {
+                        // panic!("Use `-i output/ziggy/corpus` ({a:?} doesn't exist)");
+                    }
+                }
+                a
             })
             .collect();
 
         let runner_path = if self.cpp {
             if self.asan {
-                format!("{}/fuzzer/target/afl/debug/{target}", TARGET_SUBDIR) //TODO asan doesn't seem to work on running mode w/ cpp
+                format!("target/afl/debug/{target}") //TODO asan doesn't seem to work on running mode w/ cpp
             } else {
-                format!("{}/target/runner/debug/{target}", TARGET_SUBDIR)
+                format!("target/runner/debug/{target}")
             }
         } else if self.asan {
             format!("target/runner/{ASAN_TARGET}/debug/{target}")
@@ -115,10 +125,12 @@ impl Run {
 
         //ENABLE_FUZZ_MAIN
         println!("Using runner {:?}", env::current_dir()?.join(&runner_path));
-        // We need to go `../` since we are in `fuzzer/`
-        if self.cpp {
-            env::set_current_dir("..")?;
+
+        // We don't compile anymore, we run the target, so we `detect_leaks=1:abort_on_error=1`
+        if self.asan {
+            env::set_var("ASAN_OPTIONS", "detect_leaks=1:abort_on_error=1");
         }
+
         let res = process::Command::new(&runner_path)
             .args(run_args)
             .env("RUST_BACKTRACE", "full")
@@ -126,11 +138,6 @@ impl Run {
             .unwrap()
             .wait()
             .context("⚠️  couldn't wait for the runner process")?;
-
-        // We go back to `fuzzer/`
-        if self.cpp {
-            env::set_current_dir(TARGET_SUBDIR)?;
-        }
 
         if !res.success() {
             if let Some(signal) = res.signal() {

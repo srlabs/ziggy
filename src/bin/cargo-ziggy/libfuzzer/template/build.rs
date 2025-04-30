@@ -186,11 +186,6 @@ fn print_linkers(
     for path in &search_paths {
         if path.exists() && path.is_dir() {
             println!("cargo:rustc-link-search=native={}", path.display());
-        } else {
-            println!(
-                "cargo:warning=Skipping non-existent directory for link search: {}",
-                path.display()
-            );
         }
     }
 
@@ -239,7 +234,7 @@ fn cmake_with_asan(config: &mut cmake::Config) {
 
     let asan_flags: &str = "-fsanitize=address";
     unsafe {
-        env::set_var("ASAN_OPTIONS", "abort_on_error=1:detect_leaks=0"); // abort_on_error=1 is often better for fuzzing builds
+        env::set_var("ASAN_OPTIONS", "abort_on_error=0:detect_leaks=0"); // abort_on_error=1 is often better for fuzzing builds
     }
 
     config.cflag(asan_flags);

@@ -24,17 +24,18 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* Data, size_t Size) {
        delete[] memory;
     }
 
-    // Test if ASAN works
-//    const std::string target_str = "asan_crash";
-//    if (input_str.size() >= target_str.size() &&
-//        input_str.substr(0, target_str.size()) == target_str) {
-//
-//        std::cout << "Triggering asan! Crashing now." << std::endl;
-//
-//        int* memory = new int[1];
-//        memory[1] = 123;  // out-of-bounds write, triggering asan
-//        delete[] memory;
-//    }
+    //Test if ASAN works AND CMPLOG/RedQueen
+    //However if compiled with `--lto` it won't necessarily mean that the string was guessed with CMPLOG since AFL LTO mode has a auto-dictionnary feature
+    const std::string target_str = "asan_crash";
+    if (input_str.size() >= target_str.size() &&
+        input_str.substr(0, target_str.size()) == target_str) {
+
+        std::cout << "Triggering asan! Crashing now." << std::endl;
+
+        int* memory = new int[1];
+        memory[1] = 123;  // out-of-bounds write, triggering asan
+        delete[] memory;
+    }
 
     return 0;
 }
