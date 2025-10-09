@@ -256,8 +256,8 @@ impl Fuzz {
                 {
                     if afl_log.contains("ready to roll") {
                         afl_output_ok = true;
-                    } else if afl_log.contains("echo core >/proc/sys/kernel/core_pattern")
-                        || afl_log.contains("cd /sys/devices/system/cpu")
+                    } else if afl_log.contains("/proc/sys/kernel/core_pattern")
+                        || afl_log.contains("/sys/devices/system/cpu")
                     {
                         stop_fuzzers(&mut processes)?;
                         eprintln!("We highly recommend you configure your system for better performance:\n");
