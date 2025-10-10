@@ -96,7 +96,8 @@ impl Cover {
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
         let mut coverage_rustflags =
-            env::var("COVERAGE_RUSTFLAGS").unwrap_or("-Cinstrument-coverage ".to_string());
+            env::var("COVERAGE_RUSTFLAGS").unwrap_or("-Cinstrument-coverage".to_string());
+        coverage_rustflags.push(' ');
         coverage_rustflags.push_str(&env::var("RUSTFLAGS").unwrap_or_default());
 
         let build = process::Command::new(cargo)
