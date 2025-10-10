@@ -97,7 +97,10 @@ impl Cover {
 
         let mut coverage_rustflags = env::var("COVERAGE_RUSTFLAGS")
             .unwrap_or_else(|_| String::from("-Cinstrument-coverage"));
-        coverage_rustflags.push_str(&env::var("RUSTFLAGS").unwrap_or_default());
+        if let Ok(env_rustflags) = &env::var("RUSTFLAGS") {
+            coverage_rustflags.push(' ');
+            coverage_rustflags.push_str(env_rustflags);
+        }
 
         let build = process::Command::new(cargo)
             .args([
