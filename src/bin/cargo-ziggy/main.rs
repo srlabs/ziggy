@@ -328,6 +328,10 @@ pub struct Triage {
         short, long, env = "ZIGGY_OUTPUT", value_parser, value_name = "DIR", default_value = DEFAULT_OUTPUT_DIR
     )]
     ziggy_output: PathBuf,
+
+    /// Terminate runner after x seconds
+    #[clap(short, long, value_name = "SECS")]
+    timeout: Option<u32>,
     /* future feature, wait for casr
     /// Crash directory to be sourced from
     #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CRASHES_DIR)]
