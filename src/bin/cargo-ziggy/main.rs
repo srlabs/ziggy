@@ -16,6 +16,7 @@ use crate::fuzz::FuzzingConfig;
 use anyhow::{anyhow, Context, Result};
 #[cfg(feature = "cli")]
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use std::process;
 #[cfg(feature = "cli")]
 use std::{fs, path::PathBuf};
 
@@ -192,6 +193,12 @@ pub struct Fuzz {
     /// Foreign fuzzer directories to sync with (AFL++ -F option)
     #[clap(long = "foreign-sync", short = 'F', action)]
     foreign_sync_dirs: Vec<PathBuf>,
+
+    #[clap(skip)]
+    afl_handles: Vec<process::Child>,
+
+    #[clap(skip)]
+    hfuzz_handle: Option<process::Child>,
 }
 
 #[derive(Args)]
