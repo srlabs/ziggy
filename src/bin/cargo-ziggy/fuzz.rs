@@ -271,9 +271,7 @@ impl Fuzz {
                         stop_fuzzers(&mut self.afl_handles)?;
 
                         if let Some(handle) = &mut self.hfuzz_handle {
-                            if let Err(_) = handle.try_wait() {
-                                kill_subprocesses_recursively(&handle.id().to_string())?;
-                            }
+                            kill_subprocesses_recursively(&handle.id().to_string())?;
                         }
 
                         eprintln!("We highly recommend you configure your system for better performance:\n");
@@ -375,9 +373,7 @@ impl Fuzz {
                 stop_fuzzers(&mut self.afl_handles)?;
 
                 if let Some(handle) = &mut self.hfuzz_handle {
-                    if let Err(_) = handle.try_wait() {
-                        kill_subprocesses_recursively(&handle.id().to_string())?;
-                    }
+                    kill_subprocesses_recursively(&handle.id().to_string())?;
                 }
 
                 return Ok(());
