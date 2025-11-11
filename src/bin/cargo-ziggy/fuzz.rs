@@ -446,7 +446,9 @@ impl Fuzz {
             _ => "-Pexploit",
         }));
 
-        args.push(String::from(self.config.input_format_flag()));
+        if let Some(flag) = self.config.input_format_flag() {
+            args.push(String::from(flag));
+        }
 
         args
     }
@@ -578,9 +580,8 @@ impl Fuzz {
                 .wait()?;
 
             for job_num in 0..afl_jobs {
-                if let Ok(handle) = self.spawn_afl_instance(job_num) {
-                    self.afl_handles.push(handle);
-                }
+                let handle = self.spawn_afl_instance(job_num)?;
+                self.afl_handles.push(handle);
             }
             eprintln!("{} afl           ", style("    Launched").green().bold());
         }
@@ -968,11 +969,11 @@ pub enum FuzzingConfig {
 }
 
 impl FuzzingConfig {
-    fn input_format_flag(&self) -> &str {
+    fn input_format_flag(&self) -> Option<&str> {
         match self {
-            Self::Text => "-atext",
-            Self::Binary => "-abinary",
-            _ => "",
+            Self::Text => Some("-atext"),
+            Self::Binary => Some("-abinary"),
+            _ => None,
         }
     }
 }
