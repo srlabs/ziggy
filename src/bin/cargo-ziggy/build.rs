@@ -101,11 +101,11 @@ impl Build {
             );
             eprintln!("    {} honggfuzz", style("Building").red().bold());
 
-            let mut hfuzz_args = vec!["hfuzz", "build"];
-
-            // Add the --release argument if self.release is true
+            let mut hfuzz_args = vec!["hfuzz"];
             if self.release {
-                hfuzz_args.push("--release");
+                hfuzz_args.push("build")
+            } else {
+                hfuzz_args.push("build-debug")
             }
 
             // Second fuzzer we build: Honggfuzz
