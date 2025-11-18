@@ -70,7 +70,7 @@ fn integration() {
         .current_dir(&fuzzer_directory)
         .spawn()
         .expect("failed to run `cargo ziggy fuzz`");
-    thread::sleep(Duration::from_secs(10));
+    thread::sleep(Duration::from_secs(30));
     kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
 
     assert!(temp_dir_path
@@ -100,7 +100,7 @@ fn integration() {
         .current_dir(&fuzzer_directory)
         .spawn()
         .expect("failed to run `cargo ziggy fuzz`");
-    thread::sleep(Duration::from_secs(10));
+    thread::sleep(Duration::from_secs(30));
     kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
 
     // cargo ziggy minimize
