@@ -109,6 +109,8 @@ impl Minimize {
                 &self.output_corpus(),
                 "-T",
                 &jobs_option,
+                "-t",
+                &format!("{}", self.timeout),
                 "--",
                 &format!("./target/afl/debug/{}", &self.target),
             ])
@@ -147,7 +149,12 @@ impl Minimize {
             )
             .env(
                 "HFUZZ_RUN_ARGS",
-                format!("-i{} -M -o{}", &self.input_corpus(), &self.output_corpus(),),
+                format!(
+                    "-i{} -M -o{} -t{}",
+                    &self.input_corpus(),
+                    &self.output_corpus(),
+                    self.timeout
+                ),
             )
             .stderr(File::create(format!(
                 "{}/{}/logs/minimization_honggfuzz.log",

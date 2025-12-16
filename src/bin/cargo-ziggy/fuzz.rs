@@ -714,6 +714,7 @@ impl Fuzz {
             output_corpus: PathBuf::from(minimized_corpus),
             ziggy_output: self.ziggy_output.clone(),
             jobs: self.jobs,
+            timeout: self.timeout.unwrap_or(5000),
             engine,
         };
         match minimization_args.minimize() {
