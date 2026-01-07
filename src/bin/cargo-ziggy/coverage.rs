@@ -42,12 +42,16 @@ impl Cover {
                 .as_str(),
         );
 
+        // Get the absolute path for the coverage directory to ensure .profraw files
+        // are created in the correct location, even in workspace scenarios
+        let coverage_target_dir = env::current_dir()
+            .unwrap()
+            .join("target/coverage/debug/deps");
+        let profile_file = coverage_target_dir.join("coverage-%p-%m.profraw");
+
         let _ = process::Command::new(format!("./target/coverage/debug/{}", &self.target))
             .arg(format!("{}", shared_corpus.display()))
-            .env(
-                "LLVM_PROFILE_FILE",
-                "target/coverage/debug/deps/coverage-%p-%m.profraw",
-            )
+            .env("LLVM_PROFILE_FILE", profile_file.display().to_string())
             .spawn()
             .unwrap()
             .wait_with_output()
@@ -142,7 +146,13 @@ impl Cover {
     }
 
     pub fn clean_old_cov() -> Result<(), anyhow::Error> {
-        if let Ok(profile_files) = glob("target/coverage/debug/deps/*.profraw") {
+        // Use absolute path to ensure we clean the correct location in workspaces
+        let coverage_deps_dir = env::current_dir()
+            .unwrap()
+            .join("target/coverage/debug/deps");
+        let pattern = coverage_deps_dir.join("*.profraw");
+
+        if let Ok(profile_files) = glob(&pattern.display().to_string()) {
             for file in profile_files.flatten() {
                 let file_string = &file.display();
                 fs::remove_file(&file).context(format!("⚠️  couldn't remove {}", file_string))?;
