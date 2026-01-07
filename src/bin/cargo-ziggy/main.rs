@@ -395,7 +395,7 @@ fn guess_target() -> Result<String> {
     let default_package = metadata.workspace_default_members;
     if let Some(package_id) = default_package.first() {
         if let Some(package) = metadata.packages.iter().find(|p| p.id == *package_id) {
-            return Ok(package.name.clone());
+            return Ok(package.name.to_string());
         }
     }
 
