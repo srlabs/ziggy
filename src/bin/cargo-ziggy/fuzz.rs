@@ -336,15 +336,19 @@ impl Fuzz {
                 for file in valid_files {
                     if let Some(file_name) = file.file_name() {
                         if self.honggfuzz() {
-                            let _ = fs::copy(
-                                file,
-                                format!("{}/queue/{:?}", self.output_target(), file_name),
-                            );
+                            let queue_path =
+                                format!("{}/queue/{:?}", self.output_target(), file_name);
+                            if !Path::new(&queue_path).exists() {
+                                let _ = fs::copy(file, queue_path);
+                            }
                         }
                         // Hash the file to get its file name
                         let bytes = fs::read(file).unwrap_or_default();
                         let hash = XxHash64::oneshot(0, &bytes);
-                        let _ = fs::copy(file, format!("{}/corpus/{hash:x}", self.output_target()));
+                        let corpus_path = format!("{}/corpus/{hash:x}", self.output_target());
+                        if !Path::new(&corpus_path).exists() {
+                            let _ = fs::copy(file, corpus_path);
+                        }
                     }
                 }
                 last_synced_created_time = newest_time;
