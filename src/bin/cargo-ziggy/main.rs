@@ -200,10 +200,6 @@ pub struct Run {
     #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
     target: String,
 
-    /// Maximum length of input
-    #[clap(short = 'G', long = "maxlength", default_value_t = 1048576)]
-    max_length: u64,
-
     /// Input directories and/or files to run
     #[clap(short, long, value_name = "DIR", default_value = DEFAULT_CORPUS_DIR)]
     inputs: Vec<PathBuf>,
@@ -225,6 +221,10 @@ pub struct Run {
     /// Activate these features on the target
     #[clap(short = 'F', long, num_args = 0..)]
     features: Vec<String>,
+
+    /// Stop the run after the first crash is encountered
+    #[clap(short = 'x', long)]
+    stop_on_crash: bool,
 }
 
 #[derive(Args, Clone)]

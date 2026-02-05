@@ -23,7 +23,7 @@ cli = [
     "cargo_metadata",
     "twox-hash",
 ]
-coverage = ["fork", "libc"]
+coverage = []
 
 [dependencies]
 afl = { version = "0.17.0", default-features = false, optional = true }

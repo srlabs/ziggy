@@ -14,3 +14,6 @@ target/
 *.pdb
 
 core
+
+# Profiler files generated during coverage
+*.profraw
