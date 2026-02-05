@@ -256,8 +256,8 @@ impl Fuzz {
                 {
                     if afl_log.contains("ready to roll") {
                         afl_output_ok = true;
-                    } else if afl_log.contains("echo core >/proc/sys/kernel/core_pattern")
-                        || afl_log.contains("cd /sys/devices/system/cpu")
+                    } else if afl_log.contains("/proc/sys/kernel/core_pattern")
+                        || afl_log.contains("/sys/devices/system/cpu")
                     {
                         stop_fuzzers(&mut processes)?;
                         eprintln!("We highly recommend you configure your system for better performance:\n");
@@ -385,7 +385,7 @@ impl Fuzz {
                 // not apply more than 4 jobs to honggfuzz
                 match self.jobs {
                     1 => (1, 0),
-                    2..=12 => (self.jobs - ((self.jobs + 2) / 3), (self.jobs + 2) / 3),
+                    2..=12 => (self.jobs - self.jobs.div_ceil(3), self.jobs.div_ceil(3)),
                     _ => (self.jobs - 4, 4),
                 }
             }
@@ -453,6 +453,10 @@ impl Fuzz {
                     Some(t) => format!("-t{}", t * 1000),
                     None => String::new(),
                 };
+                let memory_option_afl = match &self.memory_limit {
+                    Some(m) => format!("-m{}", m),
+                    None => String::new(),
+                };
                 let dictionary_option = match &self.dictionary {
                     Some(d) => format!("-x{}", &d.display().to_string()),
                     None => String::new(),
@@ -481,7 +485,7 @@ impl Fuzz {
                     false => {
                         if self.release {
                             format!("./target/afl/release/{}", self.target)
-                        } else if self.asan {
+                        } else if self.asan && job_num == 0 {
                             format!("./target/afl/{ASAN_TARGET}/debug/{}", self.target)
                         } else {
                             format!("./target/afl/debug/{}", self.target)
@@ -516,6 +520,7 @@ impl Fuzz {
                                 mutation_option,
                                 input_format_option,
                                 &timeout_option_afl,
+                                &memory_option_afl,
                                 &dictionary_option,
                             ]
                             .iter()
@@ -576,6 +581,11 @@ impl Fuzz {
                 None => String::new(),
             };
 
+            let memory_option = match &self.memory_limit {
+                Some(m) => format!("--rlimit_as{}", m),
+                None => String::new(),
+            };
+
             // The `script` invocation is a trick to get the correct TTY output for honggfuzz
             fuzzer_handles.push(
                 process::Command::new("script")
@@ -595,7 +605,7 @@ impl Fuzz {
                     .env(
                         "HFUZZ_RUN_ARGS",
                         format!(
-                            "--input={} -o{}/honggfuzz/corpus -n{honggfuzz_jobs} -F{} --dynamic_input={}/queue {timeout_option} {dictionary_option}",
+                            "--input={} -o{}/honggfuzz/corpus -n{honggfuzz_jobs} -F{} --dynamic_input={}/queue {timeout_option} {dictionary_option} {memory_option}",
                             &self.corpus(),
                             &self.output_target(),
                             self.max_length,
@@ -704,6 +714,7 @@ impl Fuzz {
             output_corpus: PathBuf::from(minimized_corpus),
             ziggy_output: self.ziggy_output.clone(),
             jobs: self.jobs,
+            timeout: self.timeout.unwrap_or(5000),
             engine,
         };
         match minimization_args.minimize() {

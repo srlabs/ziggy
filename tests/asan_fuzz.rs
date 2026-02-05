@@ -75,7 +75,7 @@ fn asan_crashes() {
         .current_dir(&fuzzer_directory)
         .spawn()
         .expect("failed to run `cargo ziggy fuzz`");
-    thread::sleep(Duration::from_secs(40));
+    thread::sleep(Duration::from_secs(30));
     kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
 
     assert!(temp_dir_path

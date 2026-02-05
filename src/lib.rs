@@ -48,8 +48,7 @@ where
 /// # }
 /// ```
 #[macro_export]
-#[cfg(not(any(feature = "afl", feature = "honggfuzz")))]
-macro_rules! fuzz {
+macro_rules! inner_fuzz {
     (|$buf:ident| $body:block) => {
         $crate::run_file(|$buf| $body);
     };
@@ -71,11 +70,25 @@ macro_rules! fuzz {
     };
 }
 
+/// We need this wrapper
+#[macro_export]
+#[cfg(not(any(feature = "afl", feature = "honggfuzz")))]
+macro_rules! fuzz {
+    ( $($x:tt)* ) => {
+        $crate::inner_fuzz!($($x)*);
+    }
+}
+
 #[macro_export]
 #[cfg(feature = "afl")]
 macro_rules! fuzz {
-    ( $($x:tt)* ) => {
-        $crate::afl_fuzz!($($x)*);
+      ( $($x:tt)* ) => {
+        static USE_ARGS: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::args().len() > 1);
+        if *USE_ARGS {
+            $crate::inner_fuzz!($($x)*);
+        } else {
+            $crate::afl_fuzz!($($x)*);
+        }
     };
 }
 

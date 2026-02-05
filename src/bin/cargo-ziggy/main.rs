@@ -133,8 +133,12 @@ pub struct Fuzz {
     #[clap(short, long, value_name = "SECS")]
     timeout: Option<u32>,
 
+    /// Memory limit for the fuzz target. (If fuzzing with honggfuzz, a numeric value in MiB mus be specified)
+    #[clap(short, long, value_name = "STRING")]
+    memory_limit: Option<String>,
+
     /// Perform initial minimization
-    #[clap(short, long, action, default_value_t = false)]
+    #[clap(short = 'M', long, action, default_value_t = false)]
     minimize: bool,
 
     /// Dictionary file (format:<http://llvm.org/docs/LibFuzzer.html#dictionaries>)
@@ -214,6 +218,10 @@ pub struct Run {
     #[clap(long = "asan", action)]
     asan: bool,
 
+    /// Activate these features on the target
+    #[clap(short = 'F', long, num_args = 0..)]
+    features: Vec<String>,
+
     /// Stop the run after the first crash is encountered
     #[clap(short = 'x', long)]
     stop_on_crash: bool,
@@ -242,6 +250,10 @@ pub struct Minimize {
     /// Number of concurent minimizing jobs (AFL++ only)
     #[clap(short, long, value_name = "NUM", default_value_t = 1)]
     jobs: u32,
+
+    /// After how many ms should an input time out.
+    #[clap(short, long, value_name = "TIMEOUT", default_value_t = 5000)]
+    timeout: u32,
 
     #[clap(short, long, value_enum, default_value_t = FuzzingEngines::All)]
     engine: FuzzingEngines,
@@ -320,6 +332,10 @@ pub struct Triage {
         short, long, env = "ZIGGY_OUTPUT", value_parser, value_name = "DIR", default_value = DEFAULT_OUTPUT_DIR
     )]
     ziggy_output: PathBuf,
+
+    /// Terminate runner after x seconds
+    #[clap(short, long, value_name = "SECS")]
+    timeout: Option<u32>,
     /* future feature, wait for casr
     /// Crash directory to be sourced from
     #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CRASHES_DIR)]
@@ -379,7 +395,7 @@ fn guess_target() -> Result<String> {
     let default_package = metadata.workspace_default_members;
     if let Some(package_id) = default_package.first() {
         if let Some(package) = metadata.packages.iter().find(|p| p.id == *package_id) {
-            return Ok(package.name.clone());
+            return Ok(package.name.to_string());
         }
     }
 

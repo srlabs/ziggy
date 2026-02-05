@@ -1,5 +1,16 @@
 # Changes
 
+## 1.3.2 -
+
+- add -m memory limit for AFL++ fuzz option
+- moved previous -m minimize option to -M
+- Update `afl.rs` to `0.15.16`
+
+## 1.3.1 - 2025-02-26
+
+- AFL++ fuzz targets now can be used for replays by given input files as
+  command line parameters
+
 ## 1.3.0 - 2024-11-05
 
 - Fix bugs (#102 and #103)
