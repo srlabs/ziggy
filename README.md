@@ -97,3 +97,7 @@ the generated coverage.
 ## `ziggy` logs
 
 If you want to see `ziggy`'s internal logs, you can set `RUST_LOG=INFO`.
+
+## Trophy case
+
+[CVE-2026-24116](https://www.cve.org/CVERecord?id=CVE-2026-24116) was found in wasmtime by differential fuzzing with wasmi
