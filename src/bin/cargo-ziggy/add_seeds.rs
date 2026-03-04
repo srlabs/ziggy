@@ -1,4 +1,5 @@
 use crate::*;
+use anyhow::bail;
 use std::{env, process};
 
 impl AddSeeds {
@@ -21,7 +22,7 @@ impl AddSeeds {
             .context("could not parse cargo-afl version")?
             .map(|v| req.matches(&v))?
         {
-            return Err(anyhow!("Outdated version of cargo-afl, ziggy needs >=0.14.5, please run `cargo install cargo-afl`"));
+            bail!("Outdated version of cargo-afl, ziggy needs >=0.14.5, please run `cargo install cargo-afl`");
         }
 
         self.target = find_target(&self.target)?;
@@ -34,7 +35,7 @@ impl AddSeeds {
             .replace("{target_name}", &self.target);
 
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
-        process::Command::new(cargo.clone())
+        process::Command::new(cargo)
             .args(
                 [
                     "afl",
@@ -45,7 +46,7 @@ impl AddSeeds {
                     &input,
                 ]
                 .iter()
-                .filter(|a| a != &&""),
+                .filter(|a| !a.is_empty()),
             )
             .spawn()?
             .wait()?;

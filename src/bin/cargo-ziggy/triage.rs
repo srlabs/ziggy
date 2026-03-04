@@ -28,12 +28,12 @@ impl Triage {
             .map(|meta| meta.is_dir())
             .unwrap_or(false)
         {
-            eprintln!("Please remove {:?} first", triage_dir);
+            eprintln!("Please remove {triage_dir:?} first");
             return Ok(());
         }
 
         let tool = String::from("casr-afl");
-        process::Command::new(tool.clone())
+        process::Command::new(tool)
             .args(
                 [
                     "-i",
@@ -44,7 +44,7 @@ impl Triage {
                     &format!("-t{}", self.timeout.unwrap_or(0)), // future: add option for crashes directory and use runner
                 ]
                 .iter()
-                .filter(|a| a != &&""),
+                .filter(|a| !a.is_empty()),
             )
             .spawn()?
             .wait()?;

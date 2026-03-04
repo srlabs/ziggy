@@ -1,6 +1,5 @@
-use crate::build::ASAN_TARGET;
-use crate::*;
-use anyhow::{anyhow, Error};
+use crate::{build::ASAN_TARGET, *};
+use anyhow::{anyhow, bail, Error};
 use console::{style, Term};
 use glob::glob;
 use std::{
@@ -156,7 +155,7 @@ impl Fuzz {
         let mut afl_output_ok = false;
 
         if self.no_afl && self.coverage_worker {
-            return Err(anyhow!("cannot use --no-afl with --coverage-worker!"));
+            bail!("cannot use --no-afl with --coverage-worker!");
         }
 
         // We prepare builds for the coverage worker
@@ -222,11 +221,7 @@ impl Fuzz {
                             .unwrap()
                             .elapsed()
                             .unwrap_or_default();
-                        if prev_start_time
-                            .map(|s| s.elapsed())
-                            .unwrap_or(Duration::MAX)
-                            >= created
-                        {
+                        if prev_start_time.map_or(Duration::MAX, |s| s.elapsed()) >= created {
                             let _ = process::Command::new(format!(
                                 "./target/coverage/debug/{}",
                                 &target
@@ -337,7 +332,7 @@ impl Fuzz {
                     if let Some(file_name) = file.file_name() {
                         if self.honggfuzz() {
                             let queue_path =
-                                format!("{}/queue/{:?}", self.output_target(), file_name);
+                                format!("{}/queue/{}", self.output_target(), file_name.display());
                             if !Path::new(&queue_path).exists() {
                                 let _ = fs::copy(file, queue_path);
                             }
@@ -369,9 +364,7 @@ impl Fuzz {
     pub fn spawn_new_fuzzers(&self) -> Result<Vec<process::Child>, anyhow::Error> {
         // No fuzzers for you
         if self.no_afl && self.no_honggfuzz {
-            return Err(anyhow!(
-                "Pick at least one fuzzer.\nNote: -b/--binary implies --no-honggfuzz"
-            ));
+            bail!("Pick at least one fuzzer.\nNote: -b/--binary implies --no-honggfuzz");
         }
 
         let mut fuzzer_handles = vec![];
@@ -458,7 +451,7 @@ impl Fuzz {
                     None => String::new(),
                 };
                 let memory_option_afl = match &self.memory_limit {
-                    Some(m) => format!("-m{}", m),
+                    Some(m) => format!("-m{m}"),
                     None => String::new(),
                 };
                 let dictionary_option = match &self.dictionary {
@@ -500,7 +493,7 @@ impl Fuzz {
                 let mut afl_flags = self.afl_flags.clone();
                 if is_main_instance {
                     for path in &self.foreign_sync_dirs {
-                        afl_flags.push(format!("-F {}", path.display()))
+                        afl_flags.push(format!("-F {}", path.display()));
                     }
                 }
 
@@ -528,7 +521,7 @@ impl Fuzz {
                                 &dictionary_option,
                             ]
                             .iter()
-                            .filter(|a| a != &&""),
+                            .filter(|a| !a.is_empty()),
                         )
                         .args(afl_flags)
                         .arg(target_path)
@@ -547,7 +540,7 @@ impl Fuzz {
                         .stdout(log_destination())
                         .stderr(log_destination())
                         .spawn()?,
-                )
+                );
             }
             eprintln!("{} afl           ", style("    Launched").green().bold());
         }
@@ -572,7 +565,7 @@ impl Fuzz {
                     .unwrap_or_default()
                     .contains("dynamic_input")
             {
-                return Err(anyhow!("Outdated version of honggfuzz, please update the ziggy version in your Cargo.toml or rebuild the project"));
+                bail!("Outdated version of honggfuzz, please update the ziggy version in your Cargo.toml or rebuild the project");
             }
 
             let dictionary_option = match &self.dictionary {
@@ -586,7 +579,7 @@ impl Fuzz {
             };
 
             let memory_option = match &self.memory_limit {
-                Some(m) => format!("--rlimit_as{}", m),
+                Some(m) => format!("--rlimit_as{m}"),
                 None => String::new(),
             };
 
@@ -701,15 +694,17 @@ impl Fuzz {
         let input_corpus = &self.corpus_tmp();
         let minimized_corpus = &self.corpus_minimized();
 
-        let old_corpus_size = fs::read_dir(input_corpus)
-            .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
+        let old_corpus_size = fs::read_dir(input_corpus).map_or_else(
+            |_| String::from("err"),
+            |corpus| format!("{}", corpus.count()),
+        );
 
         let engine = match (self.no_afl, self.no_honggfuzz, self.jobs) {
             (false, false, 1) => FuzzingEngines::AFLPlusPlus,
             (false, false, _) => FuzzingEngines::All,
             (false, true, _) => FuzzingEngines::AFLPlusPlus,
             (true, false, _) => FuzzingEngines::Honggfuzz,
-            (true, true, _) => return Err(anyhow!("Pick at least one fuzzer")),
+            (true, true, _) => bail!("Pick at least one fuzzer"),
         };
 
         let mut minimization_args = Minimize {
@@ -722,27 +717,28 @@ impl Fuzz {
             engine,
         };
         match minimization_args.minimize() {
-            Ok(_) => {
-                let new_corpus_size = fs::read_dir(minimized_corpus)
-                    .map_or(String::from("err"), |corpus| format!("{}", corpus.count()));
+            Ok(()) => {
+                let new_corpus_size = fs::read_dir(minimized_corpus).map_or_else(
+                    |_| String::from("err"),
+                    |corpus| format!("{}", corpus.count()),
+                );
 
                 term.move_cursor_up(1)?;
 
                 if new_corpus_size == *"err" || new_corpus_size == *"0" {
-                    return Err(anyhow!("Please check the logs and make sure the right version of the fuzzers are installed"));
-                } else {
-                    term.write_line(&format!(
-                        "{} the corpus ({} -> {} files)             \n",
-                        style("    Minimized").magenta().bold(),
-                        old_corpus_size,
-                        new_corpus_size
-                    ))?;
+                    bail!("Please check the logs and make sure the right version of the fuzzers are installed");
                 }
+                term.write_line(&format!(
+                    "{} the corpus ({} -> {} files)             \n",
+                    style("    Minimized").magenta().bold(),
+                    old_corpus_size,
+                    new_corpus_size
+                ))?;
             }
             Err(_) => {
-                return Err(anyhow!("Please check the logs, this might be an oom error"));
+                bail!("Please check the logs, this might be an oom error");
             }
-        };
+        }
         Ok(())
     }
 
@@ -769,7 +765,7 @@ impl Fuzz {
         let mut afl_faves = String::new();
 
         if !self.afl() {
-            afl_status = format!("{yellow}disabled{reset} ")
+            afl_status = format!("{yellow}disabled{reset} ");
         } else {
             let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
             let afl_stats_process = process::Command::new(cargo)
@@ -973,7 +969,7 @@ use std::fmt;
 
 impl fmt::Display for FuzzingConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -988,7 +984,7 @@ pub fn kill_subprocesses_recursively(pid: &str) -> Result<(), Error> {
         }
 
         kill_subprocesses_recursively(subprocess)
-            .context("Error in kill_subprocesses_recursively for pid {pid}")?;
+            .with_context(|| format!("Error in kill_subprocesses_recursively for pid {pid}"))?;
     }
 
     unsafe {

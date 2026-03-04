@@ -1,5 +1,5 @@
 use crate::Build;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{bail, Context, Result};
 use console::style;
 use std::{env, process};
 
@@ -13,7 +13,7 @@ impl Build {
     pub fn build(&self) -> Result<(), anyhow::Error> {
         // No fuzzers for you
         if self.no_afl && self.no_honggfuzz {
-            return Err(anyhow!("Pick at least one fuzzer"));
+            bail!("Pick at least one fuzzer");
         }
 
         // The cargo executable
@@ -50,10 +50,7 @@ impl Build {
                 .context("Error spawning afl build command")?;
 
             if !run.success() {
-                return Err(anyhow!(
-                    "Error building afl fuzzer: Exited with {:?}",
-                    run.code()
-                ));
+                bail!("Error building afl fuzzer: Exited with {:?}", run.code());
             }
 
             let asan_target_str = format!("--target={ASAN_TARGET}");
@@ -83,12 +80,9 @@ impl Build {
                     .context("Error spawning afl build command")?;
 
                 if !run.success() {
-                    return Err(anyhow!(
-                        "Error building afl fuzzer: Exited with {:?}",
-                        run.code()
-                    ));
+                    bail!("Error building afl fuzzer: Exited with {:?}", run.code());
                 }
-            };
+            }
 
             eprintln!("    {} afl", style("Finished").cyan().bold());
         }
@@ -102,9 +96,9 @@ impl Build {
 
             let mut hfuzz_args = vec!["hfuzz"];
             if self.release {
-                hfuzz_args.push("build")
+                hfuzz_args.push("build");
             } else {
-                hfuzz_args.push("build-debug")
+                hfuzz_args.push("build-debug");
             }
 
             // Second fuzzer we build: Honggfuzz
@@ -119,20 +113,19 @@ impl Build {
                 .context("Error spawning hfuzz build command")?;
 
             if !run.success() {
-                return Err(anyhow!(
+                bail!(
                     "Error building honggfuzz fuzzer: Exited with {:?}",
                     run.code()
-                ));
+                );
             }
 
             eprintln!("    {} honggfuzz", style("Finished").cyan().bold());
         }
 
-        if std::env::var("AFL_LLVM_CMPGLOG").is_ok() {
-            panic!(
-                "Even the mighty may fall, especially on 77b2c27a59bb858045c4db442989ce8f20c8ee11"
-            )
-        }
+        assert!(
+            std::env::var("AFL_LLVM_CMPGLOG").is_err(),
+            "Even the mighty may fall, especially on 77b2c27a59bb858045c4db442989ce8f20c8ee11"
+        );
 
         Ok(())
     }

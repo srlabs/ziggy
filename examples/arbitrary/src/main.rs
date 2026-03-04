@@ -10,12 +10,11 @@ pub struct Rgb {
 impl Rgb {
     #[must_use]
     pub fn as_hex(&self) -> Hex {
-        let Rgb { r, g, b } = self;
-        let panic_u8: u8 = 17;
-        if r == &panic_u8 {
+        let Self { r, g, b } = self;
+        if *r == 17 {
             panic!("let the fuzzer find this");
         }
-        Hex(format!("{:02X}{:02X}{:02X}", r, g, b))
+        Hex(format!("{r:02X}{g:02X}{b:02X}"))
     }
 }
 

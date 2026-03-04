@@ -1,5 +1,5 @@
 use crate::{find_target, Build, FuzzingEngines, Minimize};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{bail, Context, Result};
 use std::{
     env,
     fs::{self, File},
@@ -22,14 +22,14 @@ impl Minimize {
             find_target(&self.target).context("⚠️  couldn't find target when minimizing")?;
 
         if fs::read_dir(self.output_corpus()).is_ok() {
-            return Err(anyhow!(
+            bail!(
                 "Directory {} exists, please move it before running minimization",
                 self.output_corpus()
-            ));
+            );
         }
 
         let entries = fs::read_dir(self.input_corpus())?;
-        let original_count = entries.filter_map(|entry| entry.ok()).count();
+        let original_count = entries.flatten().count();
         println!("Running minimization on a corpus of {original_count} files");
 
         match self.engine {
@@ -65,7 +65,7 @@ impl Minimize {
         }
 
         let min_entries_hashed = fs::read_dir(self.output_corpus())?;
-        let minimized_count = min_entries_hashed.filter_map(|entry| entry.ok()).count();
+        let minimized_count = min_entries_hashed.flatten().count();
         println!("Minimized corpus contains {minimized_count} files");
 
         Ok(())

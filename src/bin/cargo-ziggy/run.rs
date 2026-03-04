@@ -1,5 +1,5 @@
 use crate::{build::ASAN_TARGET, find_target, Run};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{bail, Context, Result};
 use console::style;
 use std::{
     collections::HashSet,
@@ -30,7 +30,7 @@ impl Run {
             rust_flags.push_str(" -Zsanitizer=address ");
             rust_flags.push_str(" -Copt-level=0 ");
             rust_doc_flags.push_str(" -Zsanitizer=address ");
-        };
+        }
 
         // We build the runner
         eprintln!("    {} runner", style("Building").red().bold());
@@ -46,10 +46,7 @@ impl Run {
             .context("⚠️  couldn't wait for the runner compilation process")?;
 
         if !run.success() {
-            return Err(anyhow!(
-                "Error building runner: Exited with {:?}",
-                run.code()
-            ));
+            bail!("Error building runner: Exited with {:?}", run.code());
         }
 
         eprintln!("    {} runner", style("Finished").cyan().bold());
@@ -78,21 +75,23 @@ impl Run {
                     .replace("{target_name}", &target);
                 // For each directory we read, we get all files in that directory
                 let path = PathBuf::from(canonical_name);
-                match path.is_dir() {
-                    true => fs::read_dir(path)
+                if path.is_dir() {
+                    fs::read_dir(path)
                         .expect("could not read directory")
-                        .filter_map(|entry| entry.ok())
+                        .flatten()
                         .map(|entry| entry.path())
                         .filter(|path| path.is_file())
-                        .collect::<Vec<_>>(),
-                    false => vec![path],
+                        .collect::<Vec<_>>()
+                } else {
+                    vec![path]
                 }
             })
             .collect();
 
-        let runner_path = match self.asan {
-            true => format!("./target/runner/{ASAN_TARGET}/debug/{}", target),
-            false => format!("./target/runner/debug/{}", target),
+        let runner_path = if self.asan {
+            format!("./target/runner/{ASAN_TARGET}/debug/{target}")
+        } else {
+            format!("./target/runner/debug/{target}")
         };
 
         for file in input_files {
@@ -106,9 +105,9 @@ impl Run {
 
             if !res.success() {
                 if let Some(signal) = res.signal() {
-                    println!("⚠️  input terminated with signal {:?}!", signal);
+                    println!("⚠️  input terminated with signal {signal:?}!");
                 } else if let Some(exit_code) = res.code() {
-                    println!("⚠️  input terminated with code {:?}!", exit_code);
+                    println!("⚠️  input terminated with code {exit_code:?}!");
                 } else {
                     println!("⚠️  input terminated but we do not know why!");
                 }

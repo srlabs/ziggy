@@ -92,7 +92,7 @@ macro_rules! fuzz {
 }
 
 #[macro_export]
-#[cfg(feature = "honggfuzz")]
+#[cfg(all(feature = "honggfuzz", not(feature = "afl")))]
 macro_rules! fuzz {
     ( $($x:tt)* ) => {
         loop {

@@ -1,5 +1,5 @@
 use crate::{find_target, Cover};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{bail, Context, Result};
 use glob::glob;
 use std::{env, fs, path::PathBuf, process};
 
@@ -17,18 +17,16 @@ impl Cover {
 
         if let Some(path) = &self.source {
             if !path.try_exists()? {
-                return Err(anyhow!(
-                    "Source directory specified, but path does not exist!"
-                ));
+                bail!("Source directory specified, but path does not exist!");
             }
         }
 
         // build the runner
-        Cover::build_runner()?;
+        Self::build_runner()?;
 
         if !self.keep {
             // We remove the previous coverage files
-            Cover::clean_old_cov()?;
+            Self::clean_old_cov()?;
         }
 
         let input_path = PathBuf::from(
@@ -46,13 +44,14 @@ impl Cover {
             .join("target/coverage/debug/deps");
         let profile_file = coverage_target_dir.join("coverage-%p-%m.profraw");
 
-        let coverage_corpus = match input_path.is_dir() {
-            true => fs::read_dir(input_path)
+        let coverage_corpus = if input_path.is_dir() {
+            fs::read_dir(input_path)
                 .unwrap()
                 .flatten()
                 .map(|e| e.path())
-                .collect(),
-            false => vec![input_path],
+                .collect()
+        } else {
+            vec![input_path]
         };
 
         for file in coverage_corpus {
@@ -65,13 +64,13 @@ impl Cover {
                 .unwrap();
         }
 
-        let source_or_workspace_root = match &self.source {
-            Some(s) => s.display().to_string(),
-            None => {
+        let source_or_workspace_root = self.source.as_ref().map_or_else(
+            || {
                 let metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();
                 metadata.workspace_root.into()
-            }
-        };
+            },
+            |s| s.display().to_string(),
+        );
 
         let coverage_dir = self
             .output
@@ -84,17 +83,14 @@ impl Cover {
         if let Err(error) = fs::remove_dir_all(&coverage_dir) {
             match error.kind() {
                 std::io::ErrorKind::NotFound => {}
-                e => return Err(anyhow!(e)),
+                e => bail!(e),
             }
-        };
+        }
 
-        let output_types = match &self.output_types {
-            Some(o) => o,
-            None => "html",
-        };
+        let output_types = self.output_types.as_ref().map_or("html", String::as_str);
 
         // We generate the code coverage report
-        Cover::run_grcov(
+        Self::run_grcov(
             &self.target,
             output_types,
             &coverage_dir,
@@ -108,7 +104,7 @@ impl Cover {
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
         let mut coverage_rustflags =
-            env::var("COVERAGE_RUSTFLAGS").unwrap_or("-Cinstrument-coverage".to_string());
+            env::var("COVERAGE_RUSTFLAGS").unwrap_or_else(|_| "-Cinstrument-coverage".to_string());
         coverage_rustflags.push(' ');
         coverage_rustflags.push_str(&env::var("RUSTFLAGS").unwrap_or_default());
 
@@ -124,7 +120,7 @@ impl Cover {
             .wait()
             .context("⚠️  couldn't wait for the rustc during coverage")?;
         if !build.success() {
-            return Err(anyhow!("⚠️  build failed"));
+            bail!("⚠️  build failed");
         }
         Ok(())
     }
@@ -138,9 +134,9 @@ impl Cover {
         process::Command::new("grcov")
             .args([
                 ".",
-                &format!("-b=./target/coverage/debug/{}", target),
+                &format!("-b=./target/coverage/debug/{target}"),
                 &format!("-s={source_or_workspace_root}"),
-                &format!("-t={}", output_types),
+                &format!("-t={output_types}"),
                 "--llvm",
                 "--branch",
                 "--ignore-not-existing",
@@ -163,7 +159,8 @@ impl Cover {
         if let Ok(profile_files) = glob(&pattern.display().to_string()) {
             for file in profile_files.flatten() {
                 let file_string = &file.display();
-                fs::remove_file(&file).context(format!("⚠️  couldn't remove {}", file_string))?;
+                fs::remove_file(&file)
+                    .with_context(|| format!("⚠️  couldn't remove {file_string}"))?;
             }
         }
         Ok(())
