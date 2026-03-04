@@ -34,7 +34,6 @@ impl Build {
                 afl_args.push("--release");
             }
 
-            let opt_level = env::var("AFL_OPT_LEVEL").unwrap_or("0".to_string());
             let mut rust_flags = env::var("RUSTFLAGS").unwrap_or_default();
             let mut rust_doc_flags = env::var("RUSTDOCFLAGS").unwrap_or_default();
 
@@ -43,7 +42,6 @@ impl Build {
                 .args(&afl_args)
                 .env("AFL_QUIET", "1")
                 // need to specify for afl.rs so that we build with -Copt-level=0
-                .env("AFL_OPT_LEVEL", &opt_level)
                 .env("AFL_LLVM_CMPLOG", "1") // for afl.rs feature "plugins"
                 .env("RUSTFLAGS", &rust_flags)
                 .env("RUSTDOCFLAGS", &rust_doc_flags)
@@ -59,23 +57,24 @@ impl Build {
             }
 
             let asan_target_str = format!("--target={ASAN_TARGET}");
-            let opt_level_str = format!("-Copt-level={opt_level}");
 
             // If ASAN is enabled, build both a sanitized binary and a non-sanitized binary.
             if self.asan {
                 eprintln!("    {} afl (ASan)", style("Building").red().bold());
-                assert_eq!(opt_level, "0", "AFL_OPT_LEVEL must be 0 for ASAN builds");
+                if env::var("AFL_OPT_LEVEL").is_ok_and(|opt_level| opt_level != "0") {
+                    eprintln!("    Warning: ignoring AFL_OPT_LEVEL and setting it to 0");
+                }
                 afl_args.push(&asan_target_str);
                 afl_args.extend(["-Z", "build-std"]);
                 rust_flags.push_str(" -Zsanitizer=address ");
-                rust_flags.push_str(&opt_level_str);
+                rust_flags.push_str("-Copt-level=0");
                 rust_doc_flags.push_str(" -Zsanitizer=address ");
 
                 let run = process::Command::new(cargo.clone())
                     .args(afl_args)
                     .env("AFL_QUIET", "1")
                     // need to specify for afl.rs so that we build with -Copt-level=0
-                    .env("AFL_OPT_LEVEL", opt_level)
+                    .env("AFL_OPT_LEVEL", "0")
                     .env("AFL_LLVM_CMPLOG", "1") // for afl.rs feature "plugins"
                     .env("RUSTFLAGS", rust_flags)
                     .env("RUSTDOCFLAGS", rust_doc_flags)
