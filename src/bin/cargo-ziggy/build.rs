@@ -38,7 +38,7 @@ impl Build {
             let mut rust_doc_flags = env::var("RUSTDOCFLAGS").unwrap_or_default();
 
             // First fuzzer we build: AFL++
-            let run = process::Command::new(cargo.clone())
+            let run = process::Command::new(&cargo)
                 .args(&afl_args)
                 .env("AFL_QUIET", "1")
                 // need to specify for afl.rs so that we build with -Copt-level=0
@@ -67,7 +67,7 @@ impl Build {
                 rust_flags.push_str("-Copt-level=0");
                 rust_doc_flags.push_str(" -Zsanitizer=address ");
 
-                let run = process::Command::new(cargo.clone())
+                let run = process::Command::new(&cargo)
                     .args(afl_args)
                     .env("AFL_QUIET", "1")
                     // need to specify for afl.rs so that we build with -Copt-level=0
@@ -102,7 +102,7 @@ impl Build {
             }
 
             // Second fuzzer we build: Honggfuzz
-            let run = process::Command::new(cargo)
+            let run = process::Command::new(&cargo)
                 .args(hfuzz_args)
                 .env("CARGO_TARGET_DIR", "./target/honggfuzz")
                 .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")

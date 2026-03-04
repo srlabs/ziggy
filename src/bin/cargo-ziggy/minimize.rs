@@ -99,7 +99,7 @@ impl Minimize {
         };
 
         // AFL++ minimization
-        process::Command::new(cargo)
+        process::Command::new(&cargo)
             .args([
                 "afl",
                 "cmin",
@@ -135,7 +135,7 @@ impl Minimize {
         // The cargo executable
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
-        process::Command::new(cargo)
+        process::Command::new(&cargo)
             .args(["hfuzz", "run", &self.target])
             .env("CARGO_TARGET_DIR", "./target/honggfuzz")
             .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")

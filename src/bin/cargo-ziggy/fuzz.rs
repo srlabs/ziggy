@@ -104,16 +104,8 @@ impl Fuzz {
         let crash_dir = format!("{}/crashes/{}/", self.output_target(), time);
         let crash_path = Path::new(&crash_dir);
         fs::create_dir_all(crash_path)?;
-
-        let _ = process::Command::new("mkdir")
-            .args([
-                "-p",
-                &format!("{}/logs/", self.output_target()),
-                &format!("{}/queue/", self.output_target()),
-            ])
-            .stderr(process::Stdio::piped())
-            .spawn()?
-            .wait()?;
+        fs::create_dir_all(format!("{}/logs/", self.output_target()))?;
+        fs::create_dir_all(format!("{}/queue/", self.output_target()))?;
 
         if Path::new(&self.corpus()).exists() {
             if self.minimize {
@@ -131,11 +123,7 @@ impl Fuzz {
                     .context("Could not remove temporary corpus")?;
             }
         } else {
-            let _ = process::Command::new("mkdir")
-                .args(["-p", &self.corpus()])
-                .stderr(process::Stdio::piped())
-                .spawn()?
-                .wait()?;
+            fs::create_dir_all(self.corpus())?;
         }
 
         // We create an initial corpus file, so that AFL++ starts-up properly if corpus is empty
@@ -393,11 +381,7 @@ impl Fuzz {
         }
 
         if afl_jobs > 0 {
-            let _ = process::Command::new("mkdir")
-                .args(["-p", &format!("{}/afl", self.output_target())])
-                .stderr(process::Stdio::piped())
-                .spawn()?
-                .wait()?;
+            std::fs::create_dir_all(format!("{}/afl", self.output_target()))?;
 
             // https://aflplus.plus/docs/fuzzing_in_depth/#c-using-multiple-cores
             let afl_modes = [
@@ -498,7 +482,7 @@ impl Fuzz {
                 }
 
                 fuzzer_handles.push(
-                    process::Command::new(cargo.clone())
+                    process::Command::new(&cargo)
                         .args(
                             [
                                 "afl",
@@ -768,7 +752,7 @@ impl Fuzz {
             afl_status = format!("{yellow}disabled{reset} ");
         } else {
             let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
-            let afl_stats_process = process::Command::new(cargo)
+            let afl_stats_process = process::Command::new(&cargo)
                 .args([
                     "afl",
                     "whatsup",

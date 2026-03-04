@@ -108,7 +108,7 @@ impl Cover {
         coverage_rustflags.push(' ');
         coverage_rustflags.push_str(&env::var("RUSTFLAGS").unwrap_or_default());
 
-        let build = process::Command::new(cargo)
+        let build = process::Command::new(&cargo)
             .args([
                 "rustc",
                 "--target-dir=target/coverage",

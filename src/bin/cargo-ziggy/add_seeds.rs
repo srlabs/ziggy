@@ -8,7 +8,7 @@ impl AddSeeds {
 
         let req = semver::VersionReq::parse(">=0.14.5").unwrap();
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
-        let afl_version = process::Command::new(cargo)
+        let afl_version = process::Command::new(&cargo)
             .args(["afl", "--version"])
             .output()
             .context("could not run `cargo afl --version`")?;
@@ -35,7 +35,7 @@ impl AddSeeds {
             .replace("{target_name}", &self.target);
 
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
-        process::Command::new(cargo)
+        process::Command::new(&cargo)
             .args(
                 [
                     "afl",

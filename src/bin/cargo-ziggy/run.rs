@@ -36,7 +36,7 @@ impl Run {
         eprintln!("    {} runner", style("Building").red().bold());
 
         // We run the compilation command
-        let run = process::Command::new(cargo)
+        let run = process::Command::new(&cargo)
             .args(args)
             .env("RUSTFLAGS", rust_flags)
             .env("RUSTDOCFLAGS", rust_doc_flags)
