@@ -125,7 +125,7 @@ pub struct Fuzz {
     )]
     ziggy_output: PathBuf,
 
-    /// Number of concurent fuzzing jobs
+    /// Number of concurrent fuzzing jobs
     #[clap(short, long, value_name = "NUM", default_value_t = 1)]
     jobs: u32,
 
@@ -133,7 +133,7 @@ pub struct Fuzz {
     #[clap(short, long, value_name = "SECS")]
     timeout: Option<u32>,
 
-    /// Memory limit for the fuzz target. (If fuzzing with honggfuzz, a numeric value in MiB mus be specified)
+    /// Memory limit for the fuzz target. (If fuzzing with honggfuzz, a numeric value in MiB must be specified)
     #[clap(short, long, value_name = "STRING")]
     memory_limit: Option<String>,
 
@@ -247,7 +247,7 @@ pub struct Minimize {
     )]
     ziggy_output: PathBuf,
 
-    /// Number of concurent minimizing jobs (AFL++ only)
+    /// Number of concurrent minimizing jobs (AFL++ only)
     #[clap(short, long, value_name = "NUM", default_value_t = 1)]
     jobs: u32,
 
@@ -287,7 +287,7 @@ pub struct Cover {
     #[clap(short, long, default_value_t = false)]
     keep: bool,
 
-    /// Comma separated list of output types. See grov --help to see supported output types. Default: html
+    /// Comma separated list of output types. See grcov --help to see supported output types. Default: html
     #[clap(short = 't', long)]
     output_types: Option<String>,
 }
@@ -323,7 +323,7 @@ pub struct Triage {
     #[clap(short, long, value_name = "DIR", default_value = DEFAULT_TRIAGE_DIR)]
     output: PathBuf,
 
-    /// Number of concurent fuzzing jobs
+    /// Number of concurrent fuzzing jobs
     #[clap(short, long, value_name = "NUM", default_value_t = 1)]
     jobs: u32,
 
