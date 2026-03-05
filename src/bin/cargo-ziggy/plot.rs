@@ -29,7 +29,7 @@ impl Plot {
         println!("{}", self.target);
 
         // We run the afl-plot command
-        process::Command::new(cargo)
+        process::Command::new(&cargo)
             .args(["afl", "plot", &fuzzer_data_dir, &plot_dir])
             .spawn()
             .context("⚠️  couldn't spawn afl plot")?
