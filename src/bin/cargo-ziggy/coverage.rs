@@ -131,7 +131,7 @@ impl Cover {
         coverage_dir: &str,
         source_or_workspace_root: &str,
     ) -> Result<(), anyhow::Error> {
-        process::Command::new("grcov")
+        let coverage = process::Command::new("grcov")
             .args([
                 ".",
                 &format!("-b=./target/coverage/debug/{target}"),
@@ -146,6 +146,9 @@ impl Cover {
             .context("⚠️  cannot find grcov in your path, please install it")?
             .wait()
             .context("⚠️  couldn't wait for the grcov process")?;
+        if dbg!(!coverage.success()) {
+            bail!("⚠️  grcov failed");
+        }
         Ok(())
     }
 
