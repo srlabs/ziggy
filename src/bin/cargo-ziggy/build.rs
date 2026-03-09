@@ -41,7 +41,6 @@ impl Build {
             let run = process::Command::new(&cargo)
                 .args(&afl_args)
                 .env("AFL_QUIET", "1")
-                // need to specify for afl.rs so that we build with -Copt-level=0
                 .env("AFL_LLVM_CMPLOG", "1") // for afl.rs feature "plugins"
                 .env("RUSTFLAGS", &rust_flags)
                 .env("RUSTDOCFLAGS", &rust_doc_flags)

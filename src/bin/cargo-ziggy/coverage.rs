@@ -140,7 +140,7 @@ impl Cover {
             .context("⚠️  cannot find grcov in your path, please install it")?
             .wait()
             .context("⚠️  couldn't wait for the grcov process")?;
-        if dbg!(!coverage.success()) {
+        if !coverage.success() {
             bail!("⚠️  grcov failed");
         }
         Ok(())
