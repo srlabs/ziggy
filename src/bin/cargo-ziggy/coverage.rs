@@ -1,7 +1,7 @@
 use crate::{find_target, Cover};
 use anyhow::{bail, Context, Result};
 use glob::glob;
-use std::{env, fs, path::PathBuf, process};
+use std::{env, fs, path::PathBuf, process, path::Path};
 
 impl Cover {
     pub fn generate_coverage(&mut self) -> Result<(), anyhow::Error> {
@@ -80,12 +80,13 @@ impl Cover {
             .replace("{target_name}", &self.target);
 
         // We remove the previous coverage
-        if let Err(error) = fs::remove_dir_all(&coverage_dir) {
+/*         if let Err(error) = fs::remove_dir_all(&coverage_dir) {
             match error.kind() {
                 std::io::ErrorKind::NotFound => {}
                 e => bail!(e),
             }
-        }
+        } */
+        let _ = Self::delete_dir_or_file(&coverage_dir);
 
         let output_types = self.output_types.as_ref().map_or("html", String::as_str);
 
@@ -167,5 +168,18 @@ impl Cover {
             }
         }
         Ok(())
+    }
+
+    pub fn delete_dir_or_file(path: &str) -> Result<(), anyhow::Error> {
+        let pathobj: &Path = Path::new(path);
+        if pathobj.exists() {
+            // some of the grcov output types produce folders, others produce files. This can result in errors when trying to delete
+            if pathobj.is_dir() {
+                fs::remove_dir_all(pathobj).with_context(|| format!("⚠️  error removing dir {path}"))?;
+            } else if pathobj.is_file() {
+                fs::remove_file(pathobj).with_context(|| format!("⚠️  error removing file {path}"))?;
+            }
+        }
+        return Ok(());
     }
 }
