@@ -169,7 +169,7 @@ impl Cover {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
             Err(error) => return Err(error.into()),
         };
-        // some of the grcov output types produce folders, others produce files. This can result in errors when trying to delete
+        // Some of the grcov output types produce folders, others produce files. This can result in errors when trying to delete them.
         if metadata.is_dir() {
             fs::remove_dir_all(path).with_context(|| format!("⚠️  error removing dir {path}"))?;
         } else if metadata.is_file() {
