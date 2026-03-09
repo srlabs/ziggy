@@ -242,7 +242,7 @@ fn coverage_regression() {
         .status()
         .expect("Failed to run lcov coverage");
 
-    assert!(coverage == coverage_second);
+    assert!(coverage.success());
     assert!(coverage_second.success());
     assert!(temp_dir_path.join("url-fuzz").join("cover_lcov").is_file());
 }
