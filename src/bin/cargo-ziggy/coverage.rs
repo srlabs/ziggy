@@ -79,14 +79,7 @@ impl Cover {
             .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
             .replace("{target_name}", &self.target);
 
-        // We remove the previous coverage
-/*         if let Err(error) = fs::remove_dir_all(&coverage_dir) {
-            match error.kind() {
-                std::io::ErrorKind::NotFound => {}
-                e => bail!(e),
-            }
-        } */
-        let _ = Self::delete_dir_or_file(&coverage_dir);
+        Self::delete_dir_or_file(&coverage_dir).unwrap();
 
         let output_types = self.output_types.as_ref().map_or("html", String::as_str);
 
@@ -176,13 +169,15 @@ impl Cover {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
             Err(error) => return Err(error.into()),
         };
-            // some of the grcov output types produce folders, others produce files. This can result in errors when trying to delete
+        // some of the grcov output types produce folders, others produce files. This can result in errors when trying to delete
         if metadata.is_dir() {
             fs::remove_dir_all(path).with_context(|| format!("⚠️  error removing dir {path}"))?;
         } else if metadata.is_file() {
             fs::remove_file(path).with_context(|| format!("⚠️  error removing file {path}"))?;
+        } else {
+            bail!("coverage output path exists but is neither a file nor a directory: {path}");
         }
-        
-        return Ok(());
+
+        Ok(())
     }
 }
