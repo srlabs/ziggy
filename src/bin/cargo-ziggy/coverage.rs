@@ -79,7 +79,7 @@ impl Cover {
             .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
             .replace("{target_name}", &self.target);
 
-        Self::delete_dir_or_file(&coverage_dir).unwrap();
+        Self::delete_dir_or_file(&coverage_dir)?;
 
         let output_types = self.output_types.as_ref().map_or("html", String::as_str);
 
