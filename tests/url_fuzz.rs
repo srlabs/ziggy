@@ -1,7 +1,8 @@
 use std::{
     env, fs,
     path::PathBuf,
-    process, thread,
+    process::{self, ExitStatus},
+    thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -170,4 +171,78 @@ fn integration() {
         .join("plot")
         .join("index.html")
         .is_file());
+}
+
+#[allow(clippy::zombie_processes)]
+#[test]
+fn coverage_regression() {
+    let unix_time = format!(
+        "{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    );
+    let temp_dir_path = env::temp_dir().join(unix_time);
+    let metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();
+    let workspace_root: PathBuf = metadata.workspace_root.into();
+    let target_directory: PathBuf = metadata.target_directory.into();
+    let cargo_ziggy = target_directory.join("debug").join("cargo-ziggy");
+    let fuzzer_directory = workspace_root.join("examples").join("url");
+
+    // cargo ziggy build
+    let build_status = process::Command::new(&cargo_ziggy)
+        .arg("ziggy")
+        .arg("build")
+        .current_dir(&fuzzer_directory)
+        .status()
+        .expect("failed to run `cargo ziggy build`");
+
+    assert!(build_status.success(), "`cargo ziggy build` failed");
+
+    // cargo ziggy fuzz -j 2 -t 5
+    let fuzzer = process::Command::new(&cargo_ziggy)
+        .arg("ziggy")
+        .arg("fuzz")
+        .arg("-j2")
+        .arg("-t5")
+        .arg("-G100")
+        .arg("--no-honggfuzz")
+        .env("ZIGGY_OUTPUT", format!("{}", temp_dir_path.display()))
+        .env("AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES", "1")
+        .env("AFL_SKIP_CPUFREQ", "1")
+        .current_dir(&fuzzer_directory)
+        .spawn()
+        .expect("failed to run `cargo ziggy fuzz`");
+    thread::sleep(Duration::from_secs(30));
+    kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
+
+    // cargo ziggy cover lcov regression test
+    let coverage: ExitStatus = process::Command::new(&cargo_ziggy)
+        .arg("ziggy")
+        .arg("cover")
+        .arg("--output-types")
+        .arg("lcov")
+        .arg("--output")
+        .arg(temp_dir_path.join("url-fuzz").join("cover_lcov"))
+        .env("ZIGGY_OUTPUT", format!("{}", temp_dir_path.display()))
+        .current_dir(&fuzzer_directory)
+        .status()
+        .expect("Failed to run lcov coverage");
+
+    let coverage_second: ExitStatus = process::Command::new(&cargo_ziggy)
+        .arg("ziggy")
+        .arg("cover")
+        .arg("--output-types")
+        .arg("lcov")
+        .arg("--output")
+        .arg(temp_dir_path.join("url-fuzz").join("cover_lcov"))
+        .env("ZIGGY_OUTPUT", format!("{}", temp_dir_path.display()))
+        .current_dir(&fuzzer_directory)
+        .status()
+        .expect("Failed to run lcov coverage");
+
+    assert!(coverage == coverage_second);
+    assert!(coverage_second.success());
+    assert!(temp_dir_path.join("url-fuzz").join("cover_lcov").is_file());
 }
