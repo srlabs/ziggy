@@ -14,8 +14,9 @@ impl Run {
     pub fn run(&mut self) -> Result<(), anyhow::Error> {
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
         let target = find_target(&self.target)?;
+        let target_dir = format!("--target-dir={}", super::target_dir().join("runner"));
 
-        let mut args = vec!["rustc", "--target-dir=target/runner"];
+        let mut args = vec!["rustc", &target_dir];
         let asan_target_str = format!("--target={ASAN_TARGET}");
         let mut rust_flags = env::var("RUSTFLAGS").unwrap_or_default();
         let mut rust_doc_flags = env::var("RUSTDOCFLAGS").unwrap_or_default();
@@ -89,9 +90,9 @@ impl Run {
             .collect();
 
         let runner_path = if self.asan {
-            format!("./target/runner/{ASAN_TARGET}/debug/{target}")
+            super::target_dir().join(format!("runner/{ASAN_TARGET}/debug/{target}"))
         } else {
-            format!("./target/runner/debug/{target}")
+            super::target_dir().join(format!("runner/debug/{target}"))
         };
 
         for file in input_files {

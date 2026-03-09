@@ -401,3 +401,16 @@ fn guess_target() -> Result<String> {
 
     Err(anyhow!("Please specify a target"))
 }
+
+fn target_dir() -> &'static cargo_metadata::camino::Utf8PathBuf {
+    use std::sync::LazyLock;
+
+    static TARGET_DIR: LazyLock<cargo_metadata::camino::Utf8PathBuf> = LazyLock::new(|| {
+        cargo_metadata::MetadataCommand::new().exec().map_or_else(
+            |_| cargo_metadata::camino::Utf8PathBuf::from("target"),
+            |metadata| metadata.target_directory,
+        )
+    });
+
+    &TARGET_DIR
+}

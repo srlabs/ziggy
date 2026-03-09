@@ -21,12 +21,8 @@ impl Build {
 
         if !self.no_afl {
             eprintln!("    {} afl", style("Building").red().bold());
-            let mut afl_args = vec![
-                "afl",
-                "build",
-                "--features=ziggy/afl",
-                "--target-dir=target/afl",
-            ];
+            let target_dir = format!("--target-dir={}", super::target_dir().join("afl"));
+            let mut afl_args = vec!["afl", "build", "--features=ziggy/afl", &target_dir];
 
             // Add the --release argument if self.release is true
             if self.release {
@@ -103,7 +99,7 @@ impl Build {
             // Second fuzzer we build: Honggfuzz
             let run = process::Command::new(&cargo)
                 .args(hfuzz_args)
-                .env("CARGO_TARGET_DIR", "./target/honggfuzz")
+                .env("CARGO_TARGET_DIR", super::target_dir().join("honggfuzz"))
                 .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
                 .env("RUSTFLAGS", env::var("RUSTFLAGS").unwrap_or_default())
                 .stdout(process::Stdio::piped())

@@ -97,6 +97,7 @@ impl Minimize {
             0 | 1 => String::from("all"),
             t => format!("{t}"),
         };
+        let target_dir = super::target_dir().join("afl/debug").join(&self.target);
 
         // AFL++ minimization
         process::Command::new(&cargo)
@@ -112,7 +113,7 @@ impl Minimize {
                 "-t",
                 &format!("{}", self.timeout),
                 "--",
-                &format!("./target/afl/debug/{}", &self.target),
+                target_dir.as_str(),
             ])
             .stderr(File::create(format!(
                 "{}/{}/logs/minimization_afl.log",
@@ -137,7 +138,7 @@ impl Minimize {
 
         process::Command::new(&cargo)
             .args(["hfuzz", "run", &self.target])
-            .env("CARGO_TARGET_DIR", "./target/honggfuzz")
+            .env("CARGO_TARGET_DIR", super::target_dir().join("honggfuzz"))
             .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
             .env(
                 "HFUZZ_WORKSPACE",
