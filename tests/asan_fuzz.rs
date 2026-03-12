@@ -1,9 +1,4 @@
-use std::{
-    env, fs,
-    path::PathBuf,
-    process, thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::{env, fs, path::PathBuf, process, thread, time::Duration};
 
 fn kill_subprocesses_recursively(pid: &str) {
     let subprocesses = process::Command::new("pgrep")
@@ -36,14 +31,8 @@ fn asan_crashes() {
         println!("Not running nightly, skipping");
         return;
     }
-    let unix_time = format!(
-        "{}",
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs()
-    );
-    let temp_dir_path = env::temp_dir().join(unix_time);
+    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir_path = temp_dir.path();
     let metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();
     let workspace_root: PathBuf = metadata.workspace_root.into();
     let target_directory: PathBuf = metadata.target_directory.into();
