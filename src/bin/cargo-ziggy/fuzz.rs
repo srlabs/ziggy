@@ -50,7 +50,11 @@ impl Fuzz {
     }
 
     pub fn output_target(&self) -> String {
-        format!("{}/{}", self.ziggy_output.display(), self.target)
+        if self.fuzz_binary() {
+            self.ziggy_output.display().to_string()
+        } else {
+            format!("{}/{}", self.ziggy_output.display(), &self.target)
+        }
     }
 
     /// Returns true if AFL++ is enabled
@@ -89,23 +93,19 @@ impl Fuzz {
             build.build().context("Failed to build the fuzzers")?;
         }
 
-        self.target = if self.fuzz_binary() {
-            self.binary
-                .as_ref()
-                .expect("invariant; should never occur")
-                .display()
-                .to_string()
+        self.target = if let Some(binary) = self.binary.as_ref() {
+            binary.display().to_string()
         } else {
             find_target(&self.target).context("⚠️  couldn't find target when fuzzing")?
         };
 
         let time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
 
-        let crash_dir = format!("{}/crashes/{}/", self.output_target(), time);
+        let crash_dir = format!("{}/crashes/{time}", self.output_target());
         let crash_path = Path::new(&crash_dir);
         fs::create_dir_all(crash_path)?;
-        fs::create_dir_all(format!("{}/logs/", self.output_target()))?;
-        fs::create_dir_all(format!("{}/queue/", self.output_target()))?;
+        fs::create_dir_all(format!("{}/logs", self.output_target()))?;
+        fs::create_dir_all(format!("{}/queue", self.output_target()))?;
 
         if Path::new(&self.corpus()).exists() {
             if self.minimize {
@@ -154,10 +154,14 @@ impl Fuzz {
         let cov_start_time = Arc::new(Mutex::new(None));
         let cov_end_time = Arc::new(Mutex::new(Instant::now()));
         let coverage_now_running = Arc::new(Mutex::new(false));
-        let workspace_root = cargo_metadata::MetadataCommand::new()
-            .exec()?
-            .workspace_root
-            .to_string();
+        let workspace_root = if !self.fuzz_binary() && self.coverage_worker {
+            cargo_metadata::MetadataCommand::new()
+                .exec()?
+                .workspace_root
+                .to_string()
+        } else {
+            String::default()
+        };
         let target = self.target.clone();
         let main_corpus = self.corpus();
         let output_target = self.output_target();
