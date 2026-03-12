@@ -1,10 +1,20 @@
 use std::{
-    env, fs,
+    fs,
     path::PathBuf,
     process::{self, ExitStatus},
+    sync::{Mutex, MutexGuard},
     thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
+
+static EXCLUSIVE: Mutex<()> = Mutex::new(());
+
+fn exclusive_guard() -> MutexGuard<'static, ()> {
+    EXCLUSIVE.lock().unwrap_or_else(|e| {
+        EXCLUSIVE.clear_poison();
+        e.into_inner()
+    })
+}
 
 fn kill_subprocesses_recursively(pid: &str) {
     let subprocesses = process::Command::new("pgrep")
@@ -32,14 +42,9 @@ fn kill_subprocesses_recursively(pid: &str) {
 #[allow(clippy::zombie_processes)]
 #[test]
 fn integration() {
-    let unix_time = format!(
-        "{}",
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs()
-    );
-    let temp_dir_path = env::temp_dir().join(unix_time);
+    let _guard = exclusive_guard();
+    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir_path = temp_dir.path();
     let metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();
     let workspace_root: PathBuf = metadata.workspace_root.into();
     let target_directory: PathBuf = metadata.target_directory.into();
@@ -176,14 +181,9 @@ fn integration() {
 #[allow(clippy::zombie_processes)]
 #[test]
 fn coverage_regression() {
-    let unix_time = format!(
-        "{}",
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs()
-    );
-    let temp_dir_path = env::temp_dir().join(unix_time);
+    let _guard = exclusive_guard();
+    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir_path = temp_dir.path();
     let metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();
     let workspace_root: PathBuf = metadata.workspace_root.into();
     let target_directory: PathBuf = metadata.target_directory.into();
@@ -245,4 +245,79 @@ fn coverage_regression() {
     assert!(coverage.success());
     assert!(coverage_second.success());
     assert!(temp_dir_path.join("url-fuzz").join("cover_lcov").is_file());
+}
+
+#[allow(clippy::zombie_processes)]
+#[test]
+fn fuzz_binary() {
+    let _guard = exclusive_guard();
+    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir_path = temp_dir.path();
+    let metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();
+    let workspace_root: PathBuf = metadata.workspace_root.into();
+    let target_directory: PathBuf = metadata.target_directory.into();
+    let cargo_ziggy = target_directory.join("debug/cargo-ziggy");
+    let fuzzer_directory = workspace_root.join("examples/url");
+    let binary_path = temp_dir_path.join("binary");
+
+    // cargo ziggy build
+    let build_status = process::Command::new(&cargo_ziggy)
+        .arg("ziggy")
+        .arg("build")
+        .arg("--no-honggfuzz")
+        .current_dir(&fuzzer_directory)
+        .status()
+        .expect("failed to run `cargo ziggy build`");
+
+    assert!(build_status.success(), "`cargo ziggy build` failed");
+
+    std::fs::create_dir_all(temp_dir_path).expect("failed creating output dir");
+    std::fs::copy(
+        fuzzer_directory.join("target/afl/debug/url-fuzz"),
+        &binary_path,
+    )
+    .expect("failed to move instrumented binary into output dir");
+
+    // cargo ziggy fuzz -j 2 -t 5
+    let fuzzer = process::Command::new(&cargo_ziggy)
+        .arg("ziggy")
+        .arg("fuzz")
+        .arg("-b")
+        .arg(&binary_path)
+        .arg("--no-honggfuzz")
+        .arg("-j2")
+        .arg("-t5")
+        .arg("-G100")
+        .env("ZIGGY_OUTPUT", temp_dir_path)
+        .env("AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES", "1")
+        .env("AFL_SKIP_CPUFREQ", "1")
+        .current_dir(temp_dir_path)
+        .spawn()
+        .expect("failed to run `cargo ziggy fuzz`");
+    thread::sleep(Duration::from_secs(30));
+    kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
+
+    assert!(temp_dir_path
+        .join("afl/mainaflfuzzer/fuzzer_stats")
+        .is_file());
+
+    // We resume fuzzing
+    // cargo ziggy fuzz -j 2 -t 5
+    let fuzzer = process::Command::new(&cargo_ziggy)
+        .arg("ziggy")
+        .arg("fuzz")
+        .arg("-b")
+        .arg(&binary_path)
+        .arg("--no-honggfuzz")
+        .arg("-j2")
+        .arg("-t5")
+        .arg("-G100")
+        .env("ZIGGY_OUTPUT", temp_dir_path)
+        .env("AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES", "1")
+        .env("AFL_SKIP_CPUFREQ", "1")
+        .current_dir(temp_dir_path)
+        .spawn()
+        .expect("failed to run `cargo ziggy fuzz`");
+    thread::sleep(Duration::from_secs(30));
+    kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
 }
