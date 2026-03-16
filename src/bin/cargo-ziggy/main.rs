@@ -404,14 +404,22 @@ pub fn find_target(target: &String) -> Result<String, anyhow::Error> {
 
 fn guess_target() -> Result<String> {
     let metadata = cargo_metadata::MetadataCommand::new().exec()?;
-    let default_package = metadata.workspace_default_members;
-    if let Some(package_id) = default_package.first() {
-        if let Some(package) = metadata.packages.iter().find(|p| p.id == *package_id) {
-            return Ok(package.name.to_string());
-        }
-    }
+    let default_bin = metadata
+        .workspace_default_members
+        .iter()
+        .find_map(|default_pkg| {
+            metadata
+                .packages
+                .iter()
+                .find(|p| p.id == *default_pkg)
+                .and_then(|p| {
+                    p.targets
+                        .iter()
+                        .find_map(|target| target.is_bin().then(|| target.name.clone()))
+                })
+        });
 
-    Err(anyhow!("Please specify a target"))
+    default_bin.ok_or_else(|| anyhow!("Please specify a target"))
 }
 
 fn target_dir() -> &'static cargo_metadata::camino::Utf8PathBuf {
