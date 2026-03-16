@@ -3,11 +3,6 @@ use anyhow::{bail, Context, Result};
 use console::style;
 use std::{env, process};
 
-/// Target for ASAN builds
-/// Note: we need to supply a target due to -Z build-std
-/// Note: we need to use -Z build-std or else many macros cannot be built when using ASAN
-pub const ASAN_TARGET: &str = "x86_64-unknown-linux-gnu";
-
 impl Build {
     /// Build the fuzzers
     pub fn build(&self) -> Result<(), anyhow::Error> {
@@ -21,12 +16,8 @@ impl Build {
 
         if !self.no_afl {
             eprintln!("    {} afl", style("Building").red().bold());
-            let mut afl_args = vec![
-                "afl",
-                "build",
-                "--features=ziggy/afl",
-                "--target-dir=target/afl",
-            ];
+            let target_dir = format!("--target-dir={}", super::target_dir().join("afl"));
+            let mut afl_args = vec!["afl", "build", "--features=ziggy/afl", &target_dir];
 
             // Add the --release argument if self.release is true
             if self.release {
@@ -41,7 +32,6 @@ impl Build {
             let run = process::Command::new(&cargo)
                 .args(&afl_args)
                 .env("AFL_QUIET", "1")
-                // need to specify for afl.rs so that we build with -Copt-level=0
                 .env("AFL_LLVM_CMPLOG", "1") // for afl.rs feature "plugins"
                 .env("RUSTFLAGS", &rust_flags)
                 .env("RUSTDOCFLAGS", &rust_doc_flags)
@@ -53,7 +43,7 @@ impl Build {
                 bail!("Error building afl fuzzer: Exited with {:?}", run.code());
             }
 
-            let asan_target_str = format!("--target={ASAN_TARGET}");
+            let asan_target_str = format!("--target={}", target_triple::TARGET);
 
             // If ASAN is enabled, build both a sanitized binary and a non-sanitized binary.
             if self.asan {
@@ -104,7 +94,7 @@ impl Build {
             // Second fuzzer we build: Honggfuzz
             let run = process::Command::new(&cargo)
                 .args(hfuzz_args)
-                .env("CARGO_TARGET_DIR", "./target/honggfuzz")
+                .env("CARGO_TARGET_DIR", super::target_dir().join("honggfuzz"))
                 .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
                 .env("RUSTFLAGS", env::var("RUSTFLAGS").unwrap_or_default())
                 .stdout(process::Stdio::piped())

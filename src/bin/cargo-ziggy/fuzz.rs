@@ -1,4 +1,4 @@
-use crate::{build::ASAN_TARGET, *};
+use crate::*;
 use anyhow::{anyhow, bail, Error};
 use console::{style, Term};
 use glob::glob;
@@ -214,11 +214,10 @@ impl Fuzz {
                             .elapsed()
                             .unwrap_or_default();
                         if prev_start_time.map_or(Duration::MAX, |s| s.elapsed()) >= created {
-                            let _ = process::Command::new(format!(
-                                "./target/coverage/debug/{}",
-                                &target
-                            ))
-                            .arg(format!("{}", entry.display()))
+                            let _ = process::Command::new(
+                                super::target_dir().join("coverage/debug").join(&target),
+                            )
+                            .arg(entry)
                             .stdout(Stdio::null())
                             .stderr(Stdio::null())
                             .status();
@@ -228,8 +227,7 @@ impl Fuzz {
                     if seen_new_entry {
                         let coverage_dir = output_target + "/coverage";
                         let _ = fs::remove_dir_all(&coverage_dir);
-                        Cover::run_grcov(&target.clone(), "html", &coverage_dir, &workspace_root)
-                            .unwrap();
+                        Cover::run_grcov(&target, "html", &coverage_dir, &workspace_root).unwrap();
                     }
 
                     *cov_end_time.lock().unwrap() = Instant::now();
@@ -465,18 +463,25 @@ impl Fuzz {
                     0 => "AFL_FINAL_SYNC",
                     _ => "_DUMMY_VAR",
                 };
-                let target_path = match self.fuzz_binary() {
-                    true => self.target.clone(),
-                    false => {
-                        if self.release {
-                            format!("./target/afl/release/{}", self.target)
-                        } else if self.asan && job_num == 0 {
-                            format!("./target/afl/{ASAN_TARGET}/debug/{}", self.target)
-                        } else {
-                            format!("./target/afl/debug/{}", self.target)
-                        }
+                let target_path = self.binary.clone().unwrap_or_else(|| {
+                    if self.release {
+                        super::target_dir()
+                            .join(format!("afl/release/{}", self.target))
+                            .into_std_path_buf()
+                    } else if self.asan && job_num == 0 {
+                        super::target_dir()
+                            .join(format!(
+                                "afl/{}/debug/{}",
+                                target_triple::TARGET,
+                                self.target
+                            ))
+                            .into_std_path_buf()
+                    } else {
+                        super::target_dir()
+                            .join(format!("afl/debug/{}", self.target))
+                            .into_std_path_buf()
                     }
-                };
+                });
 
                 let mut afl_flags = self.afl_flags.clone();
                 if is_main_instance {
@@ -560,7 +565,7 @@ impl Fuzz {
                         "/dev/null",
                     ])
                     .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
-                    .env("CARGO_TARGET_DIR", "./target/honggfuzz")
+                    .env("CARGO_TARGET_DIR", super::target_dir().join("honggfuzz"))
                     .env(
                         "HFUZZ_WORKSPACE",
                         format!("{}/honggfuzz", self.output_target()),
@@ -569,8 +574,8 @@ impl Fuzz {
                         "HFUZZ_RUN_ARGS",
                         format!(
                             "--input={} -o{}/honggfuzz/corpus -n{honggfuzz_jobs} -F{} --dynamic_input={}/queue {timeout_option} {dictionary_option} {memory_option}",
-                            &self.corpus(),
-                            &self.output_target(),
+                            self.corpus(),
+                            self.output_target(),
                             self.max_length,
                             self.output_target(),
                         ),
