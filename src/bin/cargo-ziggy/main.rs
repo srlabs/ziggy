@@ -3,6 +3,7 @@ fn main() {}
 
 mod add_seeds;
 mod build;
+mod clean;
 mod coverage;
 mod fuzz;
 mod minimize;
@@ -80,6 +81,9 @@ pub enum Ziggy {
 
     /// Triage crashes found with casr - currently only works for AFL++
     Triage(Triage),
+
+    /// Remove generated artifacts from the target directory
+    Clean(Clean),
 }
 
 #[derive(Args)]
@@ -360,6 +364,13 @@ pub struct AddSeeds {
     ziggy_output: PathBuf,
 }
 
+#[derive(Args)]
+pub struct Clean {
+    /// Arguments passed through to cargo clean, see cargo clean --help
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    args: Vec<std::ffi::OsString>,
+}
+
 #[cfg(feature = "cli")]
 fn main() -> Result<(), anyhow::Error> {
     let Cargo::Ziggy(command) = Cargo::parse();
@@ -376,6 +387,7 @@ fn main() -> Result<(), anyhow::Error> {
         Ziggy::Triage(mut args) => args
             .triage()
             .context("Triaging with casr failed, try \"cargo install casr\""),
+        Ziggy::Clean(args) => args.clean(),
     }
 }
 

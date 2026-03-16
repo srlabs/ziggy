@@ -1,4 +1,4 @@
-use crate::{build::ASAN_TARGET, *};
+use crate::*;
 use anyhow::{anyhow, bail, Error};
 use console::{style, Term};
 use glob::glob;
@@ -470,7 +470,11 @@ impl Fuzz {
                             .into_std_path_buf()
                     } else if self.asan && job_num == 0 {
                         super::target_dir()
-                            .join(format!("afl/{ASAN_TARGET}/debug/{}", self.target))
+                            .join(format!(
+                                "afl/{}/debug/{}",
+                                target_triple::TARGET,
+                                self.target
+                            ))
                             .into_std_path_buf()
                     } else {
                         super::target_dir()

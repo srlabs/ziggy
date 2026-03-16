@@ -3,11 +3,6 @@ use anyhow::{bail, Context, Result};
 use console::style;
 use std::{env, process};
 
-/// Target for ASAN builds
-/// Note: we need to supply a target due to -Z build-std
-/// Note: we need to use -Z build-std or else many macros cannot be built when using ASAN
-pub const ASAN_TARGET: &str = "x86_64-unknown-linux-gnu";
-
 impl Build {
     /// Build the fuzzers
     pub fn build(&self) -> Result<(), anyhow::Error> {
@@ -48,7 +43,7 @@ impl Build {
                 bail!("Error building afl fuzzer: Exited with {:?}", run.code());
             }
 
-            let asan_target_str = format!("--target={ASAN_TARGET}");
+            let asan_target_str = format!("--target={}", target_triple::TARGET);
 
             // If ASAN is enabled, build both a sanitized binary and a non-sanitized binary.
             if self.asan {
