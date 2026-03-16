@@ -539,28 +539,6 @@ impl Fuzz {
         }
 
         if honggfuzz_jobs > 0 {
-            let hfuzz_help = process::Command::new(&cargo)
-                .args(["hfuzz", "run", &self.target])
-                .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
-                .env("CARGO_TARGET_DIR", super::target_dir().join("honggfuzz"))
-                .env(
-                    "HFUZZ_WORKSPACE",
-                    format!("{}/honggfuzz", self.output_target()),
-                )
-                .env("HFUZZ_RUN_ARGS", "--help")
-                .output()
-                .context("could not run `cargo hfuzz run --help`")?;
-
-            if !std::str::from_utf8(hfuzz_help.stdout.as_slice())
-                .unwrap_or_default()
-                .contains("dynamic_input")
-                && !std::str::from_utf8(hfuzz_help.stderr.as_slice())
-                    .unwrap_or_default()
-                    .contains("dynamic_input")
-            {
-                bail!("Outdated version of honggfuzz, please update the ziggy version in your Cargo.toml or rebuild the project");
-            }
-
             let dictionary_option = match &self.dictionary {
                 Some(d) => format!("-w{}", &d.display().to_string()),
                 None => String::new(),
