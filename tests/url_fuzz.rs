@@ -318,3 +318,77 @@ fn fuzz_binary() {
     thread::sleep(Duration::from_secs(30));
     kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
 }
+
+#[allow(clippy::zombie_processes)]
+#[test]
+fn clean() {
+    let _guard = exclusive_guard();
+    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_dir_path = temp_dir.path();
+    let metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();
+    let workspace_root: PathBuf = metadata.workspace_root.into();
+    let target_directory: PathBuf = metadata.target_directory.into();
+    let cargo_ziggy = target_directory.join("debug/cargo-ziggy");
+    let fuzzer_directory = workspace_root.join("examples/url");
+
+    {
+        let afl_build_path = target_directory.join("afl/debug/url-fuzz");
+        let hfuzz_build_path = target_directory.join(format!(
+            "honggfuzz/{}/debug/url-fuzz",
+            target_triple::TARGET
+        ));
+
+        // cargo ziggy build
+        let build_status = process::Command::new(&cargo_ziggy)
+            .arg("ziggy")
+            .arg("build")
+            .current_dir(&fuzzer_directory)
+            .status()
+            .expect("failed to run `cargo ziggy build`");
+
+        assert!(build_status.success(), "`cargo ziggy build` failed");
+        assert!(afl_build_path.is_file(), "no afl harness");
+        assert!(hfuzz_build_path.is_file(), "no honggfuzz harness");
+
+        let clean_status = process::Command::new(&cargo_ziggy)
+            .args(["ziggy", "clean", "-p", "url-fuzz"])
+            .current_dir(&fuzzer_directory)
+            .status()
+            .expect("failed to run `cargo ziggy clean`");
+        assert!(clean_status.success(), "`cargo ziggy clean` failed");
+        assert!(!afl_build_path.exists(), "afl harness not cleaned");
+        assert!(!hfuzz_build_path.exists(), "honggfuzz harness not cleaned");
+    }
+
+    {
+        // use temp_dir_path as target-dir
+        let afl_build_path = temp_dir_path.join("afl/debug/url-fuzz");
+        let hfuzz_build_path = temp_dir_path.join(format!(
+            "honggfuzz/{}/debug/url-fuzz",
+            target_triple::TARGET
+        ));
+
+        // cargo ziggy build
+        let build_status = process::Command::new(&cargo_ziggy)
+            .arg("ziggy")
+            .arg("build")
+            .env("CARGO_TARGET_DIR", temp_dir_path)
+            .current_dir(&fuzzer_directory)
+            .status()
+            .expect("failed to run `cargo ziggy build`");
+
+        assert!(build_status.success(), "`cargo ziggy build` failed");
+        assert!(afl_build_path.is_file(), "no afl harness");
+        assert!(hfuzz_build_path.is_file(), "no honggfuzz harness");
+
+        let clean_status = process::Command::new(&cargo_ziggy)
+            .args(["ziggy", "clean", "-p", "url-fuzz"])
+            .env("CARGO_TARGET_DIR", temp_dir_path)
+            .current_dir(&fuzzer_directory)
+            .status()
+            .expect("failed to run `cargo ziggy clean`");
+        assert!(clean_status.success(), "`cargo ziggy clean` failed");
+        assert!(!afl_build_path.exists(), "afl harness not cleaned");
+        assert!(!hfuzz_build_path.exists(), "honggfuzz harness not cleaned");
+    }
+}

@@ -1,4 +1,4 @@
-use crate::{build::ASAN_TARGET, find_target, Run};
+use crate::{find_target, Run};
 use anyhow::{bail, Context, Result};
 use console::style;
 use std::{
@@ -17,7 +17,7 @@ impl Run {
         let target_dir = format!("--target-dir={}", super::target_dir().join("runner"));
 
         let mut args = vec!["rustc", &target_dir];
-        let asan_target_str = format!("--target={ASAN_TARGET}");
+        let asan_target_str = format!("--target={}", target_triple::TARGET);
         let mut rust_flags = env::var("RUSTFLAGS").unwrap_or_default();
         let mut rust_doc_flags = env::var("RUSTDOCFLAGS").unwrap_or_default();
 
@@ -90,7 +90,7 @@ impl Run {
             .collect();
 
         let runner_path = if self.asan {
-            super::target_dir().join(format!("runner/{ASAN_TARGET}/debug/{target}"))
+            super::target_dir().join(format!("runner/{}/debug/{target}", target_triple::TARGET))
         } else {
             super::target_dir().join(format!("runner/debug/{target}"))
         };
