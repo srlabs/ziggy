@@ -39,9 +39,7 @@ impl Cover {
 
         // Get the absolute path for the coverage directory to ensure .profraw files
         // are created in the correct location, even in workspace scenarios
-        let coverage_target_dir = env::current_dir()
-            .unwrap()
-            .join("target/coverage/debug/deps");
+        let coverage_target_dir = super::target_dir().join("coverage/debug/deps");
         let profile_file = coverage_target_dir.join("coverage-%p-%m.profraw");
 
         let coverage_corpus = if input_path.is_dir() {
@@ -55,13 +53,15 @@ impl Cover {
         };
 
         for file in coverage_corpus {
-            let _ = process::Command::new(format!("./target/coverage/debug/{}", &self.target))
-                .arg(file.display().to_string())
-                .env("LLVM_PROFILE_FILE", profile_file.display().to_string())
-                .spawn()
-                .unwrap()
-                .wait_with_output()
-                .unwrap();
+            let _ = process::Command::new(
+                super::target_dir().join(format!("coverage/debug/{}", &self.target)),
+            )
+            .arg(file.display().to_string())
+            .env("LLVM_PROFILE_FILE", &profile_file)
+            .spawn()
+            .unwrap()
+            .wait_with_output()
+            .unwrap();
         }
 
         let source_or_workspace_root = self.source.as_ref().map_or_else(
@@ -101,13 +101,10 @@ impl Cover {
             env::var("COVERAGE_RUSTFLAGS").unwrap_or_else(|_| "-Cinstrument-coverage".to_string());
         coverage_rustflags.push(' ');
         coverage_rustflags.push_str(&env::var("RUSTFLAGS").unwrap_or_default());
+        let target_dir = format!("--target-dir={}", super::target_dir().join("coverage"));
 
         let build = process::Command::new(&cargo)
-            .args([
-                "rustc",
-                "--target-dir=target/coverage",
-                "--features=ziggy/coverage",
-            ])
+            .args(["rustc", "--features=ziggy/coverage", &target_dir])
             .env("RUSTFLAGS", coverage_rustflags)
             .spawn()
             .context("⚠️  couldn't spawn rustc for coverage")?
@@ -128,7 +125,7 @@ impl Cover {
         let coverage = process::Command::new("grcov")
             .args([
                 ".",
-                &format!("-b=./target/coverage/debug/{target}"),
+                &format!("-b={}/coverage/debug/{target}", super::target_dir()),
                 &format!("-s={source_or_workspace_root}"),
                 &format!("-t={output_types}"),
                 "--llvm",
@@ -136,11 +133,12 @@ impl Cover {
                 "--ignore-not-existing",
                 &format!("-o={coverage_dir}"),
             ])
+            .current_dir(super::target_dir().join("coverage/debug/deps"))
             .spawn()
             .context("⚠️  cannot find grcov in your path, please install it")?
             .wait()
             .context("⚠️  couldn't wait for the grcov process")?;
-        if dbg!(!coverage.success()) {
+        if !coverage.success() {
             bail!("⚠️  grcov failed");
         }
         Ok(())
@@ -148,12 +146,10 @@ impl Cover {
 
     pub fn clean_old_cov() -> Result<(), anyhow::Error> {
         // Use absolute path to ensure we clean the correct location in workspaces
-        let coverage_deps_dir = env::current_dir()
-            .unwrap()
-            .join("target/coverage/debug/deps");
+        let coverage_deps_dir = super::target_dir().join("coverage/debug/deps");
         let pattern = coverage_deps_dir.join("*.profraw");
 
-        if let Ok(profile_files) = glob(&pattern.display().to_string()) {
+        if let Ok(profile_files) = glob(pattern.as_str()) {
             for file in profile_files.flatten() {
                 let file_string = &file.display();
                 fs::remove_file(&file)

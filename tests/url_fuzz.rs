@@ -272,11 +272,8 @@ fn fuzz_binary() {
     assert!(build_status.success(), "`cargo ziggy build` failed");
 
     std::fs::create_dir_all(temp_dir_path).expect("failed creating output dir");
-    std::fs::copy(
-        fuzzer_directory.join("target/afl/debug/url-fuzz"),
-        &binary_path,
-    )
-    .expect("failed to move instrumented binary into output dir");
+    std::fs::copy(target_directory.join("afl/debug/url-fuzz"), &binary_path)
+        .expect("failed to move instrumented binary into output dir");
 
     // cargo ziggy fuzz -j 2 -t 5
     let fuzzer = process::Command::new(&cargo_ziggy)
