@@ -383,11 +383,9 @@ fn main() -> Result<(), anyhow::Error> {
             .generate_coverage()
             .context("Failure generating coverage"),
         Ziggy::Plot(mut args) => args.generate_plot().context("Failure generating plot"),
-        Ziggy::AddSeeds(mut args) => args.add_seeds().context("Failure addings seeds to AFL"),
-        Ziggy::Triage(mut args) => args
-            .triage()
-            .context("Triaging with casr failed, try \"cargo install casr\""),
-        Ziggy::Clean(args) => args.clean(),
+        Ziggy::AddSeeds(args) => args.add_seeds().context("Failure adding seeds to AFL"),
+        Ziggy::Triage(args) => args.triage().context("Failure triaging with casr"),
+        Ziggy::Clean(args) => args.clean().context("Failure cleaning build artifacts"),
     }
 }
 

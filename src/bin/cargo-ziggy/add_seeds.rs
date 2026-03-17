@@ -3,7 +3,7 @@ use anyhow::bail;
 use std::{env, process};
 
 impl AddSeeds {
-    pub fn add_seeds(&mut self) -> Result<(), anyhow::Error> {
+    pub fn add_seeds(&self) -> Result<(), anyhow::Error> {
         eprintln!("Adding seeds to AFL");
 
         let req = semver::VersionReq::parse(">=0.14.5").unwrap();
@@ -25,29 +25,19 @@ impl AddSeeds {
             bail!("Outdated version of cargo-afl, ziggy needs >=0.14.5, please run `cargo install cargo-afl`");
         }
 
-        self.target = find_target(&self.target)?;
-
-        let input = self
-            .input
-            .display()
-            .to_string()
-            .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
-            .replace("{target_name}", &self.target);
+        let target = find_target(&self.target)?;
+        let input = self.input.display().to_string();
 
         let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
         process::Command::new(&cargo)
-            .args(
-                [
-                    "afl",
-                    "addseeds",
-                    "-o",
-                    &format!("{}/{}/afl", self.ziggy_output.display(), self.target),
-                    "-i",
-                    &input,
-                ]
-                .iter()
-                .filter(|a| !a.is_empty()),
-            )
+            .args([
+                "afl",
+                "addseeds",
+                "-o",
+                &format!("{}/{target}/afl", self.ziggy_output.display()),
+                "-i",
+                &input,
+            ])
             .spawn()?
             .wait()?;
         Ok(())
