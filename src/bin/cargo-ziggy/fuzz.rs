@@ -370,11 +370,8 @@ impl Fuzz {
             } else {
                 // we assign roughly 2/3 to AFL++, 1/3 to honggfuzz, however do
                 // not apply more than 4 jobs to honggfuzz
-                match self.jobs {
-                    1 => (1, 0),
-                    2..=12 => (self.jobs - self.jobs.div_ceil(3), self.jobs.div_ceil(3)),
-                    _ => (self.jobs - 4, 4),
-                }
+                let hfuzz = ((self.jobs + 1) / 3).min(4);
+                (self.jobs - hfuzz, hfuzz)
             }
         };
 
