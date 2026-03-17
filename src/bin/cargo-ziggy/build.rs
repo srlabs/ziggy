@@ -84,16 +84,9 @@ impl Build {
             );
             eprintln!("    {} honggfuzz", style("Building").red().bold());
 
-            let mut hfuzz_args = vec!["hfuzz"];
-            if self.release {
-                hfuzz_args.push("build");
-            } else {
-                hfuzz_args.push("build-debug");
-            }
-
             // Second fuzzer we build: Honggfuzz
             let run = process::Command::new(&cargo)
-                .args(hfuzz_args)
+                .args(["hfuzz", "build"])
                 .env("CARGO_TARGET_DIR", super::target_dir().join("honggfuzz"))
                 .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
                 .env("RUSTFLAGS", env::var("RUSTFLAGS").unwrap_or_default())
