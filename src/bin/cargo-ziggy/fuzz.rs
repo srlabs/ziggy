@@ -81,6 +81,16 @@ impl Fuzz {
         self.binary.is_some()
     }
 
+    fn check_bin_target(&self, path: &std::path::Path) -> Result<(), Error> {
+        if !path.is_file() {
+            if let Some(path) = self.binary.as_ref() {
+                bail!("file not found `{}`", path.display());
+            }
+            bail!("no bin target named `{}`", self.target)
+        }
+        Ok(())
+    }
+
     // Manages the continuous running of fuzzers
     pub fn fuzz(&mut self) -> Result<(), anyhow::Error> {
         if !self.fuzz_binary() {
@@ -479,6 +489,7 @@ impl Fuzz {
                             .into_std_path_buf()
                     }
                 });
+                self.check_bin_target(target_path.as_path())?;
 
                 let mut afl_flags = self.afl_flags.clone();
                 if is_main_instance {
@@ -551,6 +562,15 @@ impl Fuzz {
                 None => String::new(),
             };
 
+            self.check_bin_target(
+                super::target_dir()
+                    .join("honggfuzz")
+                    .join(target_triple::TARGET)
+                    .join(if self.release { "release" } else { "debug" })
+                    .join(&self.target)
+                    .as_std_path(),
+            )?;
+
             // The `script` invocation is a trick to get the correct TTY output for honggfuzz
             fuzzer_handles.push(
                 process::Command::new("script")
@@ -558,7 +578,7 @@ impl Fuzz {
                         "--flush",
                         "--quiet",
                         "-c",
-                        &format!("{} hfuzz run {}", cargo, &self.target),
+                        &format!("{cargo} hfuzz run {}", &self.target),
                         "/dev/null",
                     ])
                     .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
