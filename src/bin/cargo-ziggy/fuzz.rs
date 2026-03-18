@@ -566,7 +566,7 @@ impl Fuzz {
                 super::target_dir()
                     .join("honggfuzz")
                     .join(target_triple::TARGET)
-                    .join(if self.release { "release" } else { "debug" })
+                    .join("release")
                     .join(&self.target)
                     .as_std_path(),
             )?;

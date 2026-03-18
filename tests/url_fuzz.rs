@@ -334,7 +334,7 @@ fn clean() {
     {
         let afl_build_path = target_directory.join("afl/debug/url-fuzz");
         let hfuzz_build_path = target_directory.join(format!(
-            "honggfuzz/{}/debug/url-fuzz",
+            "honggfuzz/{}/release/url-fuzz",
             target_triple::TARGET
         ));
 
@@ -364,7 +364,7 @@ fn clean() {
         // use temp_dir_path as target-dir
         let afl_build_path = temp_dir_path.join("afl/debug/url-fuzz");
         let hfuzz_build_path = temp_dir_path.join(format!(
-            "honggfuzz/{}/debug/url-fuzz",
+            "honggfuzz/{}/release/url-fuzz",
             target_triple::TARGET
         ));
 
