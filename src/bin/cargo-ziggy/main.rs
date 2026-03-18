@@ -1,6 +1,3 @@
-#[cfg(not(feature = "cli"))]
-fn main() {}
-
 mod add_seeds;
 mod build;
 mod clean;
@@ -10,15 +7,16 @@ mod minimize;
 mod plot;
 mod run;
 mod triage;
+mod util;
 
-#[cfg(feature = "cli")]
 use crate::fuzz::FuzzingConfig;
-#[cfg(feature = "cli")]
 use anyhow::{anyhow, Context, Result};
-#[cfg(feature = "cli")]
 use clap::{Args, Parser, Subcommand, ValueEnum};
-#[cfg(feature = "cli")]
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::PathBuf,
+    sync::{atomic::AtomicBool, Arc},
+};
 
 pub const DEFAULT_UNMODIFIED_TARGET: &str = "automatically guessed";
 
@@ -184,6 +182,10 @@ pub struct Fuzz {
     /// Coverage generation interval in minutes
     #[clap(long, default_value = "15")]
     coverage_interval: u64,
+
+    /// Corpus sync interval in minutes
+    #[clap(long, default_value = "10")]
+    corpus_sync_interval: u64,
 
     /// Fuzz an already AFL++ instrumented binary; the ziggy way
     #[clap(short, long)]
@@ -375,12 +377,69 @@ pub struct Clean {
     args: Vec<std::ffi::OsString>,
 }
 
-#[cfg(feature = "cli")]
+#[derive(Debug)]
+pub struct Common {
+    terminate: Arc<AtomicBool>,
+    sigs_done: Option<()>,
+    pub cargo_path: PathBuf,
+}
+
+impl Common {
+    fn new() -> Self {
+        Self {
+            terminate: Arc::new(AtomicBool::new(false)),
+            sigs_done: Some(()),
+            cargo_path: std::env::var("CARGO")
+                .unwrap_or_else(|_| String::from("cargo"))
+                .into(),
+        }
+    }
+    fn is_terminated(&self) -> bool {
+        self.terminate.load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    fn shutdown_deferred(&self) {
+        self.terminate
+            .store(false, std::sync::atomic::Ordering::Release);
+    }
+
+    fn shutdown_immediate(&self) {
+        self.terminate
+            .store(true, std::sync::atomic::Ordering::Release);
+    }
+
+    fn setup_signal_handling(&mut self) -> Result<(), anyhow::Error> {
+        if self.sigs_done.take().is_some() {
+            for signal in signal_hook::consts::TERM_SIGNALS {
+                signal_hook::flag::register_conditional_shutdown(
+                    *signal,
+                    1,
+                    Arc::clone(&self.terminate),
+                )
+                .context("Setting up signal handler")?;
+                signal_hook::flag::register(*signal, Arc::clone(&self.terminate))
+                    .context("Setting up signal handler")?;
+            }
+        }
+        Ok(())
+    }
+
+    fn cargo(&self) -> std::process::Command {
+        let mut cmd = std::process::Command::new(&self.cargo_path);
+        cmd.stdin(std::process::Stdio::null());
+        cmd
+    }
+}
+
 fn main() -> Result<(), anyhow::Error> {
+    let mut common = Common::new();
+    common.shutdown_immediate();
+    common.setup_signal_handling()?;
+
     let Cargo::Ziggy(command) = Cargo::parse();
     match command {
         Ziggy::Build(args) => args.build().context("Failed to build the fuzzers"),
-        Ziggy::Fuzz(mut args) => args.fuzz().context("Failure running fuzzers"),
+        Ziggy::Fuzz(mut args) => args.fuzz(&common).context("Failure running fuzzers"),
         Ziggy::Run(mut args) => args.run().context("Failure running inputs"),
         Ziggy::Minimize(mut args) => args.minimize().context("Failure running minimization"),
         Ziggy::Cover(mut args) => args

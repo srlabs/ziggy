@@ -9,6 +9,10 @@ repository = "https://github.com/srlabs/ziggy/"
 [workspace]
 members = [".", "examples/arbitrary", "examples/asan", "examples/url"]
 
+[[bin]]
+name = "cargo-ziggy"
+required-features = ["cli"]
+
 [features]
 default = ["cli"]
 cli = [
@@ -21,6 +25,7 @@ cli = [
     "libc",
     "rayon",
     "semver",
+    "signal-hook",
     "strip-ansi-escapes",
     "target-triple",
     "time-humanize",
@@ -40,6 +45,7 @@ indicatif = { version = "0.18.4", optional = true }
 libc = { version = "0.2.182", optional = true }
 rayon = { version = "1.11.0", optional = true }
 semver = { version = "1.0.27", optional = true }
+signal-hook = { version = "0.4.3", optional = true }
 strip-ansi-escapes = { version = "0.2.1", optional = true }
 target-triple = { version = "1.0.0", optional = true }
 time-humanize = { version = "0.1.3", optional = true }
