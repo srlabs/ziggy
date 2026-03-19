@@ -39,7 +39,9 @@ impl Cover {
 
         // Get the absolute path for the coverage directory to ensure .profraw files
         // are created in the correct location, even in workspace scenarios
-        let coverage_target_dir = super::target_dir().join("coverage/debug/deps");
+        let base_dir = super::target_dir().join("coverage/debug");
+        let coverage_bin = base_dir.join(&self.target);
+        let coverage_target_dir = base_dir.join("deps");
         let profile_file = coverage_target_dir.join("coverage-%p-%m.profraw");
 
         let coverage_corpus = if input_path.is_dir() {
@@ -53,15 +55,12 @@ impl Cover {
         };
 
         for file in coverage_corpus {
-            let _ = process::Command::new(
-                super::target_dir().join(format!("coverage/debug/{}", &self.target)),
-            )
-            .arg(file.display().to_string())
-            .env("LLVM_PROFILE_FILE", &profile_file)
-            .spawn()
-            .unwrap()
-            .wait_with_output()
-            .unwrap();
+            let _ = process::Command::new(&coverage_bin)
+                .arg(file)
+                .stdout(process::Stdio::null())
+                .env("LLVM_PROFILE_FILE", &profile_file)
+                .status()
+                .unwrap();
         }
 
         let source_or_workspace_root = self.source.as_ref().map_or_else(
@@ -106,6 +105,10 @@ impl Cover {
         let build = process::Command::new(&cargo)
             .args(["rustc", "--features=ziggy/coverage", &target_dir])
             .env("RUSTFLAGS", coverage_rustflags)
+            .env(
+                "LLVM_PROFILE_FILE",
+                super::target_dir().join("coverage/debug/deps/build-%p-%m.profraw"),
+            )
             .spawn()
             .context("⚠️  couldn't spawn rustc for coverage")?
             .wait()

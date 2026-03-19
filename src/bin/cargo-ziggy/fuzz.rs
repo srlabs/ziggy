@@ -213,6 +213,9 @@ impl Fuzz {
                         *unlocked
                     };
                     *cov_start_time.lock().unwrap() = Some(Instant::now());
+                    let profile_bin = super::target_dir().join(format!("coverage/debug/{target}"));
+                    let profile_file =
+                        super::target_dir().join("coverage/debug/deps/coverage-%p-%m.profraw");
                     let entries = std::fs::read_dir(&main_corpus).unwrap();
                     for entry in entries.flatten().map(|e| e.path()) {
                         // We only want to run corpus entries created since the last time we ran.
@@ -224,24 +227,29 @@ impl Fuzz {
                             .elapsed()
                             .unwrap_or_default();
                         if prev_start_time.map_or(Duration::MAX, |s| s.elapsed()) >= created {
-                            let _ = process::Command::new(
-                                super::target_dir().join("coverage/debug").join(&target),
-                            )
-                            .arg(entry)
-                            .stdout(Stdio::null())
-                            .stderr(Stdio::null())
-                            .status();
+                            let _ = process::Command::new(&profile_bin)
+                                .arg(entry)
+                                .env("LLVM_PROFILE_FILE", &profile_file)
+                                .stdout(Stdio::null())
+                                .stderr(Stdio::null())
+                                .status();
                             seen_new_entry = true;
                         }
                     }
-                    if seen_new_entry {
+                    let res = if seen_new_entry {
                         let coverage_dir = output_target + "/coverage";
                         let _ = fs::remove_dir_all(&coverage_dir);
-                        Cover::run_grcov(&target, "html", &coverage_dir, &workspace_root).unwrap();
-                    }
+                        Cover::run_grcov(&target, "html", &coverage_dir, &workspace_root)
+                    } else {
+                        Ok(())
+                    };
 
+                    {
+                        let mut guard = coverage_now_running.lock().unwrap();
+                        res.unwrap();
+                        *guard = false;
+                    }
                     *cov_end_time.lock().unwrap() = Instant::now();
-                    *coverage_now_running.lock().unwrap() = false;
                 });
             }
 
