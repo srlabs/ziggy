@@ -294,6 +294,10 @@ pub struct Cover {
     /// Comma separated list of output types. See grcov --help to see supported output types. Default: html
     #[clap(short = 't', long)]
     output_types: Option<String>,
+
+    /// Number of concurrent jobs
+    #[clap(short, long, value_name = "NUM")]
+    jobs: Option<usize>,
 }
 
 #[derive(Args)]

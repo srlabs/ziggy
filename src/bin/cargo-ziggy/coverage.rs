@@ -1,6 +1,8 @@
 use crate::{find_target, Cover};
 use anyhow::{bail, Context, Result};
 use glob::glob;
+use indicatif::{ProgressBar, ProgressStyle};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{env, fs, path::PathBuf, process};
 
 impl Cover {
@@ -54,14 +56,33 @@ impl Cover {
             vec![input_path]
         };
 
-        for file in coverage_corpus {
+        if let Some(threads) = self.jobs {
+            rayon::ThreadPoolBuilder::default()
+                .num_threads(threads)
+                .build_global()
+                .expect("Failure initializing thread pool");
+        }
+
+        eprintln!("    Generating raw profiles");
+        let pb = ProgressBar::new(coverage_corpus.len() as u64);
+        pb.set_style(
+            ProgressStyle::with_template(
+                "    [{elapsed_precise}] [{wide_bar}] {pos}/{len} ({eta})",
+            )
+            .unwrap()
+            .progress_chars("#>-"),
+        );
+        coverage_corpus.into_par_iter().for_each(|file| {
             let _ = process::Command::new(&coverage_bin)
                 .arg(file)
                 .stdout(process::Stdio::null())
+                .stderr(process::Stdio::null())
                 .env("LLVM_PROFILE_FILE", &profile_file)
                 .status()
                 .unwrap();
-        }
+            pb.inc(1);
+        });
+        pb.finish();
 
         let source_or_workspace_root = self.source.as_ref().map_or_else(
             || {
@@ -83,6 +104,7 @@ impl Cover {
         let output_types = self.output_types.as_ref().map_or("html", String::as_str);
 
         // We generate the code coverage report
+        eprintln!("\n    Generating coverage report");
         Self::run_grcov(
             &self.target,
             output_types,
