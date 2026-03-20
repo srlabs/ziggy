@@ -76,7 +76,7 @@ After you've launched your fuzzer, you'll find a couple of items in the `output`
 
 - the `corpus` directory containing the full corpus
 - the `crashes` directory containing any crashes detected by the fuzzers
-- the `logs` directory containing a fuzzer log files
+- the `logs` directory containing fuzzer log files
 - the `afl` directory containing AFL++'s output
 - the `honggfuzz` directory containing Honggfuzz's output
 - the `queue` directory that is used by ziggy to pass items from AFL++ to Honggfuzz

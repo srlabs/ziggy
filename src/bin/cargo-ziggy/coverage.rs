@@ -112,7 +112,7 @@ impl Cover {
             .spawn()
             .context("⚠️  couldn't spawn rustc for coverage")?
             .wait()
-            .context("⚠️  couldn't wait for the rustc during coverage")?;
+            .context("⚠️  couldn't wait for rustc during coverage")?;
         if !build.success() {
             bail!("⚠️  build failed");
         }

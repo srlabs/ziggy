@@ -136,7 +136,7 @@ impl Fuzz {
             fs::create_dir_all(self.corpus())?;
         }
 
-        // We create an initial corpus file, so that AFL++ starts-up properly if corpus is empty
+        // We create an initial corpus file, so that AFL++ starts up properly if corpus is empty
         let is_empty = fs::read_dir(self.corpus())?.next().is_none(); // check if corpus has some seeds
         if is_empty {
             let mut initial_corpus = File::create(self.corpus() + "/init")?;
@@ -722,7 +722,7 @@ impl Fuzz {
                 term.move_cursor_up(1)?;
 
                 if new_corpus_size == *"err" || new_corpus_size == *"0" {
-                    bail!("Please check the logs and make sure the right version of the fuzzers are installed");
+                    bail!("Please check the logs and make sure the right versions of the fuzzers are installed");
                 }
                 term.write_line(&format!(
                     "{} the corpus ({} -> {} files)             \n",
@@ -895,7 +895,7 @@ impl Fuzz {
             total_run_time = String::from("...");
         }
 
-        // Fifth step: Print stats
+        // Fourth step: Print stats
         let mut screen = String::new();
         // We start by clearing the screen
         screen += "\x1B[1;1H\x1B[2J";
