@@ -74,7 +74,6 @@ impl Cover {
             .replace("{target_name}", &self.target);
 
         delete_dir_or_file(&coverage_dir)?;
-        fs::create_dir_all(&coverage_dir)?;
 
         // Get the absolute path for the coverage directory to ensure .profraw files
         // are created in the correct location, even in workspace scenarios
@@ -94,17 +93,19 @@ impl Cover {
             .unwrap()
             .progress_chars("#>-"),
         );
-        let log_file = std::sync::Mutex::new(std::fs::File::create(
-            Path::new(&coverage_dir).join("outputs.log"),
-        )?);
+        let log_dir = self.ziggy_output.join(format!("{}/logs", &self.target));
+        fs::create_dir_all(&log_dir)?;
+        let log_file = std::sync::Mutex::new(std::fs::File::create(log_dir.join("coverage.log"))?);
         coverage_corpus.into_par_iter().for_each(|file| {
+            #[expect(clippy::significant_drop_tightening)]
             BUF.with_borrow_mut(|buf| {
                 buf.clear();
-                if cfg.profile(file.as_path(), buf).is_ok() {
-                    let _ = log_file.lock().unwrap().write_all(buf);
-                }
+                let _ = cfg.profile(file.as_path(), buf);
+                let mut log_file = log_file.lock().unwrap();
+                let _ = log_file.write_all(buf);
+                // use `lock_file` mutex to avoid contention on progress bar
+                pb.inc(1);
             });
-            pb.inc(1);
         });
         pb.finish();
 
