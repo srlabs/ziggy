@@ -84,13 +84,12 @@ impl Cover {
         });
         pb.finish();
 
-        let source_or_workspace_root = self.source.as_ref().map_or_else(
-            || {
-                let metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();
-                metadata.workspace_root.into()
-            },
-            |s| s.display().to_string(),
-        );
+        let metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();
+        let workspace_root: String = metadata.workspace_root.into();
+        let source_or_workspace_root = self
+            .source
+            .as_ref()
+            .map_or_else(|| workspace_root.clone(), |s| s.display().to_string());
 
         let coverage_dir = self
             .output
@@ -98,6 +97,7 @@ impl Cover {
             .to_string()
             .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
             .replace("{target_name}", &self.target);
+        println!("{coverage_dir}");
 
         Self::delete_dir_or_file(&coverage_dir)?;
 
@@ -110,6 +110,7 @@ impl Cover {
             output_types,
             &coverage_dir,
             &source_or_workspace_root,
+            &workspace_root,
         )
     }
 
@@ -146,10 +147,11 @@ impl Cover {
         output_types: &str,
         coverage_dir: &str,
         source_or_workspace_root: &str,
+        workspace_root: &str,
     ) -> Result<(), anyhow::Error> {
         let coverage = process::Command::new("grcov")
             .args([
-                ".",
+                workspace_root,
                 &format!("-b={}/coverage/debug/{target}", super::target_dir()),
                 &format!("-s={source_or_workspace_root}"),
                 &format!("-t={output_types}"),
@@ -158,7 +160,6 @@ impl Cover {
                 "--ignore-not-existing",
                 &format!("-o={coverage_dir}"),
             ])
-            .current_dir(super::target_dir().join("coverage/debug/deps"))
             .spawn()
             .context("⚠️  cannot find grcov in your path, please install it")?
             .wait()

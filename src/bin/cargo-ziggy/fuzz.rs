@@ -239,7 +239,13 @@ impl Fuzz {
                     let res = if seen_new_entry {
                         let coverage_dir = output_target + "/coverage";
                         let _ = fs::remove_dir_all(&coverage_dir);
-                        Cover::run_grcov(&target, "html", &coverage_dir, &workspace_root)
+                        Cover::run_grcov(
+                            &target,
+                            "html",
+                            &coverage_dir,
+                            &workspace_root,
+                            &workspace_root,
+                        )
                     } else {
                         Ok(())
                     };
