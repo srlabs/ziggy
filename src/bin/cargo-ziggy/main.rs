@@ -79,7 +79,7 @@ pub enum Ziggy {
     /// Add seeds to the running AFL++ fuzzers
     AddSeeds(AddSeeds),
 
-    /// Triage crashes found with casr - currently only works for AFL++
+    /// Triage crashes found with CASR - currently only works for AFL++
     Triage(Triage),
 
     /// Remove generated artifacts from the target directory
@@ -255,8 +255,8 @@ pub struct Minimize {
     #[clap(short, long, value_name = "NUM", default_value_t = 1)]
     jobs: u32,
 
-    /// After how many ms should an input time out.
-    #[clap(short, long, value_name = "TIMEOUT", default_value_t = 5000)]
+    /// Timeout for a single run
+    #[clap(short, long, value_name = "MILLI_SECS", default_value_t = 5000)]
     timeout: u32,
 
     #[clap(short, long, value_enum, default_value_t = FuzzingEngines::All)]
