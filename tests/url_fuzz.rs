@@ -158,6 +158,7 @@ fn integration() {
     assert!(temp_dir_path
         .join("url-fuzz")
         .join("coverage")
+        .join("html")
         .join("index.html")
         .is_file());
 
@@ -244,7 +245,7 @@ fn coverage_regression() {
 
     assert!(coverage.success());
     assert!(coverage_second.success());
-    assert!(temp_dir_path.join("url-fuzz").join("cover_lcov").is_file());
+    assert!(temp_dir_path.join("url-fuzz").join("cover_lcov").is_dir());
 }
 
 #[allow(clippy::zombie_processes)]
