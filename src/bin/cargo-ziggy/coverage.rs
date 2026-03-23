@@ -97,7 +97,6 @@ impl Cover {
             .to_string()
             .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
             .replace("{target_name}", &self.target);
-        println!("{coverage_dir}");
 
         Self::delete_dir_or_file(&coverage_dir)?;
 
