@@ -17,7 +17,9 @@ cli = [
     "clap",
     "console",
     "glob",
+    "indicatif",
     "libc",
+    "rayon",
     "semver",
     "strip-ansi-escapes",
     "target-triple",
@@ -34,7 +36,9 @@ clap = { version = "4.5.60", features = ["cargo", "derive", "env"], optional = t
 console = { version = "0.16.2", optional = true }
 glob = { version = "0.3.3", optional = true }
 honggfuzz = { version = "0.5.59", optional = true }
+indicatif = { version = "0.18.4", optional = true }
 libc = { version = "0.2.182", optional = true }
+rayon = { version = "1.11.0", optional = true }
 semver = { version = "1.0.27", optional = true }
 strip-ansi-escapes = { version = "0.2.1", optional = true }
 target-triple = { version = "1.0.0", optional = true }

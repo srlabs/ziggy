@@ -1,7 +1,19 @@
 use crate::{find_target, Cover};
 use anyhow::{bail, Context, Result};
+use cargo_metadata::camino::Utf8PathBuf;
 use glob::glob;
-use std::{env, fs, path::PathBuf, process};
+use indicatif::{ProgressBar, ProgressStyle};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use std::{
+    env, fs,
+    io::{Read, Write},
+    path::{Path, PathBuf},
+    process,
+};
+
+thread_local! {
+    static BUF: std::cell::RefCell<Vec<u8>> = std::cell::RefCell::new(Vec::with_capacity(8 * 1024));
+}
 
 impl Cover {
     pub fn generate_coverage(&mut self) -> Result<(), anyhow::Error> {
@@ -37,13 +49,6 @@ impl Cover {
                 .replace("{target_name}", &self.target),
         );
 
-        // Get the absolute path for the coverage directory to ensure .profraw files
-        // are created in the correct location, even in workspace scenarios
-        let base_dir = super::target_dir().join("coverage/debug");
-        let coverage_bin = base_dir.join(&self.target);
-        let coverage_target_dir = base_dir.join("deps");
-        let profile_file = coverage_target_dir.join("coverage-%p-%m.profraw");
-
         let coverage_corpus = if input_path.is_dir() {
             fs::read_dir(input_path)
                 .unwrap()
@@ -54,22 +59,12 @@ impl Cover {
             vec![input_path]
         };
 
-        for file in coverage_corpus {
-            let _ = process::Command::new(&coverage_bin)
-                .arg(file)
-                .stdout(process::Stdio::null())
-                .env("LLVM_PROFILE_FILE", &profile_file)
-                .status()
-                .unwrap();
+        if let Some(threads) = self.jobs {
+            rayon::ThreadPoolBuilder::default()
+                .num_threads(threads)
+                .build_global()
+                .expect("Failure initializing thread pool");
         }
-
-        let source_or_workspace_root = self.source.as_ref().map_or_else(
-            || {
-                let metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();
-                metadata.workspace_root.into()
-            },
-            |s| s.display().to_string(),
-        );
 
         let coverage_dir = self
             .output
@@ -78,16 +73,59 @@ impl Cover {
             .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
             .replace("{target_name}", &self.target);
 
-        Self::delete_dir_or_file(&coverage_dir)?;
+        delete_dir_or_file(&coverage_dir)?;
+
+        // Get the absolute path for the coverage directory to ensure .profraw files
+        // are created in the correct location, even in workspace scenarios
+        let base_dir = super::target_dir().join("coverage/debug");
+        let coverage_target_dir = base_dir.join("deps");
+        let cfg = Cfg::new(
+            base_dir.join(&self.target),
+            coverage_target_dir.join("coverage-%p-%m.profraw"),
+        );
+
+        eprintln!("    Generating raw profiles");
+        let pb = ProgressBar::new(coverage_corpus.len() as u64);
+        pb.set_style(
+            ProgressStyle::with_template(
+                "    [{elapsed_precise}] [{wide_bar}] {pos}/{len} ({eta})",
+            )
+            .unwrap()
+            .progress_chars("#>-"),
+        );
+        let log_dir = self.ziggy_output.join(format!("{}/logs", &self.target));
+        fs::create_dir_all(&log_dir)?;
+        let log_file = std::sync::Mutex::new(std::fs::File::create(log_dir.join("coverage.log"))?);
+        coverage_corpus.into_par_iter().for_each(|file| {
+            #[expect(clippy::significant_drop_tightening)]
+            BUF.with_borrow_mut(|buf| {
+                buf.clear();
+                let _ = cfg.profile(file.as_path(), buf);
+                let mut log_file = log_file.lock().unwrap();
+                let _ = log_file.write_all(buf);
+                // use `lock_file` mutex to avoid contention on progress bar
+                pb.inc(1);
+            });
+        });
+        pb.finish();
+
+        let metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();
+        let workspace_root: String = metadata.workspace_root.into();
+        let source_or_workspace_root = self
+            .source
+            .as_ref()
+            .map_or_else(|| workspace_root.clone(), |s| s.display().to_string());
 
         let output_types = self.output_types.as_ref().map_or("html", String::as_str);
 
         // We generate the code coverage report
+        eprintln!("\n    Generating coverage report");
         Self::run_grcov(
             &self.target,
             output_types,
             &coverage_dir,
             &source_or_workspace_root,
+            self.jobs,
         )
     }
 
@@ -124,10 +162,11 @@ impl Cover {
         output_types: &str,
         coverage_dir: &str,
         source_or_workspace_root: &str,
+        threads: Option<usize>,
     ) -> Result<(), anyhow::Error> {
         let coverage = process::Command::new("grcov")
             .args([
-                ".",
+                crate::target_dir().join("coverage/debug/deps").as_str(),
                 &format!("-b={}/coverage/debug/{target}", super::target_dir()),
                 &format!("-s={source_or_workspace_root}"),
                 &format!("-t={output_types}"),
@@ -136,7 +175,7 @@ impl Cover {
                 "--ignore-not-existing",
                 &format!("-o={coverage_dir}"),
             ])
-            .current_dir(super::target_dir().join("coverage/debug/deps"))
+            .args(threads.map(|threads| format!("--threads={threads}")))
             .spawn()
             .context("⚠️  cannot find grcov in your path, please install it")?
             .wait()
@@ -161,22 +200,56 @@ impl Cover {
         }
         Ok(())
     }
+}
 
-    pub fn delete_dir_or_file(path: &str) -> Result<(), anyhow::Error> {
-        let metadata = match fs::metadata(path) {
-            Ok(metadata) => metadata,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-            Err(error) => return Err(error.into()),
-        };
-        // Some of the grcov output types produce folders, others produce files. This can result in errors when trying to delete them.
-        if metadata.is_dir() {
-            fs::remove_dir_all(path).with_context(|| format!("⚠️  error removing dir {path}"))?;
-        } else if metadata.is_file() {
-            fs::remove_file(path).with_context(|| format!("⚠️  error removing file {path}"))?;
-        } else {
-            bail!("coverage output path exists but is neither a file nor a directory: {path}");
+fn delete_dir_or_file(path: &str) -> Result<(), anyhow::Error> {
+    let metadata = match fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    // Some of the grcov output types produce folders, others produce files. This can result in errors when trying to delete them.
+    if metadata.is_dir() {
+        fs::remove_dir_all(path).with_context(|| format!("⚠️  error removing dir {path}"))?;
+    } else if metadata.is_file() {
+        fs::remove_file(path).with_context(|| format!("⚠️  error removing file {path}"))?;
+    } else {
+        bail!("coverage output path exists but is neither a file nor a directory: {path}");
+    }
+
+    Ok(())
+}
+
+struct Cfg {
+    runner: Utf8PathBuf,
+    prof_file_template: Utf8PathBuf,
+}
+
+impl Cfg {
+    fn new(runner: Utf8PathBuf, prof_file_template: Utf8PathBuf) -> Self {
+        Self {
+            runner,
+            prof_file_template,
         }
+    }
 
+    fn profile(&self, seed: &Path, output: &mut Vec<u8>) -> Result<(), anyhow::Error> {
+        // redirect stderr and stdout into buffer (via pipe)
+        let (mut rx, tx) = std::io::pipe()?;
+
+        let mut child = process::Command::new(&self.runner)
+            .arg(seed)
+            .stdin(std::process::Stdio::null())
+            .stdout(tx.try_clone()?)
+            .stderr(tx)
+            .env("LLVM_PROFILE_FILE", &self.prof_file_template)
+            .spawn()?;
+
+        rx.read_to_end(output)?;
+        let status = child.wait()?;
+        if !status.success() {
+            bail!("runner failed with exit code `{status}`");
+        }
         Ok(())
     }
 }
