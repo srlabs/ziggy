@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Cargo sort
-        run: cargo install cargo-sort && cargo sort --check
+        run: cargo install cargo-sort && cargo sort --check --check-format
       - name: Format
         run: cargo fmt --check
       - name: Clippy
