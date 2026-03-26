@@ -3,7 +3,6 @@ use anyhow::{anyhow, bail, Error};
 use console::{style, Term};
 use glob::glob;
 use std::{
-    env,
     fs::File,
     io::Write,
     path::Path,
@@ -13,7 +12,6 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use strip_ansi_escapes::strip_str;
-use twox_hash::XxHash64;
 
 /// Main logic for managing fuzzers and the fuzzing process in ziggy.
 /// ## Initial minimization logic
@@ -92,7 +90,7 @@ impl Fuzz {
     }
 
     // Manages the continuous running of fuzzers
-    pub fn fuzz(&mut self) -> Result<(), anyhow::Error> {
+    pub fn fuzz(&mut self, common: &Common) -> Result<(), anyhow::Error> {
         if !self.fuzz_binary() {
             let build = Build {
                 no_afl: !self.afl(),
@@ -144,11 +142,11 @@ impl Fuzz {
             drop(initial_corpus);
         }
 
-        let mut processes = self.spawn_new_fuzzers()?;
+        let mut processes = self.spawn_new_fuzzers(common)?;
 
         self.start_time = Instant::now();
 
-        let mut last_synced_created_time: Option<SystemTime> = None;
+        let mut sync_after: Option<SystemTime> = None;
         let mut last_sync_time = Instant::now();
         let mut afl_output_ok = false;
 
@@ -175,10 +173,22 @@ impl Fuzz {
         let target = self.target.clone();
         let main_corpus = self.corpus();
         let output_target = self.output_target();
+        let mut crashes = (String::new(), String::new());
 
+        common.shutdown_deferred(); // handle termination signals gracefully
         loop {
             let sleep_duration = Duration::from_secs(1);
             thread::sleep(sleep_duration);
+
+            if common.is_terminated() {
+                eprintln!("\rShutting down...");
+                let res = (
+                    stop_fuzzers(&processes),
+                    self.sync_corpora(sync_after).map(|_| ()),
+                    self.sync_crashes(crash_path),
+                );
+                return res.0.and(res.1).and(res.2);
+            }
 
             let coverage_status = match (
                 self.coverage_worker,
@@ -193,7 +203,7 @@ impl Fuzz {
                 (false, _, _) => String::from("disabled"),
             };
 
-            self.print_stats(&coverage_status);
+            let current_crashes = self.print_stats(common, &coverage_status);
 
             if coverage_status.as_str() == "starting" {
                 *coverage_now_running.lock().unwrap() = true;
@@ -262,7 +272,7 @@ impl Fuzz {
                     } else if afl_log.contains("/proc/sys/kernel/core_pattern")
                         || afl_log.contains("/sys/devices/system/cpu")
                     {
-                        stop_fuzzers(&mut processes)?;
+                        stop_fuzzers(&processes)?;
                         eprintln!("We highly recommend you configure your system for better performance:\n");
                         eprintln!("    cargo afl system-config\n");
                         eprintln!(
@@ -273,103 +283,146 @@ impl Fuzz {
                 }
             }
 
-            // We check AFL++ and Honggfuzz's outputs for crash files and copy them over to
-            // our own crashes directory
-            let crash_dirs = glob(&format!("{}/afl/*/crashes", self.output_target()))
-                .map_err(|_| anyhow!("Failed to read crashes glob pattern"))?
-                .flatten()
-                .chain(vec![format!(
-                    "{}/honggfuzz/{}",
-                    self.output_target(),
-                    self.target
-                )
-                .into()]);
-
-            for crash_dir in crash_dirs {
-                if let Ok(crashes) = fs::read_dir(crash_dir) {
-                    for crash_input in crashes.flatten() {
-                        let file_name = crash_input.file_name();
-                        let to_path = crash_path.join(&file_name);
-                        if to_path.exists()
-                            || ["", "README.txt", "HONGGFUZZ.REPORT.TXT", "input"]
-                                .contains(&file_name.to_str().unwrap_or_default())
-                        {
-                            continue;
-                        }
-                        fs::copy(crash_input.path(), to_path)?;
-                    }
-                }
+            // Copy crash files from AFL++ and Honggfuzz's outputs
+            if current_crashes != crashes {
+                crashes = current_crashes;
+                self.sync_crashes(crash_path)?;
             }
 
-            // If both fuzzers are running, we copy over AFL++'s queue for consumption by Honggfuzz.
-            // We also copy-over each live corpus to the shared corpus directory, where each file
-            // name is the md5 hash of the file. This happens every 10 minutes.
-            if last_sync_time.elapsed().as_secs() > 10 * 60 {
-                let mut files = vec![];
-                if self.afl() {
-                    files.append(
-                        &mut glob(&format!(
-                            "{}/afl/mainaflfuzzer/queue/*",
-                            self.output_target(),
-                        ))?
-                        .flatten()
-                        .collect(),
-                    );
-                }
-                if self.honggfuzz() {
-                    files.append(
-                        &mut glob(&format!("{}/honggfuzz/corpus/*", self.output_target(),))?
-                            .flatten()
-                            .collect(),
-                    );
-                }
-                let mut newest_time = last_synced_created_time;
-                let valid_files = files.iter().filter(|file| {
-                    if let Ok(metadata) = file.metadata() {
-                        let created = metadata.created().unwrap();
-                        if last_synced_created_time.is_none_or(|time| created > time) {
-                            if newest_time.is_none_or(|time| created > time) {
-                                newest_time = Some(created);
-                            }
-                            return true;
-                        }
-                    }
-                    false
-                });
-                for file in valid_files {
-                    if let Some(file_name) = file.file_name() {
-                        if self.honggfuzz() {
-                            let queue_path =
-                                format!("{}/queue/{}", self.output_target(), file_name.display());
-                            if !Path::new(&queue_path).exists() {
-                                let _ = fs::copy(file, queue_path);
-                            }
-                        }
-                        // Hash the file to get its file name
-                        let bytes = fs::read(file).unwrap_or_default();
-                        let hash = XxHash64::oneshot(0, &bytes);
-                        let corpus_path = format!("{}/corpus/{hash:x}", self.output_target());
-                        if !Path::new(&corpus_path).exists() {
-                            let _ = fs::copy(file, corpus_path);
-                        }
-                    }
-                }
-                last_synced_created_time = newest_time;
+            // Sync corpus dirs
+            if last_sync_time.elapsed() > Duration::from_mins(self.corpus_sync_interval) {
+                sync_after.replace(self.sync_corpora(sync_after)?);
                 last_sync_time = Instant::now();
             }
 
-            if processes
+            if !processes
                 .iter_mut()
-                .all(|p| p.try_wait().unwrap_or(None).is_some())
+                .all(|p| p.try_wait().is_ok_and(|exited| exited.is_none()))
             {
-                stop_fuzzers(&mut processes)?;
+                stop_fuzzers(&processes)?;
                 return Ok(());
             }
         }
     }
 
+    /// Copy crashes from AFL++ or Honggfuzz's outputs into `target_dir`
+    fn sync_crashes(&self, target_dir: &Path) -> Result<(), anyhow::Error> {
+        let crash_dirs = glob(&format!("{}/afl/*/crashes", self.output_target()))
+            .map_err(|_| anyhow!("Failed to read crashes glob pattern"))?
+            .flatten()
+            .chain(std::iter::once(PathBuf::from(format!(
+                "{}/honggfuzz/{}",
+                self.output_target(),
+                self.target
+            ))));
+
+        for crash_dir in crash_dirs {
+            if let Ok(crashes) = fs::read_dir(crash_dir) {
+                for crash_input in crashes.flatten() {
+                    let file_name = crash_input.file_name();
+                    let to_path = target_dir.join(&file_name);
+                    if ["README.txt", "HONGGFUZZ.REPORT.TXT", "input"]
+                        .iter()
+                        .all(|name| name != &file_name)
+                        && !to_path.exists()
+                    {
+                        fs::copy(crash_input.path(), to_path)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Sync shared corpora
+    ///
+    /// Copy-over each live corpus to the shared corpus directory, where each file name is usually its hash.
+    /// If both fuzzers are running, copy over AFL++'s queue for consumption by Honggfuzz.
+    fn sync_corpora(&self, newer_then: Option<SystemTime>) -> Result<SystemTime, anyhow::Error> {
+        let now = SystemTime::now();
+        let afl_files = glob(&format!(
+            "{}/afl/mainaflfuzzer/queue/*",
+            self.output_target(),
+        ))?
+        .flatten()
+        .zip(std::iter::repeat(Fuzzer::Afl));
+        let hfuzz_files = glob(&format!("{}/honggfuzz/corpus/*", self.output_target()))?
+            .flatten()
+            .zip(std::iter::repeat(Fuzzer::Honggfuzz));
+
+        let new_files = afl_files.chain(hfuzz_files).filter(|(file, _)| {
+            if let Ok(metadata) = file.metadata() {
+                if metadata.is_dir() {
+                    return false;
+                }
+                if let Ok(mtime) = metadata.modified() {
+                    return newer_then.is_none_or(|newer_then| newer_then < mtime);
+                }
+            }
+            false
+        });
+
+        let queue_path = PathBuf::from(format!("{}/queue", self.output_target()));
+        let corpus_path = PathBuf::from(format!("{}/corpus", self.output_target()));
+        for (file, fuzzer) in new_files {
+            if matches!(fuzzer, Fuzzer::Afl) && self.honggfuzz() {
+                if let Some(file_name) = file.file_name() {
+                    let target = queue_path.join(file_name);
+                    if !target.exists() {
+                        let _ = fs::copy(&file, target);
+                    }
+                }
+            }
+            // Hash the file to get its file name
+            if let Ok(hash) = crate::util::hash_file(&file) {
+                let target_path = |hash| corpus_path.join(format!("{hash:x}"));
+                let target = target_path(hash);
+
+                if !target.exists() {
+                    let _ = fs::copy(&file, &target);
+                } else {
+                    let _ = resolve_collision(&file, hash, target_path);
+                }
+            }
+        }
+        return Ok(now);
+
+        #[derive(Clone, Copy, Debug)]
+        enum Fuzzer {
+            Afl,
+            Honggfuzz,
+        }
+
+        #[cold]
+        fn resolve_collision(
+            new_seed: &Path,
+            mut hash: u64,
+            target: impl Fn(u64) -> PathBuf,
+        ) -> Result<(), anyhow::Error> {
+            let content = fs::read(new_seed)?;
+
+            for i in 0..1024 {
+                let target_path = target(hash);
+                let different_files = target_path
+                    .metadata()
+                    .is_ok_and(|m| m.len() != content.len() as u64)
+                    || content != fs::read(&target_path)?;
+                if target_path.exists() {
+                    if !different_files {
+                        return Ok(());
+                    }
+                    hash = hash.wrapping_add(i);
+                } else {
+                    let _ = fs::copy(new_seed, &target_path);
+                    return Ok(());
+                }
+            }
+            Ok(())
+        }
+    }
+
     // Spawns new fuzzers
-    pub fn spawn_new_fuzzers(&self) -> Result<Vec<process::Child>, anyhow::Error> {
+    pub fn spawn_new_fuzzers(&self, common: &Common) -> Result<Vec<process::Child>, anyhow::Error> {
         // No fuzzers for you
         if self.no_afl && self.no_honggfuzz {
             bail!("Pick at least one fuzzer.\nNote: -b/--binary implies --no-honggfuzz");
@@ -378,7 +431,6 @@ impl Fuzz {
         let mut fuzzer_handles = vec![];
 
         // The cargo executable
-        let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
         let (afl_jobs, honggfuzz_jobs) = {
             if self.no_afl {
@@ -507,7 +559,8 @@ impl Fuzz {
                 }
 
                 fuzzer_handles.push(
-                    process::Command::new(&cargo)
+                    common
+                        .cargo()
                         .args(
                             [
                                 "afl",
@@ -586,7 +639,7 @@ impl Fuzz {
                         "--flush",
                         "--quiet",
                         "-c",
-                        &format!("{cargo} hfuzz run {}", &self.target),
+                        &format!("{} hfuzz run {}", common.cargo_path.display(), &self.target),
                         "/dev/null",
                     ])
                     .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
@@ -738,7 +791,7 @@ impl Fuzz {
         Ok(())
     }
 
-    pub fn print_stats(&self, cov_worker_status: &str) {
+    pub fn print_stats(&self, common: &Common, cov_worker_status: &str) -> (String, String) {
         let fuzzer_name = format!(" {} ", self.target);
 
         let reset = "\x1b[0m";
@@ -763,8 +816,8 @@ impl Fuzz {
         if !self.afl() {
             afl_status = format!("{yellow}disabled{reset} ");
         } else {
-            let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
-            let afl_stats_process = process::Command::new(&cargo)
+            let afl_stats_process = common
+                .cargo()
                 .args([
                     "afl",
                     "whatsup",
@@ -940,6 +993,7 @@ impl Fuzz {
             screen += "└──────────────────────────────────────────────────────────────────────┘\n";
         }
         eprintln!("{screen}");
+        (afl_crashes, hf_crashes)
     }
 }
 
@@ -990,7 +1044,7 @@ pub fn kill_subprocesses_recursively(pid: &str) -> Result<(), Error> {
 }
 
 // Stop all fuzzer processes
-pub fn stop_fuzzers(processes: &mut Vec<process::Child>) -> Result<(), Error> {
+pub fn stop_fuzzers(processes: &[process::Child]) -> Result<(), Error> {
     for process in processes {
         kill_subprocesses_recursively(&process.id().to_string())?;
     }

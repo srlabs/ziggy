@@ -707,6 +707,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "signal-hook"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b57709da74f9ff9f4a27dce9526eec25ca8407c45a7887243b031a58935fb8e"
+dependencies = [
+ "libc",
+ "signal-hook-registry",
+]
+
+[[package]]
+name = "signal-hook-registry"
+version = "1.4.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c4db69cba1110affc0e9f7bcd48bbf87b3f4fc7c61fc9155afd4c469eb3d6c1b"
+dependencies = [
+ "errno",
+ "libc",
+]
+
+[[package]]
 name = "smallvec"
 version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1087,6 +1107,7 @@ dependencies = [
  "libc",
  "rayon",
  "semver",
+ "signal-hook",
  "strip-ansi-escapes",
  "target-triple",
  "tempfile",
