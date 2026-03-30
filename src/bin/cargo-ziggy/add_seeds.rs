@@ -22,7 +22,9 @@ impl AddSeeds {
             .context("could not parse cargo-afl version")?
             .map(|v| req.matches(&v))?
         {
-            bail!("Outdated version of cargo-afl, ziggy needs >=0.14.5, please run `cargo install cargo-afl`");
+            bail!(
+                "Outdated version of cargo-afl, ziggy needs >=0.14.5, please run `cargo install cargo-afl`"
+            );
         }
 
         let target = find_target(&self.target)?;

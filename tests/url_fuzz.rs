@@ -79,18 +79,22 @@ fn integration() {
     thread::sleep(Duration::from_secs(30));
     kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
 
-    assert!(temp_dir_path
-        .join("url-fuzz")
-        .join("afl")
-        .join("mainaflfuzzer")
-        .join("fuzzer_stats")
-        .is_file());
-    assert!(temp_dir_path
-        .join("url-fuzz")
-        .join("honggfuzz")
-        .join("url-fuzz")
-        .join("input")
-        .is_dir());
+    assert!(
+        temp_dir_path
+            .join("url-fuzz")
+            .join("afl")
+            .join("mainaflfuzzer")
+            .join("fuzzer_stats")
+            .is_file()
+    );
+    assert!(
+        temp_dir_path
+            .join("url-fuzz")
+            .join("honggfuzz")
+            .join("url-fuzz")
+            .join("input")
+            .is_dir()
+    );
 
     // We resume fuzzing
     // cargo ziggy fuzz -j 2 -t 5
@@ -120,11 +124,13 @@ fn integration() {
         .expect("failed to run `cargo ziggy minimize`");
 
     assert!(minimization.success());
-    assert!(temp_dir_path
-        .join("url-fuzz")
-        .join("logs")
-        .join("minimization_afl.log")
-        .is_file());
+    assert!(
+        temp_dir_path
+            .join("url-fuzz")
+            .join("logs")
+            .join("minimization_afl.log")
+            .is_file()
+    );
 
     fs::remove_dir_all(temp_dir_path.join("url-fuzz").join("corpus_minimized")).unwrap();
 
@@ -139,11 +145,13 @@ fn integration() {
         .expect("failed to run `cargo ziggy minimize`");
 
     assert!(minimization.success());
-    assert!(temp_dir_path
-        .join("url-fuzz")
-        .join("logs")
-        .join("minimization_honggfuzz.log")
-        .is_file());
+    assert!(
+        temp_dir_path
+            .join("url-fuzz")
+            .join("logs")
+            .join("minimization_honggfuzz.log")
+            .is_file()
+    );
 
     // cargo ziggy cover
     let coverage = process::Command::new(&cargo_ziggy)
@@ -155,11 +163,13 @@ fn integration() {
         .expect("failed to run `cargo ziggy cover`");
 
     assert!(coverage.success());
-    assert!(temp_dir_path
-        .join("url-fuzz")
-        .join("coverage")
-        .join("index.html")
-        .is_file());
+    assert!(
+        temp_dir_path
+            .join("url-fuzz")
+            .join("coverage")
+            .join("index.html")
+            .is_file()
+    );
 
     // cargo ziggy plot
     let plot = process::Command::new(&cargo_ziggy)
@@ -171,11 +181,13 @@ fn integration() {
         .expect("failed to run `cargo ziggy plot`");
 
     assert!(plot.success());
-    assert!(temp_dir_path
-        .join("url-fuzz")
-        .join("plot")
-        .join("index.html")
-        .is_file());
+    assert!(
+        temp_dir_path
+            .join("url-fuzz")
+            .join("plot")
+            .join("index.html")
+            .is_file()
+    );
 }
 
 #[allow(clippy::zombie_processes)]
@@ -294,9 +306,11 @@ fn fuzz_binary() {
     thread::sleep(Duration::from_secs(30));
     kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
 
-    assert!(temp_dir_path
-        .join("afl/mainaflfuzzer/fuzzer_stats")
-        .is_file());
+    assert!(
+        temp_dir_path
+            .join("afl/mainaflfuzzer/fuzzer_stats")
+            .is_file()
+    );
 
     // We resume fuzzing
     // cargo ziggy fuzz -j 2 -t 5

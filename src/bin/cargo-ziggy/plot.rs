@@ -1,4 +1,4 @@
-use crate::{find_target, Plot};
+use crate::{Plot, find_target};
 use anyhow::{Context, Result};
 use std::{env, process};
 

@@ -1,5 +1,5 @@
-use crate::{find_target, Build, FuzzingEngines, Minimize};
-use anyhow::{bail, Context, Result};
+use crate::{Build, FuzzingEngines, Minimize, find_target};
+use anyhow::{Context, Result, bail};
 use std::{
     env,
     fs::{self, File},

@@ -1,5 +1,5 @@
-use crate::{find_target, Cover};
-use anyhow::{bail, Context, Result};
+use crate::{Cover, find_target};
+use anyhow::{Context, Result, bail};
 use cargo_metadata::camino::Utf8PathBuf;
 use glob::glob;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -27,10 +27,10 @@ impl Cover {
         self.target =
             find_target(&self.target).context("⚠️  couldn't find the target to start coverage")?;
 
-        if let Some(path) = &self.source {
-            if !path.try_exists()? {
-                bail!("Source directory specified, but path does not exist!");
-            }
+        if let Some(path) = &self.source
+            && !path.try_exists()?
+        {
+            bail!("Source directory specified, but path does not exist!");
         }
 
         // build the runner

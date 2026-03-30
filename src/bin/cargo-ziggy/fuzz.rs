@@ -1,6 +1,6 @@
 use crate::*;
-use anyhow::{anyhow, bail, Error};
-use console::{style, Term};
+use anyhow::{Error, anyhow, bail};
+use console::{Term, style};
 use glob::glob;
 use std::{
     fs::File,
@@ -263,23 +263,24 @@ impl Fuzz {
                 });
             }
 
-            if !afl_output_ok {
-                if let Ok(afl_log) =
+            if !afl_output_ok
+                && let Ok(afl_log) =
                     fs::read_to_string(format!("{}/logs/afl.log", self.output_target()))
+            {
+                if afl_log.contains("ready to roll") {
+                    afl_output_ok = true;
+                } else if afl_log.contains("/proc/sys/kernel/core_pattern")
+                    || afl_log.contains("/sys/devices/system/cpu")
                 {
-                    if afl_log.contains("ready to roll") {
-                        afl_output_ok = true;
-                    } else if afl_log.contains("/proc/sys/kernel/core_pattern")
-                        || afl_log.contains("/sys/devices/system/cpu")
-                    {
-                        stop_fuzzers(&processes)?;
-                        eprintln!("We highly recommend you configure your system for better performance:\n");
-                        eprintln!("    cargo afl system-config\n");
-                        eprintln!(
-                            "Or set AFL_SKIP_CPUFREQ and AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES\n"
-                        );
-                        return Ok(());
-                    }
+                    stop_fuzzers(&processes)?;
+                    eprintln!(
+                        "We highly recommend you configure your system for better performance:\n"
+                    );
+                    eprintln!("    cargo afl system-config\n");
+                    eprintln!(
+                        "Or set AFL_SKIP_CPUFREQ and AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES\n"
+                    );
+                    return Ok(());
                 }
             }
 
@@ -365,12 +366,13 @@ impl Fuzz {
         let queue_path = PathBuf::from(format!("{}/queue", self.output_target()));
         let corpus_path = PathBuf::from(format!("{}/corpus", self.output_target()));
         for (file, fuzzer) in new_files {
-            if matches!(fuzzer, Fuzzer::Afl) && self.honggfuzz() {
-                if let Some(file_name) = file.file_name() {
-                    let target = queue_path.join(file_name);
-                    if !target.exists() {
-                        let _ = fs::copy(&file, target);
-                    }
+            if matches!(fuzzer, Fuzzer::Afl)
+                && self.honggfuzz()
+                && let Some(file_name) = file.file_name()
+            {
+                let target = queue_path.join(file_name);
+                if !target.exists() {
+                    let _ = fs::copy(&file, target);
                 }
             }
             // Hash the file to get its file name
@@ -775,7 +777,9 @@ impl Fuzz {
                 term.move_cursor_up(1)?;
 
                 if new_corpus_size == *"err" || new_corpus_size == *"0" {
-                    bail!("Please check the logs and make sure the right versions of the fuzzers are installed");
+                    bail!(
+                        "Please check the logs and make sure the right versions of the fuzzers are installed"
+                    );
                 }
                 term.write_line(&format!(
                     "{} the corpus ({} -> {} files)             \n",
@@ -952,35 +956,57 @@ impl Fuzz {
         let mut screen = String::new();
         // We start by clearing the screen
         screen += "\x1B[1;1H\x1B[2J";
-        screen += &format!("┌─ {blue}ziggy{reset} {purple}rocking{reset} ─────────{fuzzer_name:─^25.25}──────────────────{blue}/{red}////{reset}──┐\n");
+        screen += &format!(
+            "┌─ {blue}ziggy{reset} {purple}rocking{reset} ─────────{fuzzer_name:─^25.25}──────────────────{blue}/{red}////{reset}──┐\n"
+        );
         screen += &format!(
             "│{gray}run time :{reset} {total_run_time:17.17}                                       {blue}/{red}///{reset}    │\n"
         );
-        screen += &format!("├─ {blue}afl++{reset} {afl_status:0}─────────────────────────────────────────────────────{blue}/{red}///{reset}─┤\n");
+        screen += &format!(
+            "├─ {blue}afl++{reset} {afl_status:0}─────────────────────────────────────────────────────{blue}/{red}///{reset}─┤\n"
+        );
         if !afl_status.contains("disabled") {
-            screen += &format!("│       {gray}instances :{reset} {afl_instances:17.17} │ {gray}best coverage :{reset} {afl_coverage:11.11}   {blue}/{red}//{reset}   │\n");
+            screen += &format!(
+                "│       {gray}instances :{reset} {afl_instances:17.17} │ {gray}best coverage :{reset} {afl_coverage:11.11}   {blue}/{red}//{reset}   │\n"
+            );
             if afl_crashes == "0" {
-                screen += &format!("│{gray}cumulative speed :{reset} {afl_speed:17.17} │ {gray}crashes saved :{reset} {afl_crashes:11.11}  {blue}/{red}/{reset}     │\n");
+                screen += &format!(
+                    "│{gray}cumulative speed :{reset} {afl_speed:17.17} │ {gray}crashes saved :{reset} {afl_crashes:11.11}  {blue}/{red}/{reset}     │\n"
+                );
             } else {
-                screen += &format!("│{gray}cumulative speed :{reset} {afl_speed:17.17} │ {gray}crashes saved :{reset} {red}{afl_crashes:11.11}{reset}  {blue}/{red}/{reset}     │\n");
+                screen += &format!(
+                    "│{gray}cumulative speed :{reset} {afl_speed:17.17} │ {gray}crashes saved :{reset} {red}{afl_crashes:11.11}{reset}  {blue}/{red}/{reset}     │\n"
+                );
             }
             screen += &format!(
                 "│     {gray}total execs :{reset} {afl_total_execs:17.17} │{gray}timeouts saved :{reset} {afl_timeouts:17.17}   │\n"
             );
-            screen += &format!("│ {gray}top inputs todo :{reset} {afl_faves:17.17} │   {gray}no find for :{reset} {afl_new_finds:17.17}   │\n");
+            screen += &format!(
+                "│ {gray}top inputs todo :{reset} {afl_faves:17.17} │   {gray}no find for :{reset} {afl_new_finds:17.17}   │\n"
+            );
         }
         screen += &format!(
             "├─ {blue}honggfuzz{reset} {hf_status:0}─────────────────────────────────────────────────┬────┘\n"
         );
         if !hf_status.contains("disabled") {
-            screen += &format!("│      {gray}threads :{reset} {hf_threads:17.17} │      {gray}coverage :{reset} {hf_coverage:17.17} │\n");
+            screen += &format!(
+                "│      {gray}threads :{reset} {hf_threads:17.17} │      {gray}coverage :{reset} {hf_coverage:17.17} │\n"
+            );
             if hf_crashes == "0" {
-                screen += &format!("│{gray}average speed :{reset} {hf_speed:17.17} │ {gray}crashes saved :{reset} {hf_crashes:17.17} │\n");
+                screen += &format!(
+                    "│{gray}average speed :{reset} {hf_speed:17.17} │ {gray}crashes saved :{reset} {hf_crashes:17.17} │\n"
+                );
             } else {
-                screen += &format!("│{gray}average speed :{reset} {hf_speed:17.17} │ {gray}crashes saved :{reset} {red}{hf_crashes:17.17}{reset} │\n");
+                screen += &format!(
+                    "│{gray}average speed :{reset} {hf_speed:17.17} │ {gray}crashes saved :{reset} {red}{hf_crashes:17.17}{reset} │\n"
+                );
             }
-            screen += &format!("│  {gray}total execs :{reset} {hf_total_execs:17.17} │{gray}timeouts saved :{reset} {hf_timeouts:17.17} │\n");
-            screen += &format!("│                                  │   {gray}no find for :{reset} {hf_new_finds:17.17} │\n");
+            screen += &format!(
+                "│  {gray}total execs :{reset} {hf_total_execs:17.17} │{gray}timeouts saved :{reset} {hf_timeouts:17.17} │\n"
+            );
+            screen += &format!(
+                "│                                  │   {gray}no find for :{reset} {hf_new_finds:17.17} │\n"
+            );
         }
         if self.coverage_worker {
             screen += &format!(

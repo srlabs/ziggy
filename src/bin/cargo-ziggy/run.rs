@@ -1,5 +1,5 @@
-use crate::{find_target, Run};
-use anyhow::{bail, Context, Result};
+use crate::{Run, find_target};
+use anyhow::{Context, Result, bail};
 use console::style;
 use std::{
     collections::HashSet,
