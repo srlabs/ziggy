@@ -62,12 +62,14 @@ fn integration() {
     thread::sleep(Duration::from_secs(30));
     kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
 
-    assert!(temp_dir_path
-        .join("arbitrary-fuzz")
-        .join("afl")
-        .join("mainaflfuzzer")
-        .join("fuzzer_stats")
-        .is_file());
+    assert!(
+        temp_dir_path
+            .join("arbitrary-fuzz")
+            .join("afl")
+            .join("mainaflfuzzer")
+            .join("fuzzer_stats")
+            .is_file()
+    );
     assert!(
         fs::read_dir(
             temp_dir_path
@@ -80,10 +82,12 @@ fn integration() {
         .count()
             != 0
     );
-    assert!(temp_dir_path
-        .join("arbitrary-fuzz")
-        .join("honggfuzz")
-        .join("arbitrary-fuzz")
-        .join("input")
-        .is_dir());
+    assert!(
+        temp_dir_path
+            .join("arbitrary-fuzz")
+            .join("honggfuzz")
+            .join("arbitrary-fuzz")
+            .join("input")
+            .is_dir()
+    );
 }

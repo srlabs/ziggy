@@ -67,12 +67,14 @@ fn asan_crashes() {
     thread::sleep(Duration::from_secs(30));
     kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
 
-    assert!(temp_dir_path
-        .join("asan-fuzz")
-        .join("afl")
-        .join("mainaflfuzzer")
-        .join("fuzzer_stats")
-        .is_file());
+    assert!(
+        temp_dir_path
+            .join("asan-fuzz")
+            .join("afl")
+            .join("mainaflfuzzer")
+            .join("fuzzer_stats")
+            .is_file()
+    );
     assert!(
         fs::read_dir(
             temp_dir_path

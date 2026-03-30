@@ -10,12 +10,12 @@ mod triage;
 mod util;
 
 use crate::fuzz::FuzzingConfig;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::{
     fs,
     path::PathBuf,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 pub const DEFAULT_UNMODIFIED_TARGET: &str = "automatically guessed";

@@ -1,5 +1,5 @@
 use crate::Clean;
-use anyhow::{bail, Error};
+use anyhow::{Error, bail};
 use std::{env, process::Command};
 
 impl Clean {
