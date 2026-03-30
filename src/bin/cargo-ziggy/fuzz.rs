@@ -31,6 +31,9 @@ use strip_ansi_escapes::strip_str;
 /// ```
 /// The `all_afl_corpora` directory corresponds to the `output/target_name/afl/**/queue/` directories.
 impl Fuzz {
+    const HFUZZ_NO_CRASH: [&str; 3] = ["README.txt", "HONGGFUZZ.REPORT.TXT", "input"];
+    const HFUZZ_TIMEOUT_PREFIX: &str = "SIGVTALRM";
+
     pub fn corpus(&self) -> String {
         self.corpus
             .display()
@@ -111,7 +114,10 @@ impl Fuzz {
 
         let crash_dir = format!("{}/crashes/{time}", self.output_target());
         let crash_path = Path::new(&crash_dir);
+        let timeouts_dir = format!("{}/timeouts/{time}", self.output_target());
+        let timeouts_path = Path::new(&timeouts_dir);
         fs::create_dir_all(crash_path)?;
+        fs::create_dir_all(timeouts_path)?;
         fs::create_dir_all(format!("{}/logs", self.output_target()))?;
         fs::create_dir_all(format!("{}/queue", self.output_target()))?;
 
@@ -173,7 +179,7 @@ impl Fuzz {
         let target = self.target.clone();
         let main_corpus = self.corpus();
         let output_target = self.output_target();
-        let mut crashes = (String::new(), String::new());
+        let mut stats = Stats::default();
 
         common.shutdown_deferred(); // handle termination signals gracefully
         loop {
@@ -182,12 +188,13 @@ impl Fuzz {
 
             if common.is_terminated() {
                 eprintln!("\rShutting down...");
-                let res = (
+                let res = [
                     stop_fuzzers(&processes),
                     self.sync_corpora(sync_after).map(|_| ()),
                     self.sync_crashes(crash_path),
-                );
-                return res.0.and(res.1).and(res.2);
+                    self.sync_timeouts(timeouts_path),
+                ];
+                return res.into_iter().fold(Ok(()), std::result::Result::and);
             }
 
             let coverage_status = match (
@@ -203,7 +210,7 @@ impl Fuzz {
                 (false, _, _) => String::from("disabled"),
             };
 
-            let current_crashes = self.print_stats(common, &coverage_status);
+            let current_stats = self.print_stats(common, &coverage_status);
 
             if coverage_status.as_str() == "starting" {
                 *coverage_now_running.lock().unwrap() = true;
@@ -285,10 +292,13 @@ impl Fuzz {
             }
 
             // Copy crash files from AFL++ and Honggfuzz's outputs
-            if current_crashes != crashes {
-                crashes = current_crashes;
+            if current_stats.crashes != stats.crashes {
                 self.sync_crashes(crash_path)?;
             }
+            if current_stats.timeouts != stats.timeouts {
+                self.sync_timeouts(timeouts_path)?;
+            }
+            stats = current_stats;
 
             // Sync corpus dirs
             if last_sync_time.elapsed() > Duration::from_mins(self.corpus_sync_interval) {
@@ -308,30 +318,54 @@ impl Fuzz {
 
     /// Copy crashes from AFL++ or Honggfuzz's outputs into `target_dir`
     fn sync_crashes(&self, target_dir: &Path) -> Result<(), anyhow::Error> {
-        let crash_dirs = glob(&format!("{}/afl/*/crashes", self.output_target()))
+        // afl
+        for dir in glob(&format!("{}/afl/*/crashes", self.output_target()))
             .map_err(|_| anyhow!("Failed to read crashes glob pattern"))?
             .flatten()
-            .chain(std::iter::once(PathBuf::from(format!(
+        {
+            copy_from_dir(dir, target_dir, |_| true)?;
+        }
+
+        // honggfuzz
+        copy_from_dir(
+            PathBuf::from(format!(
                 "{}/honggfuzz/{}",
                 self.output_target(),
                 self.target
-            ))));
+            )),
+            target_dir,
+            |file_name| {
+                let no_timeout = !BStr(file_name).starts_with(Self::HFUZZ_TIMEOUT_PREFIX);
+                no_timeout && Self::HFUZZ_NO_CRASH.iter().all(|name| *name != file_name)
+            },
+        )?;
 
-        for crash_dir in crash_dirs {
-            if let Ok(crashes) = fs::read_dir(crash_dir) {
-                for crash_input in crashes.flatten() {
-                    let file_name = crash_input.file_name();
-                    let to_path = target_dir.join(&file_name);
-                    if ["README.txt", "HONGGFUZZ.REPORT.TXT", "input"]
-                        .iter()
-                        .all(|name| name != &file_name)
-                        && !to_path.exists()
-                    {
-                        fs::copy(crash_input.path(), to_path)?;
-                    }
-                }
-            }
+        Ok(())
+    }
+
+    fn sync_timeouts(&self, target_dir: &Path) -> Result<(), anyhow::Error> {
+        // afl
+        for dir in glob(&format!("{}/afl/*/hangs", self.output_target()))
+            .map_err(|_| anyhow!("Failed to read timeouts glob pattern"))?
+            .flatten()
+        {
+            copy_from_dir(dir, target_dir, |_| true)?;
         }
+
+        // honggfuzz
+        copy_from_dir(
+            PathBuf::from(format!(
+                "{}/honggfuzz/{}",
+                self.output_target(),
+                self.target
+            )),
+            target_dir,
+            |file_name| {
+                let is_timeout = BStr(file_name).starts_with(Self::HFUZZ_TIMEOUT_PREFIX);
+                is_timeout && Self::HFUZZ_NO_CRASH.iter().all(|name| *name != file_name)
+            },
+        )?;
+
         Ok(())
     }
 
@@ -601,6 +635,7 @@ impl Fuzz {
                         .env("AFL_IMPORT_FIRST", "1")
                         .env(final_sync, "1")
                         .env("AFL_IGNORE_SEED_PROBLEMS", "1")
+                        .env("AFL_PIZZA_MODE", "-1")
                         .stdout(log_destination())
                         .stderr(log_destination())
                         .spawn()?,
@@ -610,21 +645,6 @@ impl Fuzz {
         }
 
         if honggfuzz_jobs > 0 {
-            let dictionary_option = match &self.dictionary {
-                Some(d) => format!("-w{}", &d.display().to_string()),
-                None => String::new(),
-            };
-
-            let timeout_option = match self.timeout {
-                Some(t) => format!("-t{t}"),
-                None => String::new(),
-            };
-
-            let memory_option = match &self.memory_limit {
-                Some(m) => format!("--rlimit_as{m}"),
-                None => String::new(),
-            };
-
             self.check_bin_target(
                 super::target_dir()
                     .join("honggfuzz")
@@ -633,6 +653,29 @@ impl Fuzz {
                     .join(&self.target)
                     .as_std_path(),
             )?;
+
+            let run_args = {
+                let mut run_args = String::new();
+                run_args.push_str(&format!(" --input={}", self.corpus()));
+                run_args.push_str(&format!(" -o{}/honggfuzz/corpus", self.output_target()));
+                run_args.push_str(&format!(" -n{honggfuzz_jobs}"));
+                run_args.push_str(&format!(" -F{}", self.max_length));
+                run_args.push_str(&format!(" --dynamic_input={}/queue", self.output_target()));
+                run_args.push_str(" --tmout_sigvtalrm");
+                if let Some(t) = self.timeout {
+                    run_args.push_str(&format!(" -t{t}"));
+                }
+                if let Some(d) = &self.dictionary {
+                    run_args.push_str(&format!(" -w{}", d.display()));
+                }
+                if let Some(m) = &self.memory_limit {
+                    run_args.push_str(&format!(" --rlimit_as={m}"));
+                }
+
+                run_args
+            };
+
+            let log = File::create(format!("{}/logs/honggfuzz.log", self.output_target()))?;
 
             // The `script` invocation is a trick to get the correct TTY output for honggfuzz
             fuzzer_handles.push(
@@ -650,25 +693,10 @@ impl Fuzz {
                         "HFUZZ_WORKSPACE",
                         format!("{}/honggfuzz", self.output_target()),
                     )
-                    .env(
-                        "HFUZZ_RUN_ARGS",
-                        format!(
-                            "--input={} -o{}/honggfuzz/corpus -n{honggfuzz_jobs} -F{} --dynamic_input={}/queue {timeout_option} {dictionary_option} {memory_option}",
-                            self.corpus(),
-                            self.output_target(),
-                            self.max_length,
-                            self.output_target(),
-                        ),
-                    )
+                    .env("HFUZZ_RUN_ARGS", &run_args)
                     .stdin(std::process::Stdio::null())
-                    .stderr(File::create(format!(
-                        "{}/logs/honggfuzz.log",
-                        self.output_target()
-                    ))?)
-                    .stdout(File::create(format!(
-                        "{}/logs/honggfuzz.log",
-                        self.output_target()
-                    ))?)
+                    .stderr(log.try_clone()?)
+                    .stdout(log)
                     .spawn()?,
             );
             eprintln!(
@@ -795,7 +823,7 @@ impl Fuzz {
         Ok(())
     }
 
-    pub fn print_stats(&self, common: &Common, cov_worker_status: &str) -> (String, String) {
+    pub fn print_stats(&self, common: &Common, cov_worker_status: &str) -> Stats {
         let fuzzer_name = format!(" {} ", self.target);
 
         let reset = "\x1b[0m";
@@ -871,8 +899,8 @@ impl Fuzz {
         let mut hf_threads = String::new();
         let mut hf_speed = String::new();
         let mut hf_coverage = String::new();
-        let mut hf_crashes = String::new();
-        let mut hf_timeouts = String::new();
+        let mut hf_crashes: usize = 0;
+        let mut hf_timeouts: usize = 0;
         let mut hf_new_finds = String::new();
 
         if !self.honggfuzz() {
@@ -914,9 +942,17 @@ impl Fuzz {
                                 .unwrap_or_default(),
                         );
                     } else if let Some(crashes) = line.strip_prefix("Crashes : ") {
-                        hf_crashes = String::from(crashes.split(' ').next().unwrap_or_default());
+                        hf_crashes = crashes
+                            .split(' ')
+                            .next()
+                            .and_then(|n| n.parse().ok())
+                            .unwrap_or_default();
                     } else if let Some(timeouts) = line.strip_prefix("Timeouts : ") {
-                        hf_timeouts = String::from(timeouts.split(' ').next().unwrap_or_default());
+                        hf_timeouts = timeouts
+                            .split(' ')
+                            .next()
+                            .and_then(|n| n.parse().ok())
+                            .unwrap_or_default();
                     } else if let Some(new_finds) = line.strip_prefix("Cov Update : ") {
                         hf_new_finds = String::from(new_finds.trim());
                         hf_new_finds = String::from(
@@ -951,6 +987,9 @@ impl Fuzz {
         if total_run_time == "now" {
             total_run_time = String::from("...");
         }
+
+        // honggfuzz counts timeouts as crashes, we fix this
+        hf_crashes = hf_crashes.saturating_sub(hf_timeouts);
 
         // Fourth step: Print stats
         let mut screen = String::new();
@@ -992,17 +1031,20 @@ impl Fuzz {
             screen += &format!(
                 "│      {gray}threads :{reset} {hf_threads:17.17} │      {gray}coverage :{reset} {hf_coverage:17.17} │\n"
             );
-            if hf_crashes == "0" {
+            if hf_crashes == 0 {
                 screen += &format!(
-                    "│{gray}average speed :{reset} {hf_speed:17.17} │ {gray}crashes saved :{reset} {hf_crashes:17.17} │\n"
+                    "│{gray}average speed :{reset} {hf_speed:17.17} │ {gray}crashes saved :{reset} {:17.17} │\n",
+                    hf_crashes.to_string(),
                 );
             } else {
                 screen += &format!(
-                    "│{gray}average speed :{reset} {hf_speed:17.17} │ {gray}crashes saved :{reset} {red}{hf_crashes:17.17}{reset} │\n"
+                    "│{gray}average speed :{reset} {hf_speed:17.17} │ {gray}crashes saved :{reset} {red}{:17.17}{reset} │\n",
+                    hf_crashes.to_string(),
                 );
             }
             screen += &format!(
-                "│  {gray}total execs :{reset} {hf_total_execs:17.17} │{gray}timeouts saved :{reset} {hf_timeouts:17.17} │\n"
+                "│  {gray}total execs :{reset} {hf_total_execs:17.17} │{gray}timeouts saved :{reset} {:17.17} │\n",
+                hf_timeouts.to_string(),
             );
             screen += &format!(
                 "│                                  │   {gray}no find for :{reset} {hf_new_finds:17.17} │\n"
@@ -1019,7 +1061,10 @@ impl Fuzz {
             screen += "└──────────────────────────────────────────────────────────────────────┘\n";
         }
         eprintln!("{screen}");
-        (afl_crashes, hf_crashes)
+        Stats {
+            crashes: (afl_crashes, hf_crashes),
+            timeouts: (afl_timeouts, hf_timeouts),
+        }
     }
 }
 
@@ -1075,4 +1120,35 @@ pub fn stop_fuzzers(processes: &[process::Child]) -> Result<(), Error> {
         kill_subprocesses_recursively(&process.id().to_string())?;
     }
     Ok(())
+}
+
+fn copy_from_dir(
+    crash_dir: PathBuf,
+    target_dir: &Path,
+    filter: impl Fn(&std::ffi::OsStr) -> bool,
+) -> Result<(), anyhow::Error> {
+    if let Ok(crashes) = fs::read_dir(crash_dir) {
+        for crash_input in crashes.flatten() {
+            let file_name = crash_input.file_name();
+            let to_path = target_dir.join(&file_name);
+            if filter(&file_name) && !to_path.exists() {
+                fs::copy(crash_input.path(), to_path)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+#[derive(Debug, Default)]
+pub struct Stats {
+    crashes: (String, usize),
+    timeouts: (String, usize),
+}
+
+struct BStr<'a>(&'a std::ffi::OsStr);
+
+impl BStr<'_> {
+    fn starts_with(&self, pat: &str) -> bool {
+        pat.len() <= self.0.len() && &self.0.as_encoded_bytes()[..pat.len()] == pat.as_bytes()
+    }
 }

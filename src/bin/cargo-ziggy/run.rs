@@ -1,4 +1,4 @@
-use crate::{Run, find_target};
+use crate::{Common, Run, find_target};
 use anyhow::{Context, Result, bail};
 use console::style;
 use std::{
@@ -6,13 +6,11 @@ use std::{
     env, fs,
     os::unix::process::ExitStatusExt,
     path::{Path, PathBuf},
-    process,
 };
 
 impl Run {
     // Run inputs
-    pub fn run(&mut self) -> Result<(), anyhow::Error> {
-        let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
+    pub fn run(&mut self, common: &Common) -> Result<(), anyhow::Error> {
         let target = find_target(&self.target)?;
         let target_dir = format!("--target-dir={}", super::target_dir().join("runner"));
 
@@ -37,7 +35,8 @@ impl Run {
         eprintln!("    {} runner", style("Building").red().bold());
 
         // We run the compilation command
-        let run = process::Command::new(&cargo)
+        let run = common
+            .cargo()
             .args(args)
             .env("RUSTFLAGS", rust_flags)
             .env("RUSTDOCFLAGS", rust_doc_flags)
@@ -95,25 +94,35 @@ impl Run {
             super::target_dir().join(format!("runner/debug/{target}"))
         };
 
-        for file in input_files {
-            let res = process::Command::new(&runner_path)
-                .arg(file)
-                .env("RUST_BACKTRACE", "full")
-                .spawn()
-                .context("⚠️  couldn't spawn the runner process")?
-                .wait()
-                .context("⚠️  couldn't wait for the runner process")?;
+        let runner = Runner::new(
+            common.async_runtime(),
+            runner_path.as_std_path(),
+            self.timeout
+                .map(|s| tokio::time::Duration::from_secs(u64::from(s))),
+        );
 
-            if !res.success() {
-                if let Some(signal) = res.signal() {
-                    println!("⚠️  input terminated with signal {signal:?}!");
-                } else if let Some(exit_code) = res.code() {
-                    println!("⚠️  input terminated with code {exit_code:?}!");
-                } else {
-                    println!("⚠️  input terminated but we do not know why!");
+        for file in input_files {
+            match runner.run(&file) {
+                Status::Ok(status) => {
+                    if !status.success() {
+                        if let Some(signal) = status.signal() {
+                            println!("⚠️  input terminated with signal {signal:?}!");
+                        } else if let Some(exit_code) = status.code() {
+                            println!("⚠️  input terminated with code {exit_code:?}!");
+                        } else {
+                            println!("⚠️  input terminated but we do not know why!");
+                        }
+                        if self.stop_on_crash {
+                            return Ok(());
+                        }
+                    }
                 }
-                if self.stop_on_crash {
-                    return Ok(());
+                Status::Err(e) => return Err(e),
+                Status::Timeout => {
+                    println!("⚠️  input timed out!");
+                    if self.stop_on_crash {
+                        return Ok(());
+                    }
                 }
             }
         }
@@ -137,4 +146,61 @@ fn collect_dirs_recursively(
         }
     }
     Ok(())
+}
+
+struct Runner<'a> {
+    rt: &'a tokio::runtime::Runtime,
+    path: &'a Path,
+    timeout: Option<tokio::time::Duration>,
+}
+
+impl<'a> Runner<'a> {
+    fn new(
+        rt: &'a tokio::runtime::Runtime,
+        path: &'a Path,
+        timeout: Option<tokio::time::Duration>,
+    ) -> Self {
+        Self { rt, path, timeout }
+    }
+
+    fn run(&self, seed: &Path) -> Status {
+        self.rt.block_on(async {
+            let mut child = match tokio::process::Command::new(self.path)
+                .arg(seed)
+                .env("RUST_BACKTRACE", "full")
+                .spawn()
+                .context("⚠️  couldn't spawn the runner process")
+            {
+                Ok(child) => child,
+                Err(e) => return e.into(),
+            };
+            let res = if let Some(duration) = self.timeout {
+                if let Ok(res) = tokio::time::timeout(duration, child.wait()).await {
+                    res
+                } else {
+                    let _ = child.start_kill();
+                    return Status::Timeout;
+                }
+            } else {
+                child.wait().await
+            }
+            .context("⚠️  couldn't wait for the runner process");
+            match res {
+                Ok(status) => Status::Ok(status),
+                Err(e) => e.into(),
+            }
+        })
+    }
+}
+
+enum Status {
+    Timeout,
+    Ok(std::process::ExitStatus),
+    Err(anyhow::Error),
+}
+
+impl From<anyhow::Error> for Status {
+    fn from(err: anyhow::Error) -> Self {
+        Self::Err(err)
+    }
 }
