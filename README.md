@@ -1,5 +1,9 @@
 # `ziggy`
 
+[![Build status](https://github.com/srlabs/ziggy/actions/workflows/ci.yml/badge.svg)](https://github.com/srlabs/ziggy/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/ziggy.svg)](https://crates.io/crates/ziggy)
+[![Docs.rs](https://img.shields.io/docsrs/ziggy)](https://docs.rs/ziggy)
+
 `ziggy` is a fuzzer manager for Rust projects which is built to:
 
 - launch different fuzzers in parallel with a shared corpus
@@ -43,7 +47,8 @@ Commands:
   cover      Generate code coverage information using the existing corpus
   plot       Plot AFL++ data using afl-plot
   add-seeds  Add seeds to the running AFL++ fuzzers
-  triage     Triage crashes found with casr - currently only works for AFL++
+  triage     Triage crashes found with CASR - currently only works for AFL++
+  clean      Remove generated artifacts from the target directory
   help       Print this message or the help of the given subcommand(s)
 
 Options:
@@ -76,6 +81,7 @@ After you've launched your fuzzer, you'll find a couple of items in the `output`
 
 - the `corpus` directory containing the full corpus
 - the `crashes` directory containing any crashes detected by the fuzzers
+- the `timeouts` directory containing any timeouts/hangs detected by the fuzzers
 - the `logs` directory containing fuzzer log files
 - the `afl` directory containing AFL++'s output
 - the `honggfuzz` directory containing Honggfuzz's output
@@ -93,10 +99,6 @@ CARGO_HOME=.cargo cargo ziggy cover
 
 This will clone every dependency into a `.cargo` directory and this directory will be included in
 the generated coverage.
-
-## `ziggy` logs
-
-If you want to see `ziggy`'s internal logs, you can set `RUST_LOG=INFO`.
 
 ## Trophy case
 
