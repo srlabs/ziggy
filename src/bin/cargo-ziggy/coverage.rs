@@ -1,5 +1,5 @@
 use crate::{Cover, find_target};
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use cargo_metadata::camino::Utf8PathBuf;
 use glob::glob;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -21,6 +21,22 @@ impl Cover {
             .arg("--version")
             .output()
             .context("grcov not found - please install by running `cargo install grcov`")?;
+
+        if let Ok(dir) = tempfile::tempdir() {
+            const TAG: &str = "[ERROR] ";
+            let _ = std::fs::File::create(dir.path().join("a.profraw"));
+            if let Some(out) = process::Command::new("grcov")
+                .args(["-b=.", "-o=.", "."])
+                .current_dir(dir.path())
+                .output()
+                .ok()
+                .and_then(|o| String::from_utf8(o.stderr).ok())
+                && let Some(idx) = out.find(TAG)
+            {
+                return Err(anyhow!("{}", &out[idx + TAG.len()..]))
+                    .context("grcov missing dependencies");
+            }
+        }
 
         eprintln!("Generating coverage");
 
