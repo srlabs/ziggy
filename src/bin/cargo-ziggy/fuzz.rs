@@ -233,7 +233,7 @@ impl Fuzz {
                             .metadata()
                             .unwrap()
                             .created()
-                            .and_then(|c| c.elapsed())
+                            .and_then(|c| c.elapsed().ok())
                             .unwrap_or_default();
                         if prev_start_time.map_or(Duration::MAX, |s| s.elapsed()) >= created {
                             let _ = process::Command::new(&profile_bin)
