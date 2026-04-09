@@ -271,6 +271,7 @@ fn fuzz_binary() {
     let cargo_ziggy = target_directory.join("debug/cargo-ziggy");
     let fuzzer_directory = workspace_root.join("examples/url");
     let binary_path = temp_dir_path.join("binary");
+    let output_path = temp_dir_path.join("output");
 
     // cargo ziggy build
     let build_status = process::Command::new(&cargo_ziggy)
@@ -297,7 +298,7 @@ fn fuzz_binary() {
         .arg("-j2")
         .arg("-t5")
         .arg("-G100")
-        .env("ZIGGY_OUTPUT", temp_dir_path)
+        .env("ZIGGY_OUTPUT", &output_path)
         .env("AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES", "1")
         .env("AFL_SKIP_CPUFREQ", "1")
         .current_dir(temp_dir_path)
@@ -307,8 +308,8 @@ fn fuzz_binary() {
     kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
 
     assert!(
-        temp_dir_path
-            .join("afl/mainaflfuzzer/fuzzer_stats")
+        output_path
+            .join("binary/afl/mainaflfuzzer/fuzzer_stats")
             .is_file()
     );
 
@@ -323,7 +324,7 @@ fn fuzz_binary() {
         .arg("-j2")
         .arg("-t5")
         .arg("-G100")
-        .env("ZIGGY_OUTPUT", temp_dir_path)
+        .env("ZIGGY_OUTPUT", &output_path)
         .env("AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES", "1")
         .env("AFL_SKIP_CPUFREQ", "1")
         .current_dir(temp_dir_path)

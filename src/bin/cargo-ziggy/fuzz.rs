@@ -1,11 +1,15 @@
-use crate::*;
-use anyhow::{Error, anyhow, bail};
+use crate::{
+    Build, Common, Cover, Fuzz, FuzzingEngines, Minimize,
+    util::{Context, ContextView},
+};
+use anyhow::{Context as _, Error, Result, anyhow, bail};
 use console::{Term, style};
 use glob::glob;
 use std::{
-    fs::File,
+    fmt,
+    fs::{self, File},
     io::Write,
-    path::Path,
+    path::{Path, PathBuf},
     process::{self, Stdio},
     sync::{Arc, Mutex},
     thread,
@@ -31,30 +35,29 @@ use strip_ansi_escapes::strip_str;
 /// ```
 /// The `all_afl_corpora` directory corresponds to the `output/target_name/afl/**/queue/` directories.
 impl Fuzz {
-    const HFUZZ_NO_CRASH: [&str; 3] = ["README.txt", "HONGGFUZZ.REPORT.TXT", "input"];
-    const HFUZZ_TIMEOUT_PREFIX: &str = "SIGVTALRM";
-
-    pub fn corpus(&self) -> String {
-        self.corpus
+    fn output_paths(&self, cx: &Context) -> OutputPaths {
+        let output_target = if let Some(path) = self.binary.as_ref() {
+            if let Some(name) = path.file_prefix() {
+                format!("{}/{}", self.ziggy_output.display(), name.display())
+            } else {
+                self.ziggy_output.display().to_string()
+            }
+        } else {
+            format!("{}/{}", self.ziggy_output.display(), cx.bin_target)
+        };
+        let corpus = self
+            .corpus
             .display()
             .to_string()
             .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
-            .replace("{target_name}", &self.target)
-    }
-
-    pub fn corpus_tmp(&self) -> String {
-        format!("{}/corpus_tmp/", self.output_target())
-    }
-
-    pub fn corpus_minimized(&self) -> String {
-        format!("{}/corpus_minimized/", self.output_target(),)
-    }
-
-    pub fn output_target(&self) -> String {
-        if self.fuzz_binary() {
-            self.ziggy_output.display().to_string()
-        } else {
-            format!("{}/{}", self.ziggy_output.display(), &self.target)
+            .replace("{target_name}", &cx.bin_target);
+        let corpus_tmp = format!("{output_target}/corpus_tmp/");
+        let corpus_minimized = format!("{output_target}/corpus_minimized/");
+        OutputPaths {
+            corpus,
+            corpus_tmp,
+            corpus_minimized,
+            output_target,
         }
     }
 
@@ -66,7 +69,7 @@ impl Fuzz {
     /// Returns true if Honggfuzz is enabled
     // This definition could be a one-liner but it was expanded for clarity
     pub fn honggfuzz(&self) -> bool {
-        if self.fuzz_binary() {
+        if self.binary.is_some() {
             // We cannot use honggfuzz in binary mode
             false
         } else if self.no_afl {
@@ -78,77 +81,75 @@ impl Fuzz {
         }
     }
 
-    fn fuzz_binary(&self) -> bool {
-        self.binary.is_some()
-    }
-
-    fn check_bin_target(&self, path: &std::path::Path) -> Result<(), Error> {
-        if !path.is_file() {
-            if let Some(path) = self.binary.as_ref() {
-                bail!("file not found `{}`", path.display());
-            }
-            bail!("no bin target named `{}`", self.target)
-        }
-        Ok(())
-    }
-
     // Manages the continuous running of fuzzers
     pub fn fuzz(&mut self, common: &Common) -> Result<(), anyhow::Error> {
-        if !self.fuzz_binary() {
+        let cx = if let Some(binary) = self.binary.as_ref() {
+            self.coverage_worker = false;
+            if !binary.is_file() {
+                bail!("file not found `{}`", binary.display());
+            }
+            Context {
+                target_dir: "target".into(),
+                bin_target: binary.display().to_string(),
+            }
+        } else {
+            Context::new(common, self.target.clone())?
+        };
+        let cx_view = cx.view(common);
+
+        if self.binary.is_none() {
             let build = Build {
                 no_afl: !self.afl(),
                 no_honggfuzz: !self.honggfuzz(),
                 release: self.release,
                 asan: self.asan,
+                target: self.target.clone(),
             };
-            build.build().context("Failed to build the fuzzers")?;
+            build.build(common).context("Failed to build the fuzzers")?;
         }
 
-        self.target = if let Some(binary) = self.binary.as_ref() {
-            binary.display().to_string()
-        } else {
-            find_target(&self.target).context("⚠️  couldn't find target when fuzzing")?
-        };
+        let paths = self.output_paths(&cx);
 
         let time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
 
-        let crash_dir = format!("{}/crashes/{time}", self.output_target());
+        let crash_dir = format!("{}/crashes/{time}", paths.output_target);
         let crash_path = Path::new(&crash_dir);
-        let timeouts_dir = format!("{}/timeouts/{time}", self.output_target());
+        let timeouts_dir = format!("{}/timeouts/{time}", paths.output_target);
         let timeouts_path = Path::new(&timeouts_dir);
         fs::create_dir_all(crash_path)?;
         fs::create_dir_all(timeouts_path)?;
-        fs::create_dir_all(format!("{}/logs", self.output_target()))?;
-        fs::create_dir_all(format!("{}/queue", self.output_target()))?;
+        fs::create_dir_all(format!("{}/logs", paths.output_target))?;
+        fs::create_dir_all(format!("{}/queue", paths.output_target))?;
 
-        if Path::new(&self.corpus()).exists() {
+        if Path::new(&paths.corpus).exists() {
             if self.minimize {
-                fs::create_dir_all(self.corpus_tmp())
+                fs::create_dir_all(&paths.corpus_tmp)
                     .context("Could not create temporary corpus")?;
-                self.copy_corpora()
+                paths
+                    .copy_corpora()
                     .context("Could not move all seeds to temporary corpus")?;
-                let _ = fs::remove_dir_all(self.corpus_minimized());
-                self.run_minimization()
+                let _ = fs::remove_dir_all(&paths.corpus_minimized);
+                self.run_minimization(common, &paths)
                     .context("Failure while minimizing")?;
-                fs::remove_dir_all(self.corpus()).context("Could not remove shared corpus")?;
-                fs::rename(self.corpus_minimized(), self.corpus())
+                fs::remove_dir_all(&paths.corpus).context("Could not remove shared corpus")?;
+                fs::rename(&paths.corpus_minimized, &paths.corpus)
                     .context("Could not move minimized corpus over")?;
-                fs::remove_dir_all(self.corpus_tmp())
+                fs::remove_dir_all(&paths.corpus_tmp)
                     .context("Could not remove temporary corpus")?;
             }
         } else {
-            fs::create_dir_all(self.corpus())?;
+            fs::create_dir_all(&paths.corpus)?;
         }
 
         // We create an initial corpus file, so that AFL++ starts up properly if corpus is empty
-        let is_empty = fs::read_dir(self.corpus())?.next().is_none(); // check if corpus has some seeds
+        let is_empty = fs::read_dir(&paths.corpus)?.next().is_none(); // check if corpus has some seeds
         if is_empty {
-            let mut initial_corpus = File::create(self.corpus() + "/init")?;
+            let mut initial_corpus = File::create(format!("{}/init", &paths.corpus))?;
             writeln!(&mut initial_corpus, "00000000")?;
             drop(initial_corpus);
         }
 
-        let mut processes = self.spawn_new_fuzzers(common)?;
+        let mut processes = self.spawn_new_fuzzers(cx_view, &paths)?;
 
         self.start_time = Instant::now();
 
@@ -162,23 +163,22 @@ impl Fuzz {
 
         // We prepare builds for the coverage worker
         if self.coverage_worker {
-            Cover::clean_old_cov()?;
-            Cover::build_runner()?;
+            Cover::clean_old_cov(&cx)?;
+            Cover::build_runner(common)?;
         }
         let cov_start_time = Arc::new(Mutex::new(None));
         let cov_end_time = Arc::new(Mutex::new(Instant::now()));
         let coverage_now_running = Arc::new(Mutex::new(false));
-        let workspace_root = if !self.fuzz_binary() && self.coverage_worker {
-            cargo_metadata::MetadataCommand::new()
-                .exec()?
-                .workspace_root
-                .to_string()
+        let workspace_root = if self.binary.is_none() && self.coverage_worker {
+            common
+                .metadata()
+                .map(|m| m.workspace_root.to_string())
+                .unwrap_or_default()
         } else {
             String::default()
         };
-        let target = self.target.clone();
-        let main_corpus = self.corpus();
-        let output_target = self.output_target();
+        let main_corpus = &paths.corpus;
+        let output_target = &paths.output_target;
         let mut stats = Stats::default();
 
         common.shutdown_deferred(); // handle termination signals gracefully
@@ -190,9 +190,9 @@ impl Fuzz {
                 eprintln!("\rShutting down...");
                 let res = [
                     stop_fuzzers(&processes),
-                    self.sync_corpora(sync_after).map(|_| ()),
-                    self.sync_crashes(crash_path),
-                    self.sync_timeouts(timeouts_path),
+                    self.sync_corpora(&paths, sync_after).map(|_| ()),
+                    paths.sync_crashes(&cx, crash_path),
+                    paths.sync_timeouts(&cx, timeouts_path),
                 ];
                 return res.into_iter().fold(Ok(()), std::result::Result::and);
             }
@@ -210,69 +210,72 @@ impl Fuzz {
                 (false, _, _) => String::from("disabled"),
             };
 
-            let current_stats = self.print_stats(common, &coverage_status);
+            let current_stats = self.print_stats(cx_view, &paths, &coverage_status);
 
             if coverage_status.as_str() == "starting" {
                 *coverage_now_running.lock().unwrap() = true;
 
-                let main_corpus = main_corpus.clone();
-                let target = target.clone();
-                let workspace_root = workspace_root.clone();
-                let output_target = output_target.clone();
-                let cov_start_time = Arc::clone(&cov_start_time);
-                let cov_end_time = Arc::clone(&cov_end_time);
-                let coverage_now_running = Arc::clone(&coverage_now_running);
-
-                thread::spawn(move || {
-                    let mut seen_new_entry = false;
-                    let prev_start_time = {
-                        let unlocked = cov_start_time.lock().unwrap();
-                        *unlocked
-                    };
-                    *cov_start_time.lock().unwrap() = Some(Instant::now());
-                    let profile_bin = super::target_dir().join(format!("coverage/debug/{target}"));
-                    let profile_file =
-                        super::target_dir().join("coverage/debug/deps/coverage-%p-%m.profraw");
-                    let entries = std::fs::read_dir(&main_corpus).unwrap();
-                    for entry in entries.flatten().map(|e| e.path()) {
-                        // We only want to run corpus entries created since the last time we ran.
-                        let created = entry
-                            .metadata()
-                            .unwrap()
-                            .created()
-                            .ok()
-                            .and_then(|c| c.elapsed().ok())
-                            .unwrap_or_default();
-                        if prev_start_time.map_or(Duration::MAX, |s| s.elapsed()) >= created {
-                            let _ = process::Command::new(&profile_bin)
-                                .arg(entry)
-                                .env("LLVM_PROFILE_FILE", &profile_file)
-                                .stdout(Stdio::null())
-                                .stderr(Stdio::null())
-                                .status();
-                            seen_new_entry = true;
+                {
+                    let main_corpus = main_corpus.clone();
+                    let target = cx.bin_target.clone();
+                    let workspace_root = workspace_root.clone();
+                    let output_target = output_target.clone();
+                    let cov_start_time = Arc::clone(&cov_start_time);
+                    let cov_end_time = Arc::clone(&cov_end_time);
+                    let coverage_now_running = Arc::clone(&coverage_now_running);
+                    let cx = cx.clone();
+                    thread::spawn(move || {
+                        let mut seen_new_entry = false;
+                        let prev_start_time = {
+                            let unlocked = cov_start_time.lock().unwrap();
+                            *unlocked
+                        };
+                        *cov_start_time.lock().unwrap() = Some(Instant::now());
+                        let profile_bin = cx.target_dir.join(format!("coverage/debug/{target}"));
+                        let profile_file = cx
+                            .target_dir
+                            .join("coverage/debug/deps/coverage-%p-%m.profraw");
+                        let entries = std::fs::read_dir(&main_corpus).unwrap();
+                        for entry in entries.flatten().map(|e| e.path()) {
+                            // We only want to run corpus entries created since the last time we ran.
+                            let created = entry
+                                .metadata()
+                                .unwrap()
+                                .created()
+                                .ok()
+                                .and_then(|c| c.elapsed().ok())
+                                .unwrap_or_default();
+                            if prev_start_time.map_or(Duration::MAX, |s| s.elapsed()) >= created {
+                                let _ = process::Command::new(&profile_bin)
+                                    .arg(entry)
+                                    .env("LLVM_PROFILE_FILE", &profile_file)
+                                    .stdout(Stdio::null())
+                                    .stderr(Stdio::null())
+                                    .status();
+                                seen_new_entry = true;
+                            }
                         }
-                    }
-                    let res = if seen_new_entry {
-                        let coverage_dir = output_target + "/coverage";
-                        let _ = fs::remove_dir_all(&coverage_dir);
-                        Cover::run_grcov(&target, "html", &coverage_dir, &workspace_root, Some(1))
-                    } else {
-                        Ok(())
-                    };
+                        let res = if seen_new_entry {
+                            let coverage_dir = output_target + "/coverage";
+                            let _ = fs::remove_dir_all(&coverage_dir);
+                            Cover::run_grcov(&cx, "html", &coverage_dir, &workspace_root, Some(1))
+                        } else {
+                            Ok(())
+                        };
 
-                    {
-                        let mut guard = coverage_now_running.lock().unwrap();
-                        res.unwrap();
-                        *guard = false;
-                    }
-                    *cov_end_time.lock().unwrap() = Instant::now();
-                });
+                        {
+                            let mut guard = coverage_now_running.lock().unwrap();
+                            res.unwrap();
+                            *guard = false;
+                        }
+                        *cov_end_time.lock().unwrap() = Instant::now();
+                    });
+                }
             }
 
             if !afl_output_ok
                 && let Ok(afl_log) =
-                    fs::read_to_string(format!("{}/logs/afl.log", self.output_target()))
+                    fs::read_to_string(format!("{}/logs/afl.log", &paths.output_target))
             {
                 if afl_log.contains("ready to roll") {
                     afl_output_ok = true;
@@ -293,16 +296,16 @@ impl Fuzz {
 
             // Copy crash files from AFL++ and Honggfuzz's outputs
             if current_stats.crashes != stats.crashes {
-                self.sync_crashes(crash_path)?;
+                paths.sync_crashes(&cx, crash_path)?;
             }
             if current_stats.timeouts != stats.timeouts {
-                self.sync_timeouts(timeouts_path)?;
+                paths.sync_timeouts(&cx, timeouts_path)?;
             }
             stats = current_stats;
 
             // Sync corpus dirs
             if last_sync_time.elapsed() > Duration::from_mins(self.corpus_sync_interval) {
-                sync_after.replace(self.sync_corpora(sync_after)?);
+                sync_after.replace(self.sync_corpora(&paths, sync_after)?);
                 last_sync_time = Instant::now();
             }
 
@@ -316,72 +319,23 @@ impl Fuzz {
         }
     }
 
-    /// Copy crashes from AFL++ or Honggfuzz's outputs into `target_dir`
-    fn sync_crashes(&self, target_dir: &Path) -> Result<(), anyhow::Error> {
-        // afl
-        for dir in glob(&format!("{}/afl/*/crashes", self.output_target()))
-            .map_err(|_| anyhow!("Failed to read crashes glob pattern"))?
-            .flatten()
-        {
-            copy_from_dir(dir, target_dir, |_| true)?;
-        }
-
-        // honggfuzz
-        copy_from_dir(
-            PathBuf::from(format!(
-                "{}/honggfuzz/{}",
-                self.output_target(),
-                self.target
-            )),
-            target_dir,
-            |file_name| {
-                let no_timeout = !BStr(file_name).starts_with(Self::HFUZZ_TIMEOUT_PREFIX);
-                no_timeout && Self::HFUZZ_NO_CRASH.iter().all(|name| *name != file_name)
-            },
-        )?;
-
-        Ok(())
-    }
-
-    fn sync_timeouts(&self, target_dir: &Path) -> Result<(), anyhow::Error> {
-        // afl
-        for dir in glob(&format!("{}/afl/*/hangs", self.output_target()))
-            .map_err(|_| anyhow!("Failed to read timeouts glob pattern"))?
-            .flatten()
-        {
-            copy_from_dir(dir, target_dir, |_| true)?;
-        }
-
-        // honggfuzz
-        copy_from_dir(
-            PathBuf::from(format!(
-                "{}/honggfuzz/{}",
-                self.output_target(),
-                self.target
-            )),
-            target_dir,
-            |file_name| {
-                let is_timeout = BStr(file_name).starts_with(Self::HFUZZ_TIMEOUT_PREFIX);
-                is_timeout && Self::HFUZZ_NO_CRASH.iter().all(|name| *name != file_name)
-            },
-        )?;
-
-        Ok(())
-    }
-
     /// Sync shared corpora
     ///
     /// Copy-over each live corpus to the shared corpus directory, where each file name is usually its hash.
     /// If both fuzzers are running, copy over AFL++'s queue for consumption by Honggfuzz.
-    fn sync_corpora(&self, newer_then: Option<SystemTime>) -> Result<SystemTime, anyhow::Error> {
+    fn sync_corpora(
+        &self,
+        paths: &OutputPaths,
+        newer_then: Option<SystemTime>,
+    ) -> Result<SystemTime, anyhow::Error> {
         let now = SystemTime::now();
         let afl_files = glob(&format!(
             "{}/afl/mainaflfuzzer/queue/*",
-            self.output_target(),
+            paths.output_target,
         ))?
         .flatten()
         .zip(std::iter::repeat(Fuzzer::Afl));
-        let hfuzz_files = glob(&format!("{}/honggfuzz/corpus/*", self.output_target()))?
+        let hfuzz_files = glob(&format!("{}/honggfuzz/corpus/*", paths.output_target))?
             .flatten()
             .zip(std::iter::repeat(Fuzzer::Honggfuzz));
 
@@ -397,8 +351,8 @@ impl Fuzz {
             false
         });
 
-        let queue_path = PathBuf::from(format!("{}/queue", self.output_target()));
-        let corpus_path = PathBuf::from(format!("{}/corpus", self.output_target()));
+        let queue_path = PathBuf::from(format!("{}/queue", paths.output_target));
+        let corpus_path = PathBuf::from(format!("{}/corpus", paths.output_target));
         for (file, fuzzer) in new_files {
             if matches!(fuzzer, Fuzzer::Afl)
                 && self.honggfuzz()
@@ -458,7 +412,11 @@ impl Fuzz {
     }
 
     // Spawns new fuzzers
-    pub fn spawn_new_fuzzers(&self, common: &Common) -> Result<Vec<process::Child>, anyhow::Error> {
+    pub fn spawn_new_fuzzers(
+        &self,
+        cx: ContextView,
+        paths: &OutputPaths,
+    ) -> Result<Vec<process::Child>, anyhow::Error> {
         // No fuzzers for you
         if self.no_afl && self.no_honggfuzz {
             bail!("Pick at least one fuzzer.\nNote: -b/--binary implies --no-honggfuzz");
@@ -471,7 +429,7 @@ impl Fuzz {
         let (afl_jobs, honggfuzz_jobs) = {
             if self.no_afl {
                 (0, self.jobs)
-            } else if self.no_honggfuzz || self.fuzz_binary() {
+            } else if self.no_honggfuzz || self.binary.is_some() {
                 (self.jobs, 0)
             } else {
                 // we assign roughly 2/3 to AFL++, 1/3 to honggfuzz, however do
@@ -486,7 +444,7 @@ impl Fuzz {
         }
 
         if afl_jobs > 0 {
-            std::fs::create_dir_all(format!("{}/afl", self.output_target()))?;
+            std::fs::create_dir_all(format!("{}/afl", paths.output_target))?;
 
             // https://aflplus.plus/docs/fuzzing_in_depth/#c-using-multiple-cores
             let afl_modes = [
@@ -503,7 +461,7 @@ impl Fuzz {
                 };
                 // We only sync to the shared corpus if Honggfuzz is also running
                 let use_shared_corpus = match (self.no_honggfuzz, job_num) {
-                    (false, 0) => format!("-F{}", &self.corpus()),
+                    (false, 0) => format!("-F{}", &paths.corpus),
                     _ => String::new(),
                 };
                 let use_initial_corpus_dir = match (&self.initial_corpus, job_num) {
@@ -553,14 +511,16 @@ impl Fuzz {
                     _ => "-Pexploit",
                 };
                 let input_format_option = self.config.input_format_flag();
-                let log_destination = || match job_num {
-                    0 => File::create(format!("{}/logs/afl.log", self.output_target()))
-                        .unwrap()
-                        .into(),
-                    1 => File::create(format!("{}/logs/afl_1.log", self.output_target()))
-                        .unwrap()
-                        .into(),
-                    _ => process::Stdio::null(),
+                let log_destination = match job_num {
+                    0 => Some(File::create(format!(
+                        "{}/logs/afl.log",
+                        paths.output_target
+                    ))?),
+                    1 => Some(File::create(format!(
+                        "{}/logs/afl_1.log",
+                        paths.output_target
+                    ))?),
+                    _ => None,
                 };
                 let final_sync = match job_num {
                     0 => "AFL_FINAL_SYNC",
@@ -568,24 +528,23 @@ impl Fuzz {
                 };
                 let target_path = self.binary.clone().unwrap_or_else(|| {
                     if self.release {
-                        super::target_dir()
-                            .join(format!("afl/release/{}", self.target))
+                        cx.target_dir()
+                            .join(format!("afl/release/{}", cx.bin_target()))
                             .into_std_path_buf()
                     } else if self.asan && job_num == 0 {
-                        super::target_dir()
+                        cx.target_dir()
                             .join(format!(
                                 "afl/{}/debug/{}",
                                 target_triple::TARGET,
-                                self.target
+                                cx.bin_target()
                             ))
                             .into_std_path_buf()
                     } else {
-                        super::target_dir()
-                            .join(format!("afl/debug/{}", self.target))
+                        cx.target_dir()
+                            .join(format!("afl/debug/{}", cx.bin_target()))
                             .into_std_path_buf()
                     }
                 });
-                self.check_bin_target(target_path.as_path())?;
 
                 let mut afl_flags = self.afl_flags.clone();
                 if is_main_instance {
@@ -595,16 +554,16 @@ impl Fuzz {
                 }
 
                 fuzzer_handles.push(
-                    common
+                    cx.common()
                         .cargo()
                         .args(
                             [
                                 "afl",
                                 "fuzz",
                                 &fuzzer_name,
-                                &format!("-i{}", self.corpus()),
+                                &format!("-i{}", paths.corpus),
                                 &format!("-p{power_schedule}"),
-                                &format!("-o{}/afl", self.output_target()),
+                                &format!("-o{}/afl", paths.output_target),
                                 &format!("-g{}", self.min_length),
                                 &format!("-G{}", self.max_length),
                                 &use_shared_corpus,
@@ -636,8 +595,14 @@ impl Fuzz {
                         .env(final_sync, "1")
                         .env("AFL_IGNORE_SEED_PROBLEMS", "1")
                         .env("AFL_PIZZA_MODE", "-1")
-                        .stdout(log_destination())
-                        .stderr(log_destination())
+                        .stdout(
+                            log_destination
+                                .as_ref()
+                                .map(std::fs::File::try_clone)
+                                .transpose()?
+                                .map_or_else(process::Stdio::null, Into::into),
+                        )
+                        .stderr(log_destination.map_or_else(process::Stdio::null, Into::into))
                         .spawn()?,
                 );
             }
@@ -645,22 +610,13 @@ impl Fuzz {
         }
 
         if honggfuzz_jobs > 0 {
-            self.check_bin_target(
-                super::target_dir()
-                    .join("honggfuzz")
-                    .join(target_triple::TARGET)
-                    .join("release")
-                    .join(&self.target)
-                    .as_std_path(),
-            )?;
-
             let run_args = {
                 let mut run_args = String::new();
-                run_args.push_str(&format!(" --input={}", self.corpus()));
-                run_args.push_str(&format!(" -o{}/honggfuzz/corpus", self.output_target()));
+                run_args.push_str(&format!(" --input={}", paths.corpus));
+                run_args.push_str(&format!(" -o{}/honggfuzz/corpus", paths.output_target));
                 run_args.push_str(&format!(" -n{honggfuzz_jobs}"));
                 run_args.push_str(&format!(" -F{}", self.max_length));
-                run_args.push_str(&format!(" --dynamic_input={}/queue", self.output_target()));
+                run_args.push_str(&format!(" --dynamic_input={}/queue", paths.output_target));
                 run_args.push_str(" --tmout_sigvtalrm");
                 if let Some(t) = self.timeout {
                     run_args.push_str(&format!(" -t{t}"));
@@ -675,7 +631,7 @@ impl Fuzz {
                 run_args
             };
 
-            let log = File::create(format!("{}/logs/honggfuzz.log", self.output_target()))?;
+            let log = File::create(format!("{}/logs/honggfuzz.log", paths.output_target))?;
 
             // The `script` invocation is a trick to get the correct TTY output for honggfuzz
             fuzzer_handles.push(
@@ -684,14 +640,18 @@ impl Fuzz {
                         "--flush",
                         "--quiet",
                         "-c",
-                        &format!("{} hfuzz run {}", common.cargo_path.display(), &self.target),
+                        &format!(
+                            "{} hfuzz run {}",
+                            cx.common().cargo_path.display(),
+                            &cx.bin_target()
+                        ),
                         "/dev/null",
                     ])
                     .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
-                    .env("CARGO_TARGET_DIR", super::target_dir().join("honggfuzz"))
+                    .env("CARGO_TARGET_DIR", cx.target_dir().join("honggfuzz"))
                     .env(
                         "HFUZZ_WORKSPACE",
-                        format!("{}/honggfuzz", self.output_target()),
+                        format!("{}/honggfuzz", paths.output_target),
                     )
                     .env("HFUZZ_RUN_ARGS", &run_args)
                     .stdin(std::process::Stdio::null())
@@ -709,13 +669,13 @@ impl Fuzz {
         if afl_jobs > 0 {
             eprintln!(
                 "  {}",
-                style(format!("tail -f {}/logs/afl.log", self.output_target())).bold()
+                style(format!("tail -f {}/logs/afl.log", paths.output_target)).bold()
             );
         }
         if afl_jobs > 1 {
             eprintln!(
                 "  {}",
-                style(format!("tail -f {}/logs/afl_1.log", self.output_target())).bold()
+                style(format!("tail -f {}/logs/afl_1.log", paths.output_target)).bold()
             );
         }
         if honggfuzz_jobs > 0 {
@@ -723,7 +683,7 @@ impl Fuzz {
                 "  {}",
                 style(format!(
                     "tail -f {}/logs/honggfuzz.log",
-                    self.output_target()
+                    paths.output_target
                 ))
                 .bold()
             );
@@ -732,37 +692,7 @@ impl Fuzz {
         Ok(fuzzer_handles)
     }
 
-    fn all_seeds(&self) -> Result<Vec<PathBuf>> {
-        Ok(glob(&format!("{}/afl/*/queue/*", self.output_target()))
-            .map_err(|_| anyhow!("Failed to read AFL++ queue glob pattern"))?
-            .chain(
-                glob(&format!("{}/*", self.corpus()))
-                    .map_err(|_| anyhow!("Failed to read Honggfuzz corpus glob pattern"))?,
-            )
-            .flatten()
-            .filter(|f| f.is_file())
-            .collect())
-    }
-
-    // Copy all corpora into `corpus`
-    pub fn copy_corpora(&self) -> Result<()> {
-        self.all_seeds()?.iter().for_each(|s| {
-            let _ = fs::copy(
-                s.to_str().unwrap_or_default(),
-                format!(
-                    "{}/{}",
-                    &self.corpus_tmp(),
-                    s.file_name()
-                        .unwrap_or_default()
-                        .to_str()
-                        .unwrap_or_default(),
-                ),
-            );
-        });
-        Ok(())
-    }
-
-    pub fn run_minimization(&self) -> Result<()> {
+    pub fn run_minimization(&self, common: &Common, paths: &OutputPaths) -> Result<()> {
         let term = Term::stdout();
 
         term.write_line(&format!(
@@ -770,8 +700,8 @@ impl Fuzz {
             &style("Running minimization").magenta().bold()
         ))?;
 
-        let input_corpus = &self.corpus_tmp();
-        let minimized_corpus = &self.corpus_minimized();
+        let input_corpus = &paths.corpus_tmp;
+        let minimized_corpus = &paths.corpus_minimized;
 
         let old_corpus_size = fs::read_dir(input_corpus).map_or_else(
             |_| String::from("err"),
@@ -786,7 +716,7 @@ impl Fuzz {
             (true, true, _) => bail!("Pick at least one fuzzer"),
         };
 
-        let mut minimization_args = Minimize {
+        let minimization_args = Minimize {
             target: self.target.clone(),
             input_corpus: PathBuf::from(input_corpus),
             output_corpus: PathBuf::from(minimized_corpus),
@@ -795,7 +725,7 @@ impl Fuzz {
             timeout: self.timeout.unwrap_or(5000),
             engine,
         };
-        match minimization_args.minimize() {
+        match minimization_args.minimize(common) {
             Ok(()) => {
                 let new_corpus_size = fs::read_dir(minimized_corpus).map_or_else(
                     |_| String::from("err"),
@@ -823,8 +753,13 @@ impl Fuzz {
         Ok(())
     }
 
-    pub fn print_stats(&self, common: &Common, cov_worker_status: &str) -> Stats {
-        let fuzzer_name = format!(" {} ", self.target);
+    pub fn print_stats(
+        &self,
+        cx: ContextView,
+        paths: &OutputPaths,
+        cov_worker_status: &str,
+    ) -> Stats {
+        let fuzzer_name = format!(" {} ", cx.bin_target());
 
         let reset = "\x1b[0m";
         let gray = "\x1b[1;90m";
@@ -848,13 +783,14 @@ impl Fuzz {
         if !self.afl() {
             afl_status = format!("{yellow}disabled{reset} ");
         } else {
-            let afl_stats_process = common
+            let afl_stats_process = cx
+                .common()
                 .cargo()
                 .args([
                     "afl",
                     "whatsup",
                     "-s",
-                    &format!("{}/afl", self.output_target()),
+                    &format!("{}/afl", paths.output_target),
                 ])
                 .output();
 
@@ -909,7 +845,7 @@ impl Fuzz {
             let hf_stats_process = process::Command::new("tail")
                 .args([
                     "-n300",
-                    &format!("{}/logs/honggfuzz.log", self.output_target()),
+                    &format!("{}/logs/honggfuzz.log", paths.output_target),
                 ])
                 .output();
             if let Ok(process) = hf_stats_process {
@@ -1068,7 +1004,7 @@ impl Fuzz {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum, Debug)]
 pub enum FuzzingConfig {
     Generic,
     Binary,
@@ -1085,8 +1021,6 @@ impl FuzzingConfig {
         }
     }
 }
-
-use std::fmt;
 
 impl fmt::Display for FuzzingConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1150,5 +1084,98 @@ struct BStr<'a>(&'a std::ffi::OsStr);
 impl BStr<'_> {
     fn starts_with(&self, pat: &str) -> bool {
         pat.len() <= self.0.len() && &self.0.as_encoded_bytes()[..pat.len()] == pat.as_bytes()
+    }
+}
+
+pub struct OutputPaths {
+    corpus: String,
+    corpus_tmp: String,
+    corpus_minimized: String,
+    output_target: String,
+}
+
+impl OutputPaths {
+    const HFUZZ_NO_CRASH: [&str; 3] = ["README.txt", "HONGGFUZZ.REPORT.TXT", "input"];
+    const HFUZZ_TIMEOUT_PREFIX: &str = "SIGVTALRM";
+
+    fn all_seeds(&self) -> Result<Vec<PathBuf>> {
+        Ok(glob(&format!("{}/afl/*/queue/*", self.output_target))
+            .map_err(|_| anyhow!("Failed to read AFL++ queue glob pattern"))?
+            .chain(
+                glob(&format!("{}/*", self.corpus))
+                    .map_err(|_| anyhow!("Failed to read Honggfuzz corpus glob pattern"))?,
+            )
+            .flatten()
+            .filter(|f| f.is_file())
+            .collect())
+    }
+
+    // Copy all corpora into `corpus`
+    pub fn copy_corpora(&self) -> Result<()> {
+        self.all_seeds()?.iter().for_each(|s| {
+            let _ = fs::copy(
+                s.to_str().unwrap_or_default(),
+                format!(
+                    "{}/{}",
+                    &self.corpus_tmp,
+                    s.file_name()
+                        .unwrap_or_default()
+                        .to_str()
+                        .unwrap_or_default(),
+                ),
+            );
+        });
+        Ok(())
+    }
+
+    /// Copy crashes from AFL++ or Honggfuzz's outputs into `target_dir`
+    fn sync_crashes(&self, cx: &Context, target_dir: &Path) -> Result<(), anyhow::Error> {
+        // afl
+        for dir in glob(&format!("{}/afl/*/crashes", self.output_target))
+            .map_err(|_| anyhow!("Failed to read crashes glob pattern"))?
+            .flatten()
+        {
+            copy_from_dir(dir, target_dir, |_| true)?;
+        }
+
+        // honggfuzz
+        copy_from_dir(
+            PathBuf::from(format!(
+                "{}/honggfuzz/{}",
+                self.output_target, cx.bin_target
+            )),
+            target_dir,
+            |file_name| {
+                let no_timeout = !BStr(file_name).starts_with(Self::HFUZZ_TIMEOUT_PREFIX);
+                no_timeout && Self::HFUZZ_NO_CRASH.iter().all(|name| *name != file_name)
+            },
+        )?;
+
+        Ok(())
+    }
+
+    fn sync_timeouts(&self, cx: &Context, target_dir: &Path) -> Result<(), anyhow::Error> {
+        // afl
+        for dir in glob(&format!("{}/afl/*/hangs", self.output_target))
+            .map_err(|_| anyhow!("Failed to read timeouts glob pattern"))?
+            .flatten()
+        {
+            copy_from_dir(dir, target_dir, |_| true)?;
+        }
+
+        // honggfuzz
+        copy_from_dir(
+            PathBuf::from(format!(
+                "{}/honggfuzz/{}",
+                self.output_target, cx.bin_target
+            )),
+            target_dir,
+            |file_name| {
+                let is_timeout = BStr(file_name).starts_with(Self::HFUZZ_TIMEOUT_PREFIX);
+                is_timeout && Self::HFUZZ_NO_CRASH.iter().all(|name| *name != file_name)
+            },
+        )?;
+
+        Ok(())
     }
 }

@@ -1,21 +1,16 @@
-use crate::{Plot, find_target};
-use anyhow::{Context, Result};
-use std::{env, process};
+use crate::{Common, Plot, util::Context};
+use anyhow::{Context as _, Result};
 
 impl Plot {
-    pub fn generate_plot(&mut self) -> Result<(), anyhow::Error> {
+    pub fn generate_plot(&self, common: &Common) -> Result<(), anyhow::Error> {
         eprintln!("Generating plot");
 
-        self.target =
-            find_target(&self.target).context("⚠️  couldn't find the target for plotting")?;
-
-        // The cargo executable
-        let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
+        let cx = Context::new(common, self.target.clone())?;
 
         let fuzzer_data_dir = format!(
             "{}/{}/afl/{}/",
-            &self.ziggy_output.display(),
-            &self.target,
+            self.ziggy_output.display(),
+            cx.bin_target,
             &self.input
         );
 
@@ -24,12 +19,13 @@ impl Plot {
             .display()
             .to_string()
             .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
-            .replace("{target_name}", &self.target);
+            .replace("{target_name}", &cx.bin_target);
         println!("{plot_dir}");
-        println!("{}", self.target);
+        println!("{}", cx.bin_target);
 
         // We run the afl-plot command
-        process::Command::new(&cargo)
+        common
+            .cargo()
             .args(["afl", "plot", &fuzzer_data_dir, &plot_dir])
             .spawn()
             .context("⚠️  couldn't spawn afl plot")?

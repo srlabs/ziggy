@@ -1,5 +1,5 @@
-use crate::{Common, Run, find_target};
-use anyhow::{Context, Result, bail};
+use crate::{Common, Run, util::Context};
+use anyhow::{Context as _, Result, bail};
 use console::style;
 use std::{
     collections::HashSet,
@@ -11,10 +11,10 @@ use std::{
 impl Run {
     // Run inputs
     pub fn run(&mut self, common: &Common) -> Result<(), anyhow::Error> {
-        let target = find_target(&self.target)?;
-        let target_dir = format!("--target-dir={}", super::target_dir().join("runner"));
+        let cx = Context::new(common, self.target.clone())?;
+        let target_arg = format!("--target-dir={}", cx.target_dir.join("runner"));
 
-        let mut args = vec!["rustc", &target_dir];
+        let mut args = vec!["rustc", &target_arg];
         let asan_target_str = format!("--target={}", target_triple::TARGET);
         let mut rust_flags = env::var("RUSTFLAGS").unwrap_or_default();
         let mut rust_doc_flags = env::var("RUSTDOCFLAGS").unwrap_or_default();
@@ -72,7 +72,7 @@ impl Run {
                     .display()
                     .to_string()
                     .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
-                    .replace("{target_name}", &target);
+                    .replace("{target_name}", &cx.bin_target);
                 // For each directory we read, we get all files in that directory
                 let path = PathBuf::from(canonical_name);
                 if path.is_dir() {
@@ -89,9 +89,14 @@ impl Run {
             .collect();
 
         let runner_path = if self.asan {
-            super::target_dir().join(format!("runner/{}/debug/{target}", target_triple::TARGET))
+            cx.target_dir.join(format!(
+                "runner/{}/debug/{}",
+                target_triple::TARGET,
+                cx.bin_target
+            ))
         } else {
-            super::target_dir().join(format!("runner/debug/{target}"))
+            cx.target_dir
+                .join(format!("runner/debug/{}", cx.bin_target))
         };
 
         let runner = Runner::new(

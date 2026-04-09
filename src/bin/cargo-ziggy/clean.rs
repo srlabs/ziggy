@@ -1,23 +1,24 @@
-use crate::Clean;
+use crate::{Clean, Common};
 use anyhow::{Error, bail};
-use std::{env, process::Command};
 
 impl Clean {
-    pub fn clean(&self) -> Result<(), Error> {
-        let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
-
+    pub fn clean(&self, common: &Common) -> Result<(), Error> {
+        let Ok(target_dir) = common.target_dir() else {
+            return Ok(());
+        };
         let clean = |target, target_triple: Option<&str>, try_release| -> Result<(), Error> {
             let already_profile = self
                 .args
                 .iter()
                 .any(|arg| arg.as_encoded_bytes().starts_with(b"--profile") || arg == "--release");
-            let status = Command::new(&cargo)
+            let status = common
+                .cargo()
                 .arg("clean")
                 .arg("-q")
                 .args(&self.args)
                 .args(target_triple.map(|triple| format!("--target={triple}")))
                 .args((!already_profile && try_release).then_some("--release"))
-                .env("CARGO_TARGET_DIR", super::target_dir().join(target))
+                .env("CARGO_TARGET_DIR", target_dir.join(target))
                 .status()
                 .expect("Error running cargo clean command");
             if !status.success() {

@@ -1,113 +1,116 @@
-use crate::{Build, FuzzingEngines, Minimize, find_target};
-use anyhow::{Context, Result, bail};
+use crate::{
+    Build, Common, FuzzingEngines, Minimize,
+    util::{Context, ContextView, hash_file},
+};
+use anyhow::{Context as _, Result, bail};
 use std::{
-    env,
     fs::{self, File},
-    process, thread,
+    thread,
     time::Duration,
 };
-use twox_hash::XxHash64;
 
 impl Minimize {
-    pub fn minimize(&mut self) -> Result<(), anyhow::Error> {
+    pub fn minimize(&self, common: &Common) -> Result<(), anyhow::Error> {
+        let cx = Context::new(common, self.target.clone())?;
+        let cx_view = cx.view(common);
         let build = Build {
             no_afl: self.engine == FuzzingEngines::Honggfuzz,
             no_honggfuzz: self.engine == FuzzingEngines::AFLPlusPlus,
             release: false,
             asan: false,
+            target: Some(cx.bin_target.clone()),
         };
-        build.build().context("Failed to build the fuzzers")?;
+        build.build(common).context("Failed to build the fuzzers")?;
 
-        self.target =
-            find_target(&self.target).context("⚠️  couldn't find target when minimizing")?;
-
-        if fs::read_dir(self.output_corpus()).is_ok() {
+        if fs::read_dir(self.output_corpus(&cx)).is_ok() {
             bail!(
                 "Directory {} exists, please move it before running minimization",
-                self.output_corpus()
+                self.output_corpus(&cx)
             );
         }
 
-        let entries = fs::read_dir(self.input_corpus())?;
+        let entries = fs::read_dir(self.input_corpus(&cx))?;
         let original_count = entries.flatten().count();
         println!("Running minimization on a corpus of {original_count} files");
 
         match self.engine {
             FuzzingEngines::All => {
-                let min_afl = self.clone();
-                let handle_afl = thread::spawn(move || {
-                    min_afl.minimize_afl().unwrap();
-                });
-                thread::sleep(Duration::from_millis(1000));
+                std::thread::scope(|s| -> Result<()> {
+                    let handle_afl = { s.spawn(move || self.minimize_afl(cx_view)) };
+                    thread::sleep(Duration::from_millis(1000));
+                    let handle_honggfuzz = { s.spawn(move || self.minimize_honggfuzz(cx_view)) };
 
-                let min_honggfuzz = self.clone();
-                let handle_honggfuzz = thread::spawn(move || {
-                    min_honggfuzz.minimize_honggfuzz().unwrap();
-                });
-
-                handle_afl.join().unwrap();
-                handle_honggfuzz.join().unwrap();
+                    handle_afl
+                        .join()
+                        .unwrap()
+                        .and_then(|()| handle_honggfuzz.join().unwrap())
+                })?;
             }
             FuzzingEngines::AFLPlusPlus => {
-                self.minimize_afl()?;
+                self.minimize_afl(cx_view)?;
             }
             FuzzingEngines::Honggfuzz => {
-                self.minimize_honggfuzz()?;
+                self.minimize_honggfuzz(cx_view)?;
             }
         }
 
-        // We rename every file to its md5 hash
-        let min_entries = fs::read_dir(self.output_corpus())?;
+        // We rename every file to its hash
+        let out_dir = self.output_corpus(&cx);
+        let min_entries = fs::read_dir(self.output_corpus(&cx))?;
         for file in min_entries.flatten() {
-            let bytes = fs::read(file.path()).unwrap_or_default();
-            let hash = XxHash64::oneshot(0, &bytes);
-            let _ = fs::rename(file.path(), format!("{}/{hash:x}", self.output_corpus()));
+            if let Ok(hash) = hash_file(file.path().as_path()) {
+                let _ = fs::rename(file.path(), format!("{out_dir}/{hash:x}"));
+            }
         }
 
-        let min_entries_hashed = fs::read_dir(self.output_corpus())?;
+        let min_entries_hashed = fs::read_dir(self.output_corpus(&cx))?;
         let minimized_count = min_entries_hashed.flatten().count();
         println!("Minimized corpus contains {minimized_count} files");
 
         Ok(())
     }
 
-    fn input_corpus(&self) -> String {
+    fn input_corpus(&self, cx: &Context) -> String {
         self.input_corpus
             .display()
             .to_string()
             .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
-            .replace("{target_name}", &self.target)
+            .replace("{target_name}", &cx.bin_target)
     }
 
-    fn output_corpus(&self) -> String {
+    fn output_corpus(&self, cx: &Context) -> String {
         self.output_corpus
             .display()
             .to_string()
             .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
-            .replace("{target_name}", &self.target)
+            .replace("{target_name}", &cx.bin_target)
     }
 
     // AFL++ minimization
-    fn minimize_afl(&self) -> Result<(), anyhow::Error> {
+    fn minimize_afl(&self, cx: ContextView) -> Result<(), anyhow::Error> {
         println!("Minimizing with AFL++");
-        // The cargo executable
-        let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
         let jobs_option = match self.jobs {
             0 | 1 => String::from("all"),
             t => format!("{t}"),
         };
-        let target_dir = super::target_dir().join("afl/debug").join(&self.target);
+        let target_dir = cx.target_dir().join("afl/debug").join(cx.bin_target());
 
         // AFL++ minimization
-        process::Command::new(&cargo)
+        let log_file = File::create(format!(
+            "{}/{}/logs/minimization_afl.log",
+            &self.ziggy_output.display(),
+            cx.bin_target(),
+        ))?;
+        cx.common()
+            .cargo()
             .args([
                 "afl",
                 "cmin",
                 "-i",
-                &self.input_corpus(),
+                &self.input_corpus(cx.as_ref()),
                 "-o",
-                &self.output_corpus(),
+                &self.output_corpus(cx.as_ref()),
                 "-T",
                 &jobs_option,
                 "-t",
@@ -115,58 +118,46 @@ impl Minimize {
                 "--",
                 target_dir.as_str(),
             ])
-            .stderr(File::create(format!(
-                "{}/{}/logs/minimization_afl.log",
-                &self.ziggy_output.display(),
-                &self.target,
-            ))?)
-            .stdout(File::create(format!(
-                "{}/{}/logs/minimization_afl.log",
-                &self.ziggy_output.display(),
-                &self.target,
-            ))?)
+            .stderr(log_file.try_clone()?)
+            .stdout(log_file)
             .spawn()?
             .wait()?;
         Ok(())
     }
 
     // HONGGFUZZ minimization
-    fn minimize_honggfuzz(&self) -> Result<(), anyhow::Error> {
+    fn minimize_honggfuzz(&self, cx: ContextView) -> Result<(), anyhow::Error> {
         println!("Minimizing with honggfuzz");
-        // The cargo executable
-        let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
 
-        process::Command::new(&cargo)
-            .args(["hfuzz", "run", &self.target])
-            .env("CARGO_TARGET_DIR", super::target_dir().join("honggfuzz"))
+        let log_file = File::create(format!(
+            "{}/{}/logs/minimization_honggfuzz.log",
+            &self.ziggy_output.display(),
+            cx.bin_target(),
+        ))?;
+        cx.common()
+            .cargo()
+            .args(["hfuzz", "run", cx.bin_target()])
+            .env("CARGO_TARGET_DIR", cx.target_dir().join("honggfuzz"))
             .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
             .env(
                 "HFUZZ_WORKSPACE",
                 format!(
                     "{}/{}/honggfuzz",
                     &self.ziggy_output.display(),
-                    &self.target
+                    cx.bin_target()
                 ),
             )
             .env(
                 "HFUZZ_RUN_ARGS",
                 format!(
                     "-i{} -M -o{} -t{}",
-                    &self.input_corpus(),
-                    &self.output_corpus(),
+                    &self.input_corpus(cx.as_ref()),
+                    &self.output_corpus(cx.as_ref()),
                     self.timeout
                 ),
             )
-            .stderr(File::create(format!(
-                "{}/{}/logs/minimization_honggfuzz.log",
-                &self.ziggy_output.display(),
-                &self.target,
-            ))?)
-            .stdout(File::create(format!(
-                "{}/{}/logs/minimization_honggfuzz.log",
-                &self.ziggy_output.display(),
-                &self.target,
-            ))?)
+            .stderr(log_file.try_clone()?)
+            .stdout(log_file)
             .spawn()?
             .wait()?;
         Ok(())
