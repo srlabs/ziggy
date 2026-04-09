@@ -233,6 +233,7 @@ impl Fuzz {
                             .metadata()
                             .unwrap()
                             .created()
+                            .ok()
                             .and_then(|c| c.elapsed().ok())
                             .unwrap_or_default();
                         if prev_start_time.map_or(Duration::MAX, |s| s.elapsed()) >= created {
