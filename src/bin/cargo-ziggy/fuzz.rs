@@ -153,7 +153,7 @@ impl Fuzz {
 
         self.start_time = Instant::now();
 
-        let mut sync_after: Option<SystemTime> = None;
+        let mut last_corpus_sync: Option<SystemTime> = None;
         let mut last_sync_time = Instant::now();
         let mut afl_output_ok = false;
 
@@ -190,7 +190,7 @@ impl Fuzz {
                 eprintln!("\rShutting down...");
                 let res = [
                     stop_fuzzers(&processes),
-                    self.sync_corpora(&paths, sync_after).map(|_| ()),
+                    self.sync_corpora(&paths, last_corpus_sync).map(|_| ()),
                     paths.sync_crashes(&cx, crash_path),
                     paths.sync_timeouts(&cx, timeouts_path),
                 ];
@@ -226,33 +226,42 @@ impl Fuzz {
                     let cx = cx.clone();
                     thread::spawn(move || {
                         let mut seen_new_entry = false;
-                        let prev_start_time = {
-                            let unlocked = cov_start_time.lock().unwrap();
-                            *unlocked
-                        };
-                        *cov_start_time.lock().unwrap() = Some(Instant::now());
+                        let prev_start_time =
+                            cov_start_time.lock().unwrap().replace(SystemTime::now());
+
                         let profile_bin = cx.target_dir.join(format!("coverage/debug/{target}"));
-                        let profile_file = cx
+                        let profile_base = cx
                             .target_dir
-                            .join("coverage/debug/deps/coverage-%p-%m.profraw");
+                            .join("coverage/debug/deps/coverage-")
+                            .as_std_path()
+                            .to_path_buf();
                         let entries = std::fs::read_dir(&main_corpus).unwrap();
                         for entry in entries.flatten().map(|e| e.path()) {
-                            // We only want to run corpus entries created since the last time we ran.
-                            let created = entry
-                                .metadata()
-                                .unwrap()
-                                .created()
-                                .ok()
-                                .and_then(|c| c.elapsed().ok())
-                                .unwrap_or_default();
-                            if prev_start_time.map_or(Duration::MAX, |s| s.elapsed()) >= created {
-                                let _ = process::Command::new(&profile_bin)
-                                    .arg(entry)
-                                    .env("LLVM_PROFILE_FILE", &profile_file)
-                                    .stdout(Stdio::null())
-                                    .stderr(Stdio::null())
-                                    .status();
-                                seen_new_entry = true;
+                            // We only want to run new corpus entries since the last time we ran.
+                            let potentially_new = entry.metadata().is_ok_and(|meta| {
+                                meta.modified()
+                                    .ok()
+                                    .and_then(|mtime| {
+                                        prev_start_time
+                                            .map(|prev| prev < mtime || mtime.elapsed().is_err()) // guard against `SystemTime`-drift
+                                    })
+                                    .unwrap_or(true)
+                            });
+                            if potentially_new && let Some(hash) = entry.file_name() {
+                                let profile_file = {
+                                    let mut p = profile_base.join(hash);
+                                    p.add_extension("profraw");
+                                    p
+                                };
+                                if !profile_file.exists() {
+                                    let _ = process::Command::new(&profile_bin)
+                                        .arg(entry)
+                                        .env("LLVM_PROFILE_FILE", &profile_file)
+                                        .stdout(Stdio::null())
+                                        .stderr(Stdio::null())
+                                        .status();
+                                    seen_new_entry = true;
+                                }
                             }
                         }
                         let res = if seen_new_entry {
@@ -305,7 +314,7 @@ impl Fuzz {
 
             // Sync corpus dirs
             if last_sync_time.elapsed() > Duration::from_mins(self.corpus_sync_interval) {
-                sync_after.replace(self.sync_corpora(&paths, sync_after)?);
+                last_corpus_sync.replace(self.sync_corpora(&paths, last_corpus_sync)?);
                 last_sync_time = Instant::now();
             }
 
@@ -326,7 +335,7 @@ impl Fuzz {
     fn sync_corpora(
         &self,
         paths: &OutputPaths,
-        newer_then: Option<SystemTime>,
+        last_sync: Option<SystemTime>,
     ) -> Result<SystemTime, anyhow::Error> {
         let now = SystemTime::now();
         let afl_files = glob(&format!(
@@ -345,10 +354,15 @@ impl Fuzz {
                     return false;
                 }
                 if let Ok(mtime) = metadata.modified() {
-                    return newer_then.is_none_or(|newer_then| newer_then < mtime);
+                    // guard against `SystemTime`-drift
+                    last_sync.is_none_or(|last_sync| last_sync < mtime || mtime.elapsed().is_err())
+                } else {
+                    // include when missing `mtime` (we check the files hash anyway)
+                    true
                 }
+            } else {
+                false
             }
-            false
         });
 
         let queue_path = PathBuf::from(format!("{}/queue", paths.output_target));

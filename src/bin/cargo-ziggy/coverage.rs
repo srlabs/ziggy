@@ -151,6 +151,9 @@ impl Cover {
         coverage_rustflags.push(' ');
         coverage_rustflags.push_str(&env::var("RUSTFLAGS").unwrap_or_default());
 
+        let profiles_dir = target_dir.join("coverage/build-coverage-profraw");
+        fs::create_dir_all(&profiles_dir)?;
+
         let build = common
             .cargo()
             .args([
@@ -161,7 +164,7 @@ impl Cover {
             .env("RUSTFLAGS", coverage_rustflags)
             .env(
                 "LLVM_PROFILE_FILE",
-                target_dir.join("coverage/debug/deps/build-%p-%m.profraw"),
+                profiles_dir.join("build-%p-%m.profraw"),
             )
             .spawn()
             .context("⚠️  couldn't spawn rustc for coverage")?
@@ -170,6 +173,8 @@ impl Cover {
         if !build.success() {
             bail!("⚠️  build failed");
         }
+
+        fs::remove_dir_all(&profiles_dir)?;
         Ok(())
     }
 
