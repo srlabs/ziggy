@@ -472,22 +472,59 @@ impl Common {
         if meta.workspace_default_members.is_missing() {
             bail!("please specify a target")
         }
-        let bins: Vec<&str> = meta
+        let bins: Vec<Bin> = meta
             .workspace_default_packages()
             .into_iter()
             .flat_map(|p| {
                 p.targets
                     .iter()
-                    .filter_map(|t| t.is_bin().then_some(t.name.as_str()))
+                    .filter_map(|t| t.is_bin().then_some(Bin::from(t)))
             })
             .collect();
         if bins.len() == 1 {
-            return Ok(bins[0].to_owned());
+            return Ok(bins[0].as_ref().to_owned());
+        }
+        // fallback to `main.rs`
+        let main_bins: Vec<Bin> = bins
+            .iter()
+            .copied()
+            .filter(|b| matches!(b, Bin::Main(_)))
+            .collect();
+        if main_bins.len() == 1 {
+            return Ok(main_bins[0].as_ref().to_owned());
         }
         bail!(
-            "please specify a target\nhelp: available targets:\n\t{}",
-            bins.join("\n\t")
+            "please specify a target\nhelp: available targets:{}",
+            bins.into_iter().fold(String::new(), |mut acc, bin| {
+                acc.push_str("\n\t");
+                acc.push_str(bin.as_ref());
+                acc
+            })
         );
+
+        #[derive(Debug, Clone, Copy)]
+        enum Bin<'a> {
+            Main(&'a str),
+            Other(&'a str),
+        }
+
+        impl AsRef<str> for Bin<'_> {
+            fn as_ref(&self) -> &str {
+                match self {
+                    Self::Main(s) | Self::Other(s) => s,
+                }
+            }
+        }
+
+        impl<'a> From<&'a cargo_metadata::Target> for Bin<'a> {
+            fn from(target: &'a cargo_metadata::Target) -> Self {
+                if target.src_path.ends_with("main.rs") {
+                    Self::Main(target.name.as_str())
+                } else {
+                    Self::Other(target.name.as_str())
+                }
+            }
+        }
     }
 
     fn resolve_bin(&self, target: Option<String>) -> Result<String> {
