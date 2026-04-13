@@ -10,10 +10,9 @@ mod triage;
 mod util;
 
 use crate::fuzz::FuzzingConfig;
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::{
-    fs,
     path::PathBuf,
     sync::OnceLock,
     sync::{Arc, atomic::AtomicBool},
@@ -87,6 +86,10 @@ pub enum Ziggy {
 
 #[derive(Args)]
 pub struct Build {
+    /// Target to build
+    #[clap(value_name = "TARGET")]
+    target: Option<String>,
+
     /// No AFL++ (Fuzz only with honggfuzz)
     #[clap(long = "no-afl", action)]
     no_afl: bool,
@@ -107,8 +110,8 @@ pub struct Build {
 #[derive(Args)]
 pub struct Fuzz {
     /// Target to fuzz
-    #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
-    target: String,
+    #[clap(value_name = "TARGET")]
+    target: Option<String>,
 
     /// Shared corpus directory
     #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CORPUS_DIR)]
@@ -204,8 +207,8 @@ pub struct Fuzz {
 #[derive(Args)]
 pub struct Run {
     /// Target to use
-    #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
-    target: String,
+    #[clap(value_name = "TARGET")]
+    target: Option<String>,
 
     /// Input directories and/or files to run
     #[clap(short, long, value_name = "DIR", default_value = DEFAULT_CORPUS_DIR)]
@@ -241,8 +244,8 @@ pub struct Run {
 #[derive(Args, Clone)]
 pub struct Minimize {
     /// Target to use
-    #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
-    target: String,
+    #[clap(value_name = "TARGET")]
+    target: Option<String>,
 
     /// Corpus directory to minimize
     #[clap(short, long, default_value = DEFAULT_CORPUS_DIR)]
@@ -273,8 +276,8 @@ pub struct Minimize {
 #[derive(Args)]
 pub struct Cover {
     /// Target to generate coverage for
-    #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
-    target: String,
+    #[clap(value_name = "TARGET")]
+    target: Option<String>,
 
     /// Output directory for code coverage report
     #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_COVERAGE_DIR)]
@@ -310,8 +313,8 @@ pub struct Cover {
 #[derive(Args)]
 pub struct Plot {
     /// Target to generate plot for
-    #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
-    target: String,
+    #[clap(value_name = "TARGET")]
+    target: Option<String>,
 
     /// Name of AFL++ fuzzer to use as data source
     #[clap(short, long, value_name = "NAME", default_value = "mainaflfuzzer")]
@@ -331,8 +334,8 @@ pub struct Plot {
 #[derive(Args)]
 pub struct Triage {
     /// Target to use
-    #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
-    target: String,
+    #[clap(value_name = "TARGET")]
+    target: Option<String>,
 
     /// Triage output directory to be written to (will be overwritten)
     #[clap(short, long, value_name = "DIR", default_value = DEFAULT_TRIAGE_DIR)]
@@ -361,8 +364,8 @@ pub struct Triage {
 #[derive(Args)]
 pub struct AddSeeds {
     /// Target to use
-    #[clap(value_name = "TARGET", default_value = DEFAULT_UNMODIFIED_TARGET)]
-    target: String,
+    #[clap(value_name = "TARGET")]
+    target: Option<String>,
 
     /// Seeds directory to be added
     #[clap(short, long, value_parser, value_name = "DIR")]
@@ -388,6 +391,7 @@ pub struct Common {
     sigs_done: Option<()>,
     pub cargo_path: PathBuf,
     runtime: OnceLock<tokio::runtime::Runtime>,
+    metadata: OnceLock<Option<cargo_metadata::Metadata>>,
 }
 
 impl Common {
@@ -399,6 +403,7 @@ impl Common {
                 .unwrap_or_else(|_| String::from("cargo"))
                 .into(),
             runtime: OnceLock::new(),
+            metadata: OnceLock::new(),
         }
     }
     fn is_terminated(&self) -> bool {
@@ -445,6 +450,49 @@ impl Common {
                 .expect("Failed building tokio runtime")
         })
     }
+
+    /// Cached `cargo metadata`
+    fn metadata(&self) -> Option<&cargo_metadata::Metadata> {
+        self.metadata
+            .get_or_init(|| cargo_metadata::MetadataCommand::new().exec().ok())
+            .as_ref()
+    }
+
+    fn target_dir(&self) -> Result<&util::Utf8PathBuf> {
+        self.metadata()
+            .map(|metadata| &metadata.target_directory)
+            .ok_or_else(|| anyhow!("not in a Cargo workspace"))
+    }
+
+    fn guess_bin(&self) -> Result<String> {
+        let meta = self
+            .metadata()
+            .ok_or_else(|| anyhow!("failed running cargo metadata"))?;
+
+        if meta.workspace_default_members.is_missing() {
+            bail!("please specify a target")
+        }
+        let bins: Vec<&str> = meta
+            .workspace_default_packages()
+            .into_iter()
+            .flat_map(|p| {
+                p.targets
+                    .iter()
+                    .filter_map(|t| t.is_bin().then_some(t.name.as_str()))
+            })
+            .collect();
+        if bins.len() == 1 {
+            return Ok(bins[0].to_owned());
+        }
+        bail!(
+            "please specify a target\nhelp: available targets:\n\t{}",
+            bins.join("\n\t")
+        );
+    }
+
+    fn resolve_bin(&self, target: Option<String>) -> Result<String> {
+        target.ok_or(()).or_else(|()| self.guess_bin())
+    }
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -454,60 +502,24 @@ fn main() -> Result<(), anyhow::Error> {
 
     let Cargo::Ziggy(command) = Cargo::parse();
     match command {
-        Ziggy::Build(args) => args.build().context("Failed to build the fuzzers"),
+        Ziggy::Build(args) => args.build(&common).context("Failed to build the fuzzers"),
         Ziggy::Fuzz(mut args) => args.fuzz(&common).context("Failure running fuzzers"),
         Ziggy::Run(mut args) => args.run(&common).context("Failure running inputs"),
-        Ziggy::Minimize(mut args) => args.minimize().context("Failure running minimization"),
-        Ziggy::Cover(mut args) => args
-            .generate_coverage()
+        Ziggy::Minimize(args) => args
+            .minimize(&common)
+            .context("Failure running minimization"),
+        Ziggy::Cover(args) => args
+            .generate_coverage(&common)
             .context("Failure generating coverage"),
-        Ziggy::Plot(mut args) => args.generate_plot().context("Failure generating plot"),
-        Ziggy::AddSeeds(args) => args.add_seeds().context("Failure adding seeds to AFL"),
-        Ziggy::Triage(args) => args.triage().context("Failure triaging with casr"),
-        Ziggy::Clean(args) => args.clean().context("Failure cleaning build artifacts"),
+        Ziggy::Plot(args) => args
+            .generate_plot(&common)
+            .context("Failure generating plot"),
+        Ziggy::AddSeeds(args) => args
+            .add_seeds(&common)
+            .context("Failure adding seeds to AFL"),
+        Ziggy::Triage(args) => args.triage(&common).context("Failure triaging with casr"),
+        Ziggy::Clean(args) => args
+            .clean(&common)
+            .context("Failure cleaning build artifacts"),
     }
-}
-
-pub fn find_target(target: &String) -> Result<String, anyhow::Error> {
-    // If the target is already set, we're done here
-    if target != DEFAULT_UNMODIFIED_TARGET {
-        return Ok(target.into());
-    }
-
-    let new_target_result = guess_target();
-
-    new_target_result.context("Target is not obvious")
-}
-
-fn guess_target() -> Result<String> {
-    let metadata = cargo_metadata::MetadataCommand::new().exec()?;
-    let default_bin = metadata
-        .workspace_default_members
-        .iter()
-        .find_map(|default_pkg| {
-            metadata
-                .packages
-                .iter()
-                .find(|p| p.id == *default_pkg)
-                .and_then(|p| {
-                    p.targets
-                        .iter()
-                        .find_map(|target| target.is_bin().then(|| target.name.clone()))
-                })
-        });
-
-    default_bin.ok_or_else(|| anyhow!("Please specify a target"))
-}
-
-fn target_dir() -> &'static cargo_metadata::camino::Utf8PathBuf {
-    use std::sync::LazyLock;
-
-    static TARGET_DIR: LazyLock<cargo_metadata::camino::Utf8PathBuf> = LazyLock::new(|| {
-        cargo_metadata::MetadataCommand::new().exec().map_or_else(
-            |_| cargo_metadata::camino::Utf8PathBuf::from("target"),
-            |metadata| metadata.target_directory,
-        )
-    });
-
-    &TARGET_DIR
 }

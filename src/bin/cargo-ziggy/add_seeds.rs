@@ -1,9 +1,9 @@
-use crate::*;
-use anyhow::bail;
+use crate::{AddSeeds, Common};
+use anyhow::{Context, bail};
 use std::{env, process};
 
 impl AddSeeds {
-    pub fn add_seeds(&self) -> Result<(), anyhow::Error> {
+    pub fn add_seeds(&self, common: &Common) -> Result<(), anyhow::Error> {
         eprintln!("Adding seeds to AFL");
 
         let req = semver::VersionReq::parse(">=0.14.5").unwrap();
@@ -27,11 +27,11 @@ impl AddSeeds {
             );
         }
 
-        let target = find_target(&self.target)?;
+        let target = common.resolve_bin(self.target.clone())?;
         let input = self.input.display().to_string();
 
-        let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
-        process::Command::new(&cargo)
+        common
+            .cargo()
             .args([
                 "afl",
                 "addseeds",

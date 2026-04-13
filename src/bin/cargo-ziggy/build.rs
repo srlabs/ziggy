@@ -1,23 +1,29 @@
-use crate::Build;
-use anyhow::{Context, Result, bail};
+use crate::{Build, Common, util::Context};
+use anyhow::{Context as _, Result, bail};
 use console::style;
 use std::{env, process};
 
 impl Build {
     /// Build the fuzzers
-    pub fn build(&self) -> Result<(), anyhow::Error> {
+    pub fn build(&self, common: &Common) -> Result<(), anyhow::Error> {
         // No fuzzers for you
         if self.no_afl && self.no_honggfuzz {
             bail!("Pick at least one fuzzer");
         }
 
-        // The cargo executable
-        let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
+        let cx = Context::new(common, self.target.clone())?;
 
         if !self.no_afl {
             eprintln!("    {} afl", style("Building").red().bold());
-            let target_dir = format!("--target-dir={}", super::target_dir().join("afl"));
-            let mut afl_args = vec!["afl", "build", "--features=ziggy/afl", &target_dir];
+            let target_dir = format!("--target-dir={}", cx.target_dir.join("afl"));
+            let mut afl_args = vec![
+                "afl",
+                "build",
+                "--features=ziggy/afl",
+                &target_dir,
+                "--bin",
+                &cx.bin_target,
+            ];
 
             // Add the --release argument if self.release is true
             if self.release {
@@ -29,7 +35,8 @@ impl Build {
             let mut rust_doc_flags = env::var("RUSTDOCFLAGS").unwrap_or_default();
 
             // First fuzzer we build: AFL++
-            let run = process::Command::new(&cargo)
+            let run = common
+                .cargo()
                 .args(&afl_args)
                 .env("AFL_QUIET", "1")
                 .env("AFL_LLVM_CMPLOG", "1") // for afl.rs feature "plugins"
@@ -57,7 +64,8 @@ impl Build {
                 rust_flags.push_str("-Copt-level=0");
                 rust_doc_flags.push_str(" -Zsanitizer=address ");
 
-                let run = process::Command::new(&cargo)
+                let run = common
+                    .cargo()
                     .args(afl_args)
                     .env("AFL_QUIET", "1")
                     // need to specify for afl.rs so that we build with -Copt-level=0
@@ -85,9 +93,10 @@ impl Build {
             eprintln!("    {} honggfuzz", style("Building").red().bold());
 
             // Second fuzzer we build: Honggfuzz
-            let run = process::Command::new(&cargo)
-                .args(["hfuzz", "build"])
-                .env("CARGO_TARGET_DIR", super::target_dir().join("honggfuzz"))
+            let run = common
+                .cargo()
+                .args(["hfuzz", "build", "--bin", &cx.bin_target])
+                .env("CARGO_TARGET_DIR", cx.target_dir.join("honggfuzz"))
                 .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
                 .env("RUSTFLAGS", env::var("RUSTFLAGS").unwrap_or_default())
                 .stdout(process::Stdio::piped())

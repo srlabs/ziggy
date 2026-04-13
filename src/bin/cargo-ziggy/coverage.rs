@@ -1,6 +1,5 @@
-use crate::{Cover, find_target};
-use anyhow::{Context, Result, anyhow, bail};
-use cargo_metadata::camino::Utf8PathBuf;
+use crate::{Common, Cover, util::Context, util::Utf8PathBuf};
+use anyhow::{Context as _, Result, anyhow, bail};
 use glob::glob;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -16,7 +15,8 @@ thread_local! {
 }
 
 impl Cover {
-    pub fn generate_coverage(&mut self) -> Result<(), anyhow::Error> {
+    pub fn generate_coverage(&self, common: &Common) -> Result<(), anyhow::Error> {
+        let cx = Context::new(common, self.target.clone())?;
         process::Command::new("grcov")
             .arg("--version")
             .output()
@@ -40,9 +40,6 @@ impl Cover {
 
         eprintln!("Generating coverage");
 
-        self.target =
-            find_target(&self.target).context("⚠️  couldn't find the target to start coverage")?;
-
         if let Some(path) = &self.source
             && !path.try_exists()?
         {
@@ -50,11 +47,11 @@ impl Cover {
         }
 
         // build the runner
-        Self::build_runner()?;
+        Self::build_runner(common)?;
 
         if !self.keep {
             // We remove the previous coverage files
-            Self::clean_old_cov()?;
+            Self::clean_old_cov(&cx)?;
         }
 
         let input_path = PathBuf::from(
@@ -62,7 +59,7 @@ impl Cover {
                 .display()
                 .to_string()
                 .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
-                .replace("{target_name}", &self.target),
+                .replace("{target_name}", &cx.bin_target),
         );
 
         let coverage_corpus = if input_path.is_dir() {
@@ -87,16 +84,16 @@ impl Cover {
             .display()
             .to_string()
             .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
-            .replace("{target_name}", &self.target);
+            .replace("{target_name}", &cx.bin_target);
 
         delete_dir_or_file(&coverage_dir)?;
 
         // Get the absolute path for the coverage directory to ensure .profraw files
         // are created in the correct location, even in workspace scenarios
-        let base_dir = super::target_dir().join("coverage/debug");
+        let base_dir = cx.target_dir.join("coverage/debug");
         let coverage_target_dir = base_dir.join("deps");
         let cfg = Cfg::new(
-            base_dir.join(&self.target),
+            base_dir.join(&cx.bin_target),
             coverage_target_dir.join("coverage-%p-%m.profraw"),
         );
 
@@ -109,7 +106,7 @@ impl Cover {
             .unwrap()
             .progress_chars("#>-"),
         );
-        let log_dir = self.ziggy_output.join(format!("{}/logs", &self.target));
+        let log_dir = self.ziggy_output.join(format!("{}/logs", &cx.bin_target));
         fs::create_dir_all(&log_dir)?;
         let log_file = std::sync::Mutex::new(std::fs::File::create(log_dir.join("coverage.log"))?);
         coverage_corpus.into_par_iter().for_each(|file| {
@@ -137,7 +134,7 @@ impl Cover {
         // We generate the code coverage report
         eprintln!("\n    Generating coverage report");
         Self::run_grcov(
-            &self.target,
+            &cx,
             output_types,
             &coverage_dir,
             &source_or_workspace_root,
@@ -146,22 +143,25 @@ impl Cover {
     }
 
     /// Build the runner with the appropriate flags for coverage
-    pub fn build_runner() -> Result<(), anyhow::Error> {
-        // The cargo executable
-        let cargo = env::var("CARGO").unwrap_or_else(|_| String::from("cargo"));
+    pub fn build_runner(common: &Common) -> Result<(), anyhow::Error> {
+        let target_dir = common.target_dir()?;
 
         let mut coverage_rustflags =
             env::var("COVERAGE_RUSTFLAGS").unwrap_or_else(|_| "-Cinstrument-coverage".to_string());
         coverage_rustflags.push(' ');
         coverage_rustflags.push_str(&env::var("RUSTFLAGS").unwrap_or_default());
-        let target_dir = format!("--target-dir={}", super::target_dir().join("coverage"));
 
-        let build = process::Command::new(&cargo)
-            .args(["rustc", "--features=ziggy/coverage", &target_dir])
+        let build = common
+            .cargo()
+            .args([
+                "rustc",
+                "--features=ziggy/coverage",
+                &format!("--target-dir={}", target_dir.join("coverage")),
+            ])
             .env("RUSTFLAGS", coverage_rustflags)
             .env(
                 "LLVM_PROFILE_FILE",
-                super::target_dir().join("coverage/debug/deps/build-%p-%m.profraw"),
+                target_dir.join("coverage/debug/deps/build-%p-%m.profraw"),
             )
             .spawn()
             .context("⚠️  couldn't spawn rustc for coverage")?
@@ -174,7 +174,7 @@ impl Cover {
     }
 
     pub fn run_grcov(
-        target: &str,
+        cx: &Context,
         output_types: &str,
         coverage_dir: &str,
         source_or_workspace_root: &str,
@@ -182,8 +182,8 @@ impl Cover {
     ) -> Result<(), anyhow::Error> {
         let coverage = process::Command::new("grcov")
             .args([
-                crate::target_dir().join("coverage/debug/deps").as_str(),
-                &format!("-b={}/coverage/debug/{target}", super::target_dir()),
+                cx.target_dir.join("coverage/debug/deps").as_str(),
+                &format!("-b={}/coverage/debug/{}", cx.target_dir, cx.bin_target),
                 &format!("-s={source_or_workspace_root}"),
                 &format!("-t={output_types}"),
                 "--llvm",
@@ -202,10 +202,9 @@ impl Cover {
         Ok(())
     }
 
-    pub fn clean_old_cov() -> Result<(), anyhow::Error> {
+    pub fn clean_old_cov(cx: &Context) -> Result<(), anyhow::Error> {
         // Use absolute path to ensure we clean the correct location in workspaces
-        let coverage_deps_dir = super::target_dir().join("coverage/debug/deps");
-        let pattern = coverage_deps_dir.join("*.profraw");
+        let pattern = cx.target_dir.join("*.profraw");
 
         if let Ok(profile_files) = glob(pattern.as_str()) {
             for file in profile_files.flatten() {

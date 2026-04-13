@@ -1,20 +1,20 @@
-use crate::*;
-use anyhow::bail;
-use std::process;
+use crate::{Common, Triage, util::Context};
+use anyhow::{Context as _, bail};
+use std::{fs, process};
 
 impl Triage {
-    pub fn triage(&self) -> Result<(), anyhow::Error> {
+    pub fn triage(&self, common: &Common) -> Result<(), anyhow::Error> {
         eprintln!("Running CASR triage on crashes");
 
-        let target = find_target(&self.target)?;
-        let input_dir = format!("{}/{target}/afl", self.ziggy_output.display());
+        let cx = Context::new(common, self.target.clone())?;
+        let input_dir = cx.target_dir.join("afl");
 
         let triage_dir = self
             .output
             .display()
             .to_string()
             .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
-            .replace("{target_name}", &target);
+            .replace("{target_name}", &cx.bin_target);
         fs::remove_dir_all(&triage_dir).ok();
 
         if !fs::metadata(&input_dir)
@@ -34,7 +34,7 @@ impl Triage {
         process::Command::new("casr-afl")
             .args([
                 "-i",
-                &input_dir,
+                input_dir.as_ref(),
                 "-o",
                 &triage_dir,
                 &format!("-j{}", self.jobs),
