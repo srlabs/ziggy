@@ -491,10 +491,11 @@ impl Common {
             return Ok((*name).to_owned());
         }
         // otherwise we ask the user to choose
-        let targets = bins
-            .iter()
-            .map(|(name, _)| format!("\n\t{name}"))
-            .collect::<String>();
+        let mut targets = String::new();
+        for (name, _) in bins {
+            targets.push_str("\n\t");
+            targets.push_str(name);
+        }
         bail!("please specify a target\nhelp: available targets:{targets}");
     }
 
