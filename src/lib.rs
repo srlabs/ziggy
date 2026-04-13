@@ -1,8 +1,4 @@
 #![doc = include_str!("../README.md")]
-#[cfg(feature = "afl")]
-pub use afl::fuzz as afl_fuzz;
-#[cfg(feature = "honggfuzz")]
-pub use honggfuzz::fuzz as honggfuzz_fuzz;
 
 // This is our inner harness handler function for the runner.
 // We open the input file and feed the data to the harness closure.
@@ -26,9 +22,9 @@ where
     closure(buffer.as_slice());
 }
 
-/// Fuzz a closure-like block of code by passing an object of arbitrary type.
+/// Fuzz a closure-like block of code by passing a slice or an object of arbitrary type.
 ///
-/// It can handle different types of arguments for the harness closure, including Arbitrary.
+/// It can handle different types of arguments for the harness closure, including [`Arbitrary`](https://docs.rs/arbitrary/latest/arbitrary/trait.Arbitrary.html).
 ///
 /// See [our examples](https://github.com/srlabs/ziggy/tree/main/examples).
 ///
@@ -47,6 +43,7 @@ where
 /// # }
 /// ```
 #[macro_export]
+#[doc(hidden)]
 macro_rules! inner_fuzz {
     (|$buf:ident| $body:block) => {
         $crate::run_file(|$buf| $body);
@@ -69,14 +66,13 @@ macro_rules! inner_fuzz {
     };
 }
 
-/// We need this wrapper
-#[macro_export]
 #[cfg(not(any(feature = "afl", feature = "honggfuzz")))]
-macro_rules! fuzz {
-    ( $($x:tt)* ) => {
-        $crate::inner_fuzz!($($x)*);
-    }
-}
+#[doc(inline)]
+pub use inner_fuzz as fuzz;
+
+#[cfg(feature = "afl")]
+#[doc(hidden)]
+pub use afl::fuzz as afl_fuzz;
 
 #[macro_export]
 #[cfg(feature = "afl")]
@@ -91,12 +87,6 @@ macro_rules! fuzz {
     };
 }
 
-#[macro_export]
 #[cfg(all(feature = "honggfuzz", not(feature = "afl")))]
-macro_rules! fuzz {
-    ( $($x:tt)* ) => {
-        loop {
-            $crate::honggfuzz_fuzz!($($x)*);
-        }
-    };
-}
+#[doc(inline)]
+pub use honggfuzz::fuzz;

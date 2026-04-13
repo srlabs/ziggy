@@ -15,6 +15,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::{
     fs,
     path::PathBuf,
+    sync::OnceLock,
     sync::{Arc, atomic::AtomicBool},
 };
 
@@ -228,6 +229,10 @@ pub struct Run {
     #[clap(short = 'F', long, num_args = 0..)]
     features: Vec<String>,
 
+    /// Timeout for a single run
+    #[clap(short, long, value_name = "SECS")]
+    timeout: Option<u32>,
+
     /// Stop the run after the first crash is encountered
     #[clap(short = 'x', long)]
     stop_on_crash: bool,
@@ -382,6 +387,7 @@ pub struct Common {
     terminate: Arc<AtomicBool>,
     sigs_done: Option<()>,
     pub cargo_path: PathBuf,
+    runtime: OnceLock<tokio::runtime::Runtime>,
 }
 
 impl Common {
@@ -392,6 +398,7 @@ impl Common {
             cargo_path: std::env::var("CARGO")
                 .unwrap_or_else(|_| String::from("cargo"))
                 .into(),
+            runtime: OnceLock::new(),
         }
     }
     fn is_terminated(&self) -> bool {
@@ -429,6 +436,15 @@ impl Common {
         cmd.stdin(std::process::Stdio::null());
         cmd
     }
+
+    fn async_runtime(&self) -> &tokio::runtime::Runtime {
+        self.runtime.get_or_init(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("Failed building tokio runtime")
+        })
+    }
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -440,7 +456,7 @@ fn main() -> Result<(), anyhow::Error> {
     match command {
         Ziggy::Build(args) => args.build().context("Failed to build the fuzzers"),
         Ziggy::Fuzz(mut args) => args.fuzz(&common).context("Failure running fuzzers"),
-        Ziggy::Run(mut args) => args.run().context("Failure running inputs"),
+        Ziggy::Run(mut args) => args.run(&common).context("Failure running inputs"),
         Ziggy::Minimize(mut args) => args.minimize().context("Failure running minimization"),
         Ziggy::Cover(mut args) => args
             .generate_coverage()
