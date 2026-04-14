@@ -7,7 +7,13 @@ description = "A multi-fuzzer management utility for all of your Rust fuzzing ne
 repository = "https://github.com/srlabs/ziggy/"
 
 [workspace]
-members = [".", "examples/arbitrary", "examples/asan", "examples/unstable", "examples/url"]
+members = [
+    ".",
+    "examples/arbitrary",
+    "examples/asan",
+    "examples/unstable",
+    "examples/url",
+]
 
 [[bin]]
 name = "cargo-ziggy"
