@@ -249,9 +249,9 @@ impl Fuzz {
                             });
                             if potentially_new && let Some(hash) = entry.file_name() {
                                 let profile_file = {
-                                    let mut p = profile_base.join(hash);
-                                    p.add_extension("profraw");
-                                    p
+                                    let mut name = hash.to_os_string();
+                                    name.push(".profraw");
+                                    profile_base.join(name)
                                 };
                                 if !profile_file.exists() {
                                     let _ = process::Command::new(&profile_bin)
