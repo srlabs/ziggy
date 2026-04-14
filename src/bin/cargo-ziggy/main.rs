@@ -297,9 +297,9 @@ pub struct Cover {
     #[clap(short, long, default_value_t = false)]
     keep: bool,
 
-    /// Output type (available: html, text, json, lcov). Default: html
+    /// Output type (available: html, text, json, lcov)
     #[clap(short = 't', long, default_values_t = vec![coverage::ReportType::Html])]
-    output_types: Vec<coverage::ReportType>,
+    output_type: Vec<coverage::ReportType>,
 
     /// Number of concurrent jobs
     #[clap(short, long, value_name = "NUM")]

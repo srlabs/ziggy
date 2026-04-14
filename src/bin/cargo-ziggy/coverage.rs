@@ -112,7 +112,7 @@ impl Cover {
 
         let mut fmt = 0_u8;
         let types = {
-            for t in &self.output_types {
+            for t in &self.output_type {
                 match t {
                     ReportType::Html => fmt |= 1 << 0,
                     ReportType::Text => fmt |= 1 << 1,
