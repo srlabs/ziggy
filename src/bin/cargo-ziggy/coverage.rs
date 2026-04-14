@@ -1,13 +1,13 @@
 use crate::{Common, Cover, util::Context, util::Utf8PathBuf};
-use anyhow::{Context as _, Result, anyhow, bail};
-use glob::glob;
+use anyhow::{Context as _, Result, bail};
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{
-    env, fs,
+    env, fmt, fs,
     io::{Read, Write},
     path::{Path, PathBuf},
     process,
+    str::FromStr,
 };
 
 thread_local! {
@@ -17,37 +17,18 @@ thread_local! {
 impl Cover {
     pub fn generate_coverage(&self, common: &Common) -> Result<(), anyhow::Error> {
         let cx = Context::new(common, self.target.clone())?;
-        process::Command::new("grcov")
-            .arg("--version")
-            .output()
-            .context("grcov not found - please install by running `cargo install grcov`")?;
 
-        if let Ok(dir) = tempfile::tempdir() {
-            const TAG: &str = "[ERROR] ";
-            let _ = std::fs::File::create(dir.path().join("a.profraw"));
-            if let Some(out) = process::Command::new("grcov")
-                .args(["-b=.", "-o=.", "."])
-                .current_dir(dir.path())
-                .output()
-                .ok()
-                .and_then(|o| String::from_utf8(o.stderr).ok())
-                && let Some(idx) = out.find(TAG)
-            {
-                return Err(anyhow!("{}", &out[idx + TAG.len()..]))
-                    .context("grcov missing dependencies");
-            }
-        }
+        let base_dir = cx.target_dir.join("coverage/debug");
+        let coverage_target_dir = base_dir.join("deps");
+        let cfg = Cfg::new(
+            base_dir.join(&cx.bin_target),
+            coverage_target_dir.join("coverage-%p-%m.profraw"),
+        )?;
 
         eprintln!("Generating coverage");
 
-        if let Some(path) = &self.source
-            && !path.try_exists()?
-        {
-            bail!("Source directory specified, but path does not exist!");
-        }
-
         // build the runner
-        Self::build_runner(common)?;
+        Self::build_runner(common).context("instrumenting for coverage")?;
 
         if !self.keep {
             // We remove the previous coverage files
@@ -64,7 +45,7 @@ impl Cover {
 
         let coverage_corpus = if input_path.is_dir() {
             fs::read_dir(input_path)
-                .unwrap()
+                .context("opening corpus")?
                 .flatten()
                 .map(|e| e.path())
                 .collect()
@@ -86,16 +67,12 @@ impl Cover {
             .replace("{ziggy_output}", &self.ziggy_output.display().to_string())
             .replace("{target_name}", &cx.bin_target);
 
-        delete_dir_or_file(&coverage_dir)?;
-
-        // Get the absolute path for the coverage directory to ensure .profraw files
-        // are created in the correct location, even in workspace scenarios
-        let base_dir = cx.target_dir.join("coverage/debug");
-        let coverage_target_dir = base_dir.join("deps");
-        let cfg = Cfg::new(
-            base_dir.join(&cx.bin_target),
-            coverage_target_dir.join("coverage-%p-%m.profraw"),
-        );
+        if let Err(e) = fs::remove_dir_all(&coverage_dir)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            return Err(anyhow::Error::from(e))
+                .with_context(|| format!("⚠️  couldn't remove {coverage_dir}"));
+        }
 
         eprintln!("    Generating raw profiles");
         let pb = ProgressBar::new(coverage_corpus.len() as u64);
@@ -104,11 +81,13 @@ impl Cover {
                 "    [{elapsed_precise}] [{wide_bar}] {pos}/{len} ({eta})",
             )
             .unwrap()
-            .progress_chars("#>-"),
+            .progress_chars("#--"),
         );
         let log_dir = self.ziggy_output.join(format!("{}/logs", &cx.bin_target));
-        fs::create_dir_all(&log_dir)?;
-        let log_file = std::sync::Mutex::new(std::fs::File::create(log_dir.join("coverage.log"))?);
+        fs::create_dir_all(&log_dir).context("output dir for logs")?;
+        let log_file = std::sync::Mutex::new(
+            std::fs::File::create(log_dir.join("coverage.log")).context("logfile")?,
+        );
         coverage_corpus.into_par_iter().for_each(|file| {
             #[expect(clippy::significant_drop_tightening)]
             BUF.with_borrow_mut(|buf| {
@@ -122,24 +101,42 @@ impl Cover {
         });
         pb.finish();
 
-        let metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();
-        let workspace_root: String = metadata.workspace_root.into();
-        let source_or_workspace_root = self
-            .source
-            .as_ref()
-            .map_or_else(|| workspace_root.clone(), |s| s.display().to_string());
-
-        let output_types = self.output_types.as_ref().map_or("html", String::as_str);
-
         // We generate the code coverage report
         eprintln!("\n    Generating coverage report");
-        Self::run_grcov(
-            &cx,
-            output_types,
-            &coverage_dir,
-            &source_or_workspace_root,
-            self.jobs,
-        )
+
+        let out_dir = PathBuf::from(coverage_dir);
+        let profdata = out_dir.join("coverage.profraw");
+        fs::create_dir_all(&out_dir).context("output dir for coverage")?;
+        cfg.merge_profraw(&profdata, self.jobs)
+            .context("llvm_profdata: merging profraw files")?;
+
+        let mut fmt = 0_u8;
+        let types = {
+            for t in &self.output_types {
+                match t {
+                    ReportType::Html => fmt |= 1 << 0,
+                    ReportType::Text => fmt |= 1 << 1,
+                    ReportType::Json => fmt |= 1 << 2,
+                    ReportType::LCov => fmt |= 1 << 3,
+                }
+            }
+            [
+                ReportType::Html,
+                ReportType::Text,
+                ReportType::Json,
+                ReportType::LCov,
+            ]
+            .into_iter()
+            .enumerate()
+            .filter_map(|(s, t)| (fmt & (1 << s) != 0).then_some(t))
+        };
+
+        for t in types {
+            cfg.report_coverage(&profdata, &out_dir, t, self.jobs)
+                .with_context(|| format!("llvm_cov report of type `{t}`"))?;
+        }
+
+        Ok(())
     }
 
     /// Build the runner with the appropriate flags for coverage
@@ -174,83 +171,84 @@ impl Cover {
             bail!("⚠️  build failed");
         }
 
-        fs::remove_dir_all(&profiles_dir)?;
-        Ok(())
-    }
-
-    pub fn run_grcov(
-        cx: &Context,
-        output_types: &str,
-        coverage_dir: &str,
-        source_or_workspace_root: &str,
-        threads: Option<usize>,
-    ) -> Result<(), anyhow::Error> {
-        let coverage = process::Command::new("grcov")
-            .args([
-                cx.target_dir.join("coverage/debug/deps").as_str(),
-                &format!("-b={}/coverage/debug/{}", cx.target_dir, cx.bin_target),
-                &format!("-s={source_or_workspace_root}"),
-                &format!("-t={output_types}"),
-                "--llvm",
-                "--branch",
-                "--ignore-not-existing",
-                &format!("-o={coverage_dir}"),
-            ])
-            .args(threads.map(|threads| format!("--threads={threads}")))
-            .spawn()
-            .context("⚠️  cannot find grcov in your path, please install it")?
-            .wait()
-            .context("⚠️  couldn't wait for the grcov process")?;
-        if !coverage.success() {
-            bail!("⚠️  grcov failed");
-        }
+        fs::remove_dir_all(&profiles_dir)
+            .with_context(|| format!("⚠️  error removing dir {profiles_dir}"))?;
         Ok(())
     }
 
     pub fn clean_old_cov(cx: &Context) -> Result<(), anyhow::Error> {
-        // Use absolute path to ensure we clean the correct location in workspaces
-        let pattern = cx.target_dir.join("*.profraw");
-
-        if let Ok(profile_files) = glob(pattern.as_str()) {
-            for file in profile_files.flatten() {
-                let file_string = &file.display();
-                fs::remove_file(&file)
-                    .with_context(|| format!("⚠️  couldn't remove {file_string}"))?;
+        if let Ok(dir) = fs::read_dir(&cx.target_dir) {
+            for entry in dir.flatten() {
+                let path = entry.path();
+                if path.extension().is_some_and(|ext| ext == "profraw") {
+                    fs::remove_file(&path)
+                        .with_context(|| format!("⚠️  couldn't remove {}", path.display()))?;
+                }
             }
         }
         Ok(())
     }
 }
 
-fn delete_dir_or_file(path: &str) -> Result<(), anyhow::Error> {
-    let metadata = match fs::metadata(path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(error.into()),
-    };
-    // Some of the grcov output types produce folders, others produce files. This can result in errors when trying to delete them.
-    if metadata.is_dir() {
-        fs::remove_dir_all(path).with_context(|| format!("⚠️  error removing dir {path}"))?;
-    } else if metadata.is_file() {
-        fs::remove_file(path).with_context(|| format!("⚠️  error removing file {path}"))?;
-    } else {
-        bail!("coverage output path exists but is neither a file nor a directory: {path}");
-    }
-
-    Ok(())
-}
-
-struct Cfg {
+#[derive(Debug, Clone)]
+pub struct Cfg {
     runner: Utf8PathBuf,
     prof_file_template: Utf8PathBuf,
+    llvm_profdata: PathBuf,
+    llvm_cov: PathBuf,
 }
 
 impl Cfg {
-    fn new(runner: Utf8PathBuf, prof_file_template: Utf8PathBuf) -> Self {
-        Self {
+    pub fn new(runner: Utf8PathBuf, prof_file_template: Utf8PathBuf) -> Result<Self> {
+        let profdata = env::var_os("LLVM_PROFDATA");
+        let cov = env::var_os("LLVM_COV");
+        let target_libdir = if profdata.is_none() || cov.is_none() {
+            let bytes = std::process::Command::new(
+                std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()),
+            )
+            .arg("--print=target-libdir")
+            .output()
+            .context("failed running `rustc --print=target-libdir")?
+            .stdout;
+            PathBuf::from(
+                String::from_utf8(bytes).expect("invalid utf8 output from `rustc --print`"),
+            )
+        } else {
+            PathBuf::new()
+        };
+
+        let llvm_profdata = if let Some(path) = profdata {
+            PathBuf::from(path)
+        } else {
+            let mut libdir: PathBuf = target_libdir.clone();
+            libdir.pop();
+            libdir.push("bin");
+            libdir.push("llvm-profdata");
+            if !libdir.exists() {
+                bail!("⚠️  llvm-profdata not found: try `rustup component add llvm-tools`");
+            }
+            libdir
+        };
+
+        let llvm_cov = if let Some(path) = cov {
+            PathBuf::from(path)
+        } else {
+            let mut libdir: PathBuf = target_libdir;
+            libdir.pop();
+            libdir.push("bin");
+            libdir.push("llvm-cov");
+            if !libdir.exists() {
+                bail!("⚠️  llvm-cov not found: try `rustup component add llvm-tools`");
+            }
+            libdir
+        };
+
+        Ok(Self {
             runner,
             prof_file_template,
-        }
+            llvm_profdata,
+            llvm_cov,
+        })
     }
 
     fn profile(&self, seed: &Path, output: &mut Vec<u8>) -> Result<(), anyhow::Error> {
@@ -268,8 +266,106 @@ impl Cfg {
         rx.read_to_end(output)?;
         let status = child.wait()?;
         if !status.success() {
-            bail!("runner failed with exit code `{status}`");
+            bail!("⚠️  runner failed with exit code `{status}`");
         }
         Ok(())
+    }
+
+    pub fn merge_profraw(&self, output: &Path, jobs: Option<usize>) -> Result<(), anyhow::Error> {
+        let profiles = {
+            let mut path = self.prof_file_template.clone();
+            path.pop();
+            fs::read_dir(path)?
+                .filter_map(|entry| entry.ok().map(|e| e.path()))
+                .filter(|path| path.extension().is_some_and(|ext| ext == "profraw"))
+        };
+        let status = std::process::Command::new(&self.llvm_profdata)
+            .arg("merge")
+            .arg("-sparse")
+            .args(profiles)
+            .arg("-o")
+            .arg(output)
+            .args(jobs.map(|n| format!("-j={n}")))
+            .status()?;
+        if !status.success() {
+            bail!("⚠️  llvm-profdata failed with exit code `{status}`");
+        }
+        Ok(())
+    }
+
+    pub fn report_coverage(
+        &self,
+        merged_profile: &Path,
+        output: &Path,
+        format: ReportType,
+        jobs: Option<usize>,
+    ) -> Result<()> {
+        use ReportType::{Html, Json, LCov, Text};
+
+        let mut cov_cmd = std::process::Command::new(&self.llvm_cov);
+        match format {
+            Html => cov_cmd.args(["show", "-format=html"]),
+            Text => cov_cmd.args(["show", "-format=text"]),
+            Json => cov_cmd.args(["export", "-format=text"]),
+            LCov => cov_cmd.args(["export", "-format=lcov"]),
+        };
+        match format {
+            Text | Html => {
+                cov_cmd.arg("-output-dir").arg(output).args([
+                    "-show-directory-coverage",
+                    "-show-line-counts-or-regions",
+                    "-show-branches=count",
+                ]);
+            }
+            Json => {
+                cov_cmd.stdout(fs::File::create(output.join("coverage.json"))?);
+            }
+            LCov => {
+                cov_cmd.stdout(fs::File::create(output.join("coverage.lcov"))?);
+            }
+        }
+        let status = cov_cmd
+            .arg("-instr-profile")
+            .arg(merged_profile)
+            .arg(&self.runner)
+            .args(jobs.map(|n| format!("-j={n}")))
+            .status()?;
+        if !status.success() {
+            bail!("⚠️  llvm-cov failed with exit code `{status}`");
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ReportType {
+    Html,
+    Text,
+    Json,
+    LCov,
+}
+
+impl FromStr for ReportType {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(match s.to_ascii_lowercase().as_str() {
+            "html" => Self::Html,
+            "text" | "txt" => Self::Text,
+            "json" => Self::Json,
+            "lcov" => Self::LCov,
+            _ => anyhow::bail!("help: available types: `html`, `text`, `json`, `lcov`"),
+        })
+    }
+}
+
+impl fmt::Display for ReportType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Html => write!(f, "html"),
+            Self::Text => write!(f, "text"),
+            Self::Json => write!(f, "json"),
+            Self::LCov => write!(f, "lcov"),
+        }
     }
 }

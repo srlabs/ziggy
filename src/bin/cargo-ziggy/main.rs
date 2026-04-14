@@ -293,17 +293,13 @@ pub struct Cover {
     )]
     ziggy_output: PathBuf,
 
-    /// Source directory of covered code
-    #[clap(short, long, value_parser, value_name = "DIR")]
-    source: Option<PathBuf>,
-
     /// Keep coverage data files (WARNING: Do not use if source code has changed)
     #[clap(short, long, default_value_t = false)]
     keep: bool,
 
-    /// Comma separated list of output types. See grcov --help to see supported output types. Default: html
-    #[clap(short = 't', long)]
-    output_types: Option<String>,
+    /// Output type (available: html, text, json, lcov). Default: html
+    #[clap(short = 't', long, default_values_t = vec![coverage::ReportType::Html])]
+    output_types: Vec<coverage::ReportType>,
 
     /// Number of concurrent jobs
     #[clap(short, long, value_name = "NUM")]

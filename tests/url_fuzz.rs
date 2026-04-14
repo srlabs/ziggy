@@ -157,19 +157,22 @@ fn integration() {
     let coverage = process::Command::new(&cargo_ziggy)
         .arg("ziggy")
         .arg("cover")
+        .args(["-t", "html", "-t", "json", "-t", "text", "-t", "lcov"])
         .env("ZIGGY_OUTPUT", format!("{}", temp_dir_path.display()))
         .current_dir(&fuzzer_directory)
         .status()
         .expect("failed to run `cargo ziggy cover`");
 
     assert!(coverage.success());
-    assert!(
-        temp_dir_path
-            .join("url-fuzz")
-            .join("coverage")
-            .join("index.html")
-            .is_file()
-    );
+    for name in ["index.html", "index.txt", "coverage.json", "coverage.lcov"] {
+        assert!(
+            temp_dir_path
+                .join("url-fuzz")
+                .join("coverage")
+                .join(name)
+                .is_file()
+        );
+    }
 
     // cargo ziggy plot
     let plot = process::Command::new(&cargo_ziggy)
@@ -256,7 +259,12 @@ fn coverage_regression() {
 
     assert!(coverage.success());
     assert!(coverage_second.success());
-    assert!(temp_dir_path.join("url-fuzz").join("cover_lcov").is_file());
+    assert!(
+        temp_dir_path
+            .join("url-fuzz")
+            .join("cover_lcov/coverage.lcov")
+            .is_file()
+    );
 }
 
 #[allow(clippy::zombie_processes)]
