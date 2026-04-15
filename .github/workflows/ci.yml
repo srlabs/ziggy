@@ -34,4 +34,6 @@ jobs:
       - run: rustup component add rust-src llvm-tools
       - run: cargo install cargo-afl honggfuzz grcov
       - run: cargo install --path . --verbose
+      - if: ${{ matrix.toolchain == 'stable' }}
+        run: diff <(awk '/^```$/ && p{exit} p; /^\$ cargo ziggy/{p=1}' README.md) <(cargo ziggy 2>&1)
       - run: cargo test --workspace --verbose -- --show-output
