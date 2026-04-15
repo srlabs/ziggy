@@ -297,17 +297,13 @@ pub struct Cover {
     )]
     ziggy_output: PathBuf,
 
-    /// Source directory of covered code
-    #[clap(short, long, value_parser, value_name = "DIR")]
-    source: Option<PathBuf>,
-
     /// Keep coverage data files (WARNING: Do not use if source code has changed)
     #[clap(short, long, default_value_t = false)]
     keep: bool,
 
-    /// Comma separated list of output types. See grcov --help to see supported output types. Default: html
-    #[clap(short = 't', long)]
-    output_types: Option<String>,
+    /// Output type (available: html, text, json, lcov)
+    #[clap(short = 't', long, default_values_t = vec![coverage::ReportType::Html])]
+    output_type: Vec<coverage::ReportType>,
 
     /// Number of concurrent jobs
     #[clap(short, long, value_name = "NUM")]
@@ -505,22 +501,31 @@ impl Common {
         if meta.workspace_default_members.is_missing() {
             bail!("please specify a target")
         }
-        let bins: Vec<&str> = meta
+        let bins: Vec<(&str, &str)> = meta
             .workspace_default_packages()
             .into_iter()
-            .flat_map(|p| {
-                p.targets
-                    .iter()
-                    .filter_map(|t| t.is_bin().then_some(t.name.as_str()))
-            })
+            .flat_map(|p| p.targets.iter().filter(|t| t.is_bin()))
+            .map(|t| (t.name.as_str(), t.src_path.as_str()))
             .collect();
-        if bins.len() == 1 {
-            return Ok(bins[0].to_owned());
+        // if there is only one bin, we use it
+        if let [(name, _)] = bins.as_slice() {
+            return Ok((*name).to_owned());
         }
-        bail!(
-            "please specify a target\nhelp: available targets:\n\t{}",
-            bins.join("\n\t")
-        );
+        // otherwise fallback to `main.rs`
+        let main_bins: Vec<&str> = bins
+            .iter()
+            .filter_map(|(name, path)| path.ends_with("main.rs").then_some(*name))
+            .collect();
+        if let [name] = main_bins.as_slice() {
+            return Ok((*name).to_owned());
+        }
+        // otherwise we ask the user to choose
+        let mut targets = String::new();
+        for (name, _) in bins {
+            targets.push_str("\n\t");
+            targets.push_str(name);
+        }
+        bail!("please specify a target\nhelp: available targets:{targets}");
     }
 
     fn resolve_bin(&self, target: Option<String>) -> Result<String> {

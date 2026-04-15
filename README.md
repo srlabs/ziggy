@@ -28,7 +28,7 @@ Features will also include:
 First, install `ziggy` and its dependencies by running:
 
 ```bash
-cargo install --force ziggy cargo-afl honggfuzz grcov
+cargo install --force ziggy cargo-afl honggfuzz
 ```
 
 Here is the output of the tool's help:
@@ -77,7 +77,7 @@ For a well-documented fuzzer, see [the url example](./examples/url/).
 
 ## The `output` directory
 
-After you've launched your fuzzer, you'll find a couple of items in the `output` directory:
+After you've launched your fuzzer, you'll find a couple of items in the `output/<target>` directory:
 
 - the `corpus` directory containing the full corpus
 - the `crashes` directory containing any crashes detected by the fuzzers
@@ -87,18 +87,27 @@ After you've launched your fuzzer, you'll find a couple of items in the `output`
 - the `honggfuzz` directory containing Honggfuzz's output
 - the `queue` directory that is used by ziggy to pass items from AFL++ to Honggfuzz
 
-## Note about coverage
+## Coverage
 
-The `cargo cover` command will not generate coverage for the dependencies of your fuzzed project
-by default.
+Generate an HTML coverage report from your existing shared corpus:
 
-If this is something you would like to change, you can use the following trick:
 ```bash
-CARGO_HOME=.cargo cargo ziggy cover 
+cargo ziggy cover
 ```
 
-This will clone every dependency into a `.cargo` directory and this directory will be included in
-the generated coverage.
+The report entry point will be in ziggy's `output` directory at `./<target>/coverage/index.html`.
+It can be changed to `<dir>/index.html` using the `-o <dir>` option.
+
+You can select different output formats or specify a custom input corpus:
+
+```bash
+cargo ziggy cover \
+    -i path/to/corpus \  # custom input corpus directory
+    -t html \            # navigable source-level report (default)
+    -t text \            # same folder structure as html, but plain-text summaries
+    -t json \            # machine-readable per-file data
+    -t lcov              # standard tracefile for CI tools like Codecov
+```
 
 ## Trophy case
 
