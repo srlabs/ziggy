@@ -6,6 +6,7 @@ mod fuzz;
 mod minimize;
 mod plot;
 mod run;
+mod stability;
 mod triage;
 mod util;
 
@@ -79,6 +80,9 @@ pub enum Ziggy {
 
     /// Triage crashes found with CASR - currently only works for AFL++
     Triage(Triage),
+
+    /// Analyze harness stability by detecting non-deterministic code paths
+    Stability(Stability),
 
     /// Remove generated artifacts from the target directory
     Clean(Clean),
@@ -375,6 +379,35 @@ pub struct AddSeeds {
 }
 
 #[derive(Args)]
+pub struct Stability {
+    /// Target to analyze
+    #[clap(value_name = "TARGET")]
+    target: Option<String>,
+
+    /// Corpus directory to use as input
+    #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CORPUS_DIR)]
+    input: PathBuf,
+
+    /// Fuzzers output directory
+    #[clap(
+        short, long, env = "ZIGGY_OUTPUT", value_parser, value_name = "DIR", default_value = DEFAULT_OUTPUT_DIR
+    )]
+    ziggy_output: PathBuf,
+
+    /// Number of repeated runs over the corpus (default: 3)
+    #[clap(short = 'n', long, default_value_t = 3)]
+    runs: u32,
+
+    /// Number of concurrent jobs
+    #[clap(short, long, value_name = "NUM")]
+    jobs: Option<usize>,
+
+    /// Source directory filter — only report instability in files under this path
+    #[clap(short, long, value_parser, value_name = "DIR")]
+    source: Option<PathBuf>,
+}
+
+#[derive(Args)]
 pub struct Clean {
     /// Arguments passed through to cargo clean, see cargo clean --help
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
@@ -523,6 +556,9 @@ fn main() -> Result<(), anyhow::Error> {
             .add_seeds(&common)
             .context("Failure adding seeds to AFL"),
         Ziggy::Triage(args) => args.triage(&common).context("Failure triaging with casr"),
+        Ziggy::Stability(args) => args
+            .analyze_stability(&common)
+            .context("Failure analyzing stability"),
         Ziggy::Clean(args) => args
             .clean(&common)
             .context("Failure cleaning build artifacts"),

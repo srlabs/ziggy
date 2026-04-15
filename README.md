@@ -48,6 +48,7 @@ Commands:
   plot       Plot AFL++ data using afl-plot
   add-seeds  Add seeds to the running AFL++ fuzzers
   triage     Triage crashes found with CASR - currently only works for AFL++
+  stability  Analyze harness stability by detecting non-deterministic code paths
   clean      Remove generated artifacts from the target directory
   help       Print this message or the help of the given subcommand(s)
 
