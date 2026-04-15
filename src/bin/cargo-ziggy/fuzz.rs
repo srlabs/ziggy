@@ -169,17 +169,18 @@ impl Fuzz {
         let cov_start_time = Arc::new(Mutex::new(None));
         let cov_end_time = Arc::new(Mutex::new(Instant::now()));
         let coverage_now_running = Arc::new(Mutex::new(false));
-        let workspace_root = if self.binary.is_none() && self.coverage_worker {
-            common
-                .metadata()
-                .map(|m| m.workspace_root.to_string())
-                .unwrap_or_default()
-        } else {
-            String::default()
-        };
         let main_corpus = &paths.corpus;
         let output_target = &paths.output_target;
         let mut stats = Stats::default();
+        let coverage_cfg = if self.coverage_worker {
+            let profile_bin = cx
+                .target_dir
+                .join(format!("coverage/debug/{}", cx.bin_target));
+            let profile_base = cx.target_dir.join("coverage/debug/deps/coverage-");
+            Some(crate::coverage::Cfg::new(profile_bin, profile_base)?)
+        } else {
+            None
+        };
 
         common.shutdown_deferred(); // handle termination signals gracefully
         loop {
@@ -218,12 +219,12 @@ impl Fuzz {
                 {
                     let main_corpus = main_corpus.clone();
                     let target = cx.bin_target.clone();
-                    let workspace_root = workspace_root.clone();
                     let output_target = output_target.clone();
                     let cov_start_time = Arc::clone(&cov_start_time);
                     let cov_end_time = Arc::clone(&cov_end_time);
                     let coverage_now_running = Arc::clone(&coverage_now_running);
                     let cx = cx.clone();
+                    let cfg = coverage_cfg.clone().unwrap();
                     thread::spawn(move || {
                         let mut seen_new_entry = false;
                         let prev_start_time =
@@ -267,7 +268,15 @@ impl Fuzz {
                         let res = if seen_new_entry {
                             let coverage_dir = output_target + "/coverage";
                             let _ = fs::remove_dir_all(&coverage_dir);
-                            Cover::run_grcov(&cx, "html", &coverage_dir, &workspace_root, Some(1))
+                            let merged = profile_base.join("worker.profdata");
+                            cfg.merge_profraw(merged.as_path(), Some(1)).and_then(|()| {
+                                cfg.report_coverage(
+                                    merged.as_path(),
+                                    &PathBuf::from(coverage_dir),
+                                    crate::coverage::ReportType::Html,
+                                    Some(1),
+                                )
+                            })
                         } else {
                             Ok(())
                         };
