@@ -10,10 +10,6 @@ use std::{
     str::FromStr,
 };
 
-thread_local! {
-    static BUF: std::cell::RefCell<Vec<u8>> = std::cell::RefCell::new(Vec::with_capacity(8 * 1024));
-}
-
 impl Cover {
     pub fn generate_coverage(&self, common: &Common) -> Result<(), anyhow::Error> {
         let cx = Context::new(common, self.target.clone())?;
@@ -88,16 +84,18 @@ impl Cover {
         let log_file = std::sync::Mutex::new(
             std::fs::File::create(log_dir.join("coverage.log")).context("logfile")?,
         );
+        let tls = thread_local::ThreadLocal::new();
+        #[expect(clippy::significant_drop_tightening)]
         coverage_corpus.into_par_iter().for_each(|file| {
-            #[expect(clippy::significant_drop_tightening)]
-            BUF.with_borrow_mut(|buf| {
-                buf.clear();
-                let _ = cfg.profile(file.as_path(), buf);
-                let mut log_file = log_file.lock().unwrap();
-                let _ = log_file.write_all(buf);
-                // use `lock_file` mutex to avoid contention on progress bar
-                pb.inc(1);
-            });
+            let mut buf = tls
+                .get_or(|| std::cell::RefCell::new(Vec::with_capacity(8 * 1024)))
+                .borrow_mut();
+            buf.clear();
+            let _ = cfg.profile(file.as_path(), &mut buf);
+            let mut log_file = log_file.lock().unwrap();
+            let _ = log_file.write_all(&buf);
+            // use `lock_file` mutex to avoid contention on progress bar
+            pb.inc(1);
         });
         pb.finish();
 
@@ -105,7 +103,7 @@ impl Cover {
         eprintln!("\n    Generating coverage report");
 
         let out_dir = PathBuf::from(coverage_dir);
-        let profdata = out_dir.join("coverage.profraw");
+        let profdata = out_dir.join("coverage.prodata");
         fs::create_dir_all(&out_dir).context("output dir for coverage")?;
         cfg.merge_profraw(&profdata, self.jobs)
             .context("llvm_profdata: merging profraw files")?;
@@ -251,6 +249,28 @@ impl Cfg {
         })
     }
 
+    pub fn llvm_profdata(&self) -> process::Command {
+        process::Command::new(&self.llvm_profdata)
+    }
+
+    pub fn llvm_cov(&self) -> process::Command {
+        process::Command::new(&self.llvm_cov)
+    }
+
+    pub fn runner_path(&self) -> &Path {
+        self.runner.as_std_path()
+    }
+
+    pub fn profile_simple(&self, seed: &Path, profraw_pattern: &Path) {
+        let _ = process::Command::new(&self.runner)
+            .arg(seed)
+            .stdin(process::Stdio::null())
+            .stdout(process::Stdio::null())
+            .stderr(process::Stdio::null())
+            .env("LLVM_PROFILE_FILE", profraw_pattern)
+            .status();
+    }
+
     fn profile(&self, seed: &Path, output: &mut Vec<u8>) -> Result<(), anyhow::Error> {
         // redirect stderr and stdout into buffer (via pipe)
         let (mut rx, tx) = std::io::pipe()?;
@@ -293,9 +313,11 @@ impl Cfg {
             }
         }
 
-        let status = std::process::Command::new(&self.llvm_profdata)
+        let status = self
+            .llvm_profdata()
             .arg("merge")
-            .arg("-sparse")
+            .arg("--sparse")
+            .arg("--failure-mode=warn")
             .arg("-f")
             .arg(
                 list_file
@@ -322,7 +344,7 @@ impl Cfg {
     ) -> Result<()> {
         use ReportType::{Html, Json, LCov, Text};
 
-        let mut cov_cmd = std::process::Command::new(&self.llvm_cov);
+        let mut cov_cmd = self.llvm_cov();
         match format {
             Html => cov_cmd.args(["show", "-format=html"]),
             Text => cov_cmd.args(["show", "-format=text"]),

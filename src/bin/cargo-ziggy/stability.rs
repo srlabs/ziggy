@@ -7,7 +7,6 @@ use std::{
     collections::{HashMap, HashSet},
     env, fs,
     path::{Path, PathBuf},
-    process,
 };
 
 /// Maps (filename, line_number) to execution count.
@@ -25,17 +24,16 @@ impl Stability {
         }
 
         // Check that llvm tools are available
-        check_tool("llvm-profdata")?;
-        check_tool("llvm-cov")?;
+        let cfg = crate::coverage::Cfg::new(
+            cx.target_dir
+                .join(format!("coverage/debug/{}", cx.bin_target)),
+            "dummy.profraw".into(),
+        )?;
 
         // Build coverage-instrumented binary
         eprintln!("    {} coverage binary", style("Building").red().bold());
         Cover::build_runner(common)?;
         eprintln!("    {} coverage binary", style("Finished").cyan().bold());
-
-        let runner = cx
-            .target_dir
-            .join(format!("coverage/debug/{}", cx.bin_target));
 
         // Collect corpus files
         let corpus = collect_corpus(&self.input, &self.ziggy_output, &cx)?;
@@ -54,7 +52,7 @@ impl Stability {
         }
 
         // Run the corpus N times, collecting LCOV data each time
-        let mut run_data: Vec<LineCounts> = Vec::with_capacity(self.runs as usize);
+        let mut run_data: Vec<LineCounts> = Vec::with_capacity(self.runs);
 
         for run_idx in 0..self.runs {
             eprintln!(
@@ -75,17 +73,11 @@ impl Stability {
                     "    [{elapsed_precise}] [{wide_bar}] {pos}/{len} ({eta})",
                 )
                 .unwrap()
-                .progress_chars("#>-"),
+                .progress_chars("#--"),
             );
 
             corpus.par_iter().for_each(|input| {
-                let _ = process::Command::new(runner.as_str())
-                    .arg(input)
-                    .stdin(process::Stdio::null())
-                    .stdout(process::Stdio::null())
-                    .stderr(process::Stdio::null())
-                    .env("LLVM_PROFILE_FILE", &profraw_pattern)
-                    .status();
+                cfg.profile_simple(input, &profraw_pattern);
                 pb.inc(1);
             });
             pb.finish();
@@ -114,13 +106,15 @@ impl Stability {
             // Use --failure-mode=warn to skip corrupt profiles (from crashing inputs)
             // instead of aborting the entire merge.
             let profdata = run_dir.join("merged.profdata");
-            let merge = process::Command::new("llvm-profdata")
+            let merge = cfg
+                .llvm_profdata()
                 .arg("merge")
                 .arg("--sparse")
                 .arg("--failure-mode=warn")
                 .args(&profraw_files)
                 .arg("-o")
                 .arg(&profdata)
+                .args(self.jobs.map(|n| format!("-j={n}")))
                 .output()
                 .context("Failed to run llvm-profdata merge")?;
 
@@ -134,11 +128,15 @@ impl Stability {
             }
 
             // Export as LCOV
-            let export = process::Command::new("llvm-cov")
+            let export = cfg
+                .llvm_cov()
                 .arg("export")
                 .arg("--format=lcov")
-                .arg(format!("--instr-profile={}", profdata.display()))
-                .arg(runner.as_str())
+                .arg("--instr-profile")
+                .arg(profdata)
+                .args(["--skip-branches", "--skip-functions"])
+                .args(self.jobs.map(|n| format!("-j={n}")))
+                .arg(cfg.runner_path())
                 .output()
                 .context("Failed to run llvm-cov export")?;
 
@@ -171,7 +169,7 @@ impl Stability {
             .map(|s| fs::canonicalize(s).unwrap_or_else(|_| s.clone()));
 
         // Analyze and report
-        let successful_runs = run_data.len() as u32;
+        let successful_runs = run_data.len();
         let report = analyze_runs(&run_data, source_filter.as_deref());
         let cwd = env::current_dir().ok();
         print_report(
@@ -184,16 +182,6 @@ impl Stability {
 
         Ok(())
     }
-}
-
-fn check_tool(name: &str) -> Result<()> {
-    process::Command::new(name)
-        .arg("--version")
-        .stdout(process::Stdio::null())
-        .stderr(process::Stdio::null())
-        .status()
-        .with_context(|| format!("{name} not found — please install LLVM tools"))?;
-    Ok(())
 }
 
 fn collect_corpus(input: &Path, ziggy_output: &Path, cx: &Context) -> Result<Vec<PathBuf>> {
@@ -270,11 +258,7 @@ fn analyze_runs(runs: &[LineCounts], source_filter: Option<&Path>) -> StabilityR
     let executed_keys: Vec<_> = all_keys
         .into_iter()
         .filter(|key| runs.iter().any(|r| r.get(key).copied().unwrap_or(0) > 0))
-        .filter(|key| {
-            source_filter
-                .map(|filter| Path::new(&key.0).starts_with(filter))
-                .unwrap_or(true)
-        })
+        .filter(|key| source_filter.is_none_or(|filter| Path::new(&key.0).starts_with(filter)))
         .collect();
 
     let mut unstable = Vec::new();
@@ -356,7 +340,7 @@ fn print_report(
     report: &StabilityReport,
     target: &str,
     corpus_size: usize,
-    runs: u32,
+    runs: usize,
     cwd: Option<&Path>,
 ) {
     let stability_pct = if report.total_lines > 0 {
