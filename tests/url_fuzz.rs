@@ -113,6 +113,8 @@ fn integration() {
     thread::sleep(Duration::from_secs(30));
     kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
 
+    fs::remove_dir_all(temp_dir_path.join("url-fuzz").join("logs")).unwrap();
+
     // cargo ziggy minimize
     let minimization = process::Command::new(&cargo_ziggy)
         .arg("ziggy")

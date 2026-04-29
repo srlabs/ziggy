@@ -5,6 +5,7 @@ use crate::{
 use anyhow::{Context as _, Result, bail};
 use std::{
     fs::{self, File},
+    path::PathBuf,
     thread,
     time::Duration,
 };
@@ -28,6 +29,14 @@ impl Minimize {
                 self.output_corpus(&cx)
             );
         }
+
+        let log_dir = self.log_dir(&cx);
+        fs::create_dir_all(&log_dir).with_context(|| {
+            format!(
+                "Could not create minimization log directory {}",
+                log_dir.display()
+            )
+        })?;
 
         let entries = fs::read_dir(self.input_corpus(&cx))?;
         let original_count = entries.flatten().count();
@@ -86,6 +95,10 @@ impl Minimize {
             .replace("{target_name}", &cx.bin_target)
     }
 
+    fn log_dir(&self, cx: &Context) -> PathBuf {
+        self.ziggy_output.join(&cx.bin_target).join("logs")
+    }
+
     // AFL++ minimization
     fn minimize_afl(&self, cx: ContextView) -> Result<(), anyhow::Error> {
         println!("Minimizing with AFL++");
@@ -97,11 +110,7 @@ impl Minimize {
         let target_dir = cx.target_dir().join("afl/debug").join(cx.bin_target());
 
         // AFL++ minimization
-        let log_file = File::create(format!(
-            "{}/{}/logs/minimization_afl.log",
-            &self.ziggy_output.display(),
-            cx.bin_target(),
-        ))?;
+        let log_file = File::create(self.log_dir(cx.as_ref()).join("minimization_afl.log"))?;
         cx.common()
             .cargo()
             .args([
@@ -129,11 +138,7 @@ impl Minimize {
     fn minimize_honggfuzz(&self, cx: ContextView) -> Result<(), anyhow::Error> {
         println!("Minimizing with honggfuzz");
 
-        let log_file = File::create(format!(
-            "{}/{}/logs/minimization_honggfuzz.log",
-            &self.ziggy_output.display(),
-            cx.bin_target(),
-        ))?;
+        let log_file = File::create(self.log_dir(cx.as_ref()).join("minimization_honggfuzz.log"))?;
         cx.common()
             .cargo()
             .args(["hfuzz", "run", cx.bin_target()])
