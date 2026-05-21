@@ -176,7 +176,7 @@ impl Fuzz {
             let profile_bin = cx
                 .target_dir
                 .join(format!("coverage/debug/{}", cx.bin_target));
-            let profile_base = cx.target_dir.join("coverage/debug/deps/coverage-");
+            let profile_base = cx.target_dir.join("coverage/debug/deps/coverage-worker.profraw");
             Some(crate::coverage::Cfg::new(profile_bin, profile_base)?)
         } else {
             None
@@ -233,7 +233,7 @@ impl Fuzz {
                         let profile_bin = cx.target_dir.join(format!("coverage/debug/{target}"));
                         let profile_base = cx
                             .target_dir
-                            .join("coverage/debug/deps/coverage-")
+                            .join("coverage/debug/deps")
                             .as_std_path()
                             .to_path_buf();
                         let entries = std::fs::read_dir(&main_corpus).unwrap();
@@ -250,7 +250,8 @@ impl Fuzz {
                             });
                             if potentially_new && let Some(hash) = entry.file_name() {
                                 let profile_file = {
-                                    let mut name = hash.to_os_string();
+                                    let mut name = std::ffi::OsString::from("coverage-");
+                                    name.push(hash);
                                     name.push(".profraw");
                                     profile_base.join(name)
                                 };
