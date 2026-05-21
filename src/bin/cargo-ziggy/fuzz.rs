@@ -176,7 +176,9 @@ impl Fuzz {
             let profile_bin = cx
                 .target_dir
                 .join(format!("coverage/debug/{}", cx.bin_target));
-            let profile_base = cx.target_dir.join("coverage/debug/deps/coverage-worker.profraw");
+            let profile_base = cx
+                .target_dir
+                .join("coverage/debug/deps/coverage-worker.profraw");
             Some(crate::coverage::Cfg::new(profile_bin, profile_base)?)
         } else {
             None
