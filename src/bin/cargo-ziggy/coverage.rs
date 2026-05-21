@@ -272,17 +272,37 @@ impl Cfg {
     }
 
     pub fn merge_profraw(&self, output: &Path, jobs: Option<usize>) -> Result<(), anyhow::Error> {
-        let profiles = {
+        let profiles_dir = {
             let mut path = self.prof_file_template.clone();
             path.pop();
-            fs::read_dir(path)?
-                .filter_map(|entry| entry.ok().map(|e| e.path()))
-                .filter(|path| path.extension().is_some_and(|ext| ext == "profraw"))
+            path
         };
+
+        // Write the profraw paths to a file and pass it via `-f` instead of
+        // passing each path on the command line, which can exceed ARG_MAX
+        // when coverage runs produce a large number of profraw files.
+        let mut list_file = std::io::BufWriter::new(
+            tempfile::NamedTempFile::new()
+                .context("creating temp file for llvm-profdata input list")?,
+        );
+        for entry in fs::read_dir(&profiles_dir)? {
+            let path = entry?.path();
+            if path.extension().is_some_and(|ext| ext == "profraw") {
+                writeln!(list_file, "{}", path.display())
+                    .context("writing profraw path to input list")?;
+            }
+        }
+
         let status = std::process::Command::new(&self.llvm_profdata)
             .arg("merge")
             .arg("-sparse")
-            .args(profiles)
+            .arg("-f")
+            .arg(
+                list_file
+                    .into_inner()
+                    .context("flushing llvm-profdata input list")?
+                    .path(),
+            )
             .arg("-o")
             .arg(output)
             .args(jobs.map(|n| format!("-j={n}")))
