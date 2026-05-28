@@ -7,7 +7,12 @@ impl Triage {
         eprintln!("Running CASR triage on crashes");
 
         let cx = Context::new(common, self.target.clone())?;
-        let input_dir = cx.target_dir.join("afl");
+        let input_dir = self
+            .ziggy_output
+            .join(&cx.bin_target)
+            .join("afl")
+            .display()
+            .to_string();
 
         let triage_dir = self
             .output
