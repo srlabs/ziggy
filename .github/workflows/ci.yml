@@ -33,6 +33,18 @@ jobs:
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: rustup component add rust-src llvm-tools
       - run: cargo install cargo-afl honggfuzz
+      - name: Install LLVM matching the nightly toolchain (for AFL++ cmplog plugins)
+        if: ${{ matrix.toolchain == 'nightly' }}
+        run: |
+          # afl.rs builds the AFL++ LLVM pass plugins against rustc's embedded
+          # LLVM, so we need a matching `llvm-config-<major>` on PATH.
+          LLVM_VERSION=$(rustc --version --verbose | sed -n 's/^LLVM version: \([0-9]*\).*/\1/p')
+          echo "Nightly toolchain uses LLVM ${LLVM_VERSION}"
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh "${LLVM_VERSION}"
+          sudo apt-get install -y "llvm-${LLVM_VERSION}-dev" "libclang-${LLVM_VERSION}-dev"
+          llvm-config-"${LLVM_VERSION}" --version
       - if: ${{ matrix.toolchain == 'nightly' }}
         run: cargo afl config --plugins --build
       - run: cargo install --path . --verbose
