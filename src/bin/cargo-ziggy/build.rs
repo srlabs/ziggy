@@ -3,12 +3,27 @@ use anyhow::{Context as _, Result, bail};
 use console::style;
 use std::{env, process};
 
+fn is_using_nightly_toolchain() -> bool {
+    let out = process::Command::new("rustc")
+        .arg("--version")
+        .output()
+        .expect("failed to launch rustc");
+
+    String::from_utf8_lossy(&out.stdout).contains("nightly")
+}
+
 impl Build {
     /// Build the fuzzers
     pub fn build(&self, common: &Common) -> Result<(), anyhow::Error> {
         // No fuzzers for you
         if self.no_afl && self.no_honggfuzz {
             bail!("Pick at least one fuzzer");
+        }
+
+        let is_nightly = is_using_nightly_toolchain();
+
+        if self.asan && !is_nightly {
+            bail!("ASAN requires nightly toolchain");
         }
 
         let cx = Context::new(common, self.target.clone())?;
@@ -34,14 +49,20 @@ impl Build {
             let mut rust_flags = env::var("RUSTFLAGS").unwrap_or_default();
             let mut rust_doc_flags = env::var("RUSTDOCFLAGS").unwrap_or_default();
 
-            // First fuzzer we build: AFL++
-            let run = common
-                .cargo()
-                .args(&afl_args)
+            let mut cmd = common.cargo();
+            cmd.args(&afl_args)
                 .env("AFL_QUIET", "1")
                 .env("AFL_LLVM_CMPLOG", "1") // for afl.rs feature "plugins"
                 .env("RUSTFLAGS", &rust_flags)
-                .env("RUSTDOCFLAGS", &rust_doc_flags)
+                .env("RUSTDOCFLAGS", &rust_doc_flags);
+
+            if is_nightly {
+                // make afl.rs check that AFL++ plugins are installed and fail otherwise
+                cmd.env("AFLRS_REQUIRE_PLUGINS", "1");
+            }
+
+            // First fuzzer we build: AFL++
+            let run = cmd
                 .spawn()?
                 .wait()
                 .context("Error spawning afl build command")?;
@@ -70,6 +91,7 @@ impl Build {
                     .env("AFL_QUIET", "1")
                     // need to specify for afl.rs so that we build with -Copt-level=0
                     .env("AFL_OPT_LEVEL", "0")
+                    .env("AFLRS_REQUIRE_PLUGINS", "1")
                     .env("AFL_LLVM_CMPLOG", "1") // for afl.rs feature "plugins"
                     .env("RUSTFLAGS", rust_flags)
                     .env("RUSTDOCFLAGS", rust_doc_flags)
