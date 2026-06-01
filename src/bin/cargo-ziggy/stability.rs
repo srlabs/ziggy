@@ -8,6 +8,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::{
     collections::{HashMap, HashSet},
     env, fs,
+    io::Write,
     path::{Path, PathBuf},
 };
 
@@ -79,16 +80,22 @@ impl Stability {
 
             // Collect profraw files, skipping empty ones (from processes that were
             // killed before the LLVM runtime initialized)
-            let profraw_files: Vec<PathBuf> = fs::read_dir(&run_dir)?
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| {
-                    p.extension().is_some_and(|ext| ext == "profraw")
-                        && p.metadata().is_ok_and(|m| m.len() > 0)
-                })
-                .collect();
+            let mut list_file = std::io::BufWriter::new(
+                tempfile::NamedTempFile::new()
+                    .context("creating temp file for llvm-profdata input list")?,
+            );
+            let mut valid_profile = false;
+            for path in fs::read_dir(&run_dir)?.flatten().map(|e| e.path()) {
+                if path.extension().is_some_and(|ext| ext == "profraw")
+                    && path.metadata().is_ok_and(|m| m.len() > 0)
+                {
+                    writeln!(list_file, "{}", path.display())
+                        .context("writing profraw path to input list")?;
+                    valid_profile = true;
+                }
+            }
 
-            if profraw_files.is_empty() {
+            if !valid_profile {
                 eprintln!(
                     "    {} No coverage data for run {} — all inputs may have crashed",
                     style("!!").yellow().bold(),
@@ -106,7 +113,13 @@ impl Stability {
                 .arg("merge")
                 .arg("--sparse")
                 .arg("--failure-mode=warn")
-                .args(&profraw_files)
+                .arg("-f")
+                .arg(
+                    list_file
+                        .into_inner()
+                        .context("flushing llvm-profdata input list")?
+                        .path(),
+                )
                 .arg("-o")
                 .arg(&profdata)
                 .args(self.jobs.map(|n| format!("-j={n}")))
