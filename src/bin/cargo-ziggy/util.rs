@@ -3,6 +3,7 @@ use anyhow::Result;
 use std::{fs::File, hash::Hasher, io, io::Read, path::Path};
 
 pub use cargo_metadata::camino::Utf8PathBuf;
+use indicatif::{ProgressBar, ProgressStyle};
 
 #[inline]
 pub fn hash_file(path: &Path) -> Result<u64> {
@@ -18,6 +19,16 @@ pub fn hash_file(path: &Path) -> Result<u64> {
             Err(e) => return Err(e.into()),
         }
     }
+}
+
+pub fn progress_bar(len: u64) -> ProgressBar {
+    let pb = ProgressBar::new(len);
+    pb.set_style(
+        ProgressStyle::with_template("    [{elapsed_precise}] [{wide_bar}] {pos}/{len} ({eta})")
+            .unwrap()
+            .progress_chars("#--"),
+    );
+    pb
 }
 
 #[derive(Debug, Clone)]

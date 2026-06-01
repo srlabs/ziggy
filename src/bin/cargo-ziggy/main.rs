@@ -394,9 +394,9 @@ pub struct Stability {
     )]
     ziggy_output: PathBuf,
 
-    /// Number of repeated runs over the corpus (default: 3)
+    /// Number of repeated runs over the corpus
     #[clap(short = 'n', long, default_value_t = 3)]
-    runs: u32,
+    runs: usize,
 
     /// Number of concurrent jobs
     #[clap(short, long, value_name = "NUM")]
