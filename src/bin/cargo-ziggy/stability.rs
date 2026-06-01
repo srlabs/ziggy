@@ -1,7 +1,9 @@
-use crate::{Common, Cover, Stability, util::Context};
+use crate::{
+    Common, Cover, Stability,
+    util::{Context, progress_bar},
+};
 use anyhow::{Context as _, Result, bail};
 use console::style;
-use indicatif::{ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::{
     collections::{HashMap, HashSet},
@@ -67,14 +69,7 @@ impl Stability {
             let profraw_pattern = run_dir.join("cov-%p-%m.profraw");
 
             // Run all inputs in parallel
-            let pb = ProgressBar::new(corpus.len() as u64);
-            pb.set_style(
-                ProgressStyle::with_template(
-                    "    [{elapsed_precise}] [{wide_bar}] {pos}/{len} ({eta})",
-                )
-                .unwrap()
-                .progress_chars("#--"),
-            );
+            let pb = progress_bar(corpus.len() as u64);
 
             corpus.par_iter().for_each(|input| {
                 cfg.profile_simple(input, &profraw_pattern);

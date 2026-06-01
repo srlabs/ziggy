@@ -1,6 +1,9 @@
-use crate::{Common, Cover, util::Context, util::Utf8PathBuf};
+use crate::{
+    Common, Cover,
+    util::Utf8PathBuf,
+    util::{Context, progress_bar},
+};
 use anyhow::{Context as _, Result, bail};
-use indicatif::{ProgressBar, ProgressStyle};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{
     env, fmt, fs,
@@ -71,14 +74,7 @@ impl Cover {
         }
 
         eprintln!("    Generating raw profiles");
-        let pb = ProgressBar::new(coverage_corpus.len() as u64);
-        pb.set_style(
-            ProgressStyle::with_template(
-                "    [{elapsed_precise}] [{wide_bar}] {pos}/{len} ({eta})",
-            )
-            .unwrap()
-            .progress_chars("#--"),
-        );
+        let pb = progress_bar(coverage_corpus.len() as u64);
         let log_dir = self.ziggy_output.join(format!("{}/logs", &cx.bin_target));
         fs::create_dir_all(&log_dir).context("output dir for logs")?;
         let log_file = std::sync::Mutex::new(
