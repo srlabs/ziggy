@@ -73,7 +73,7 @@ impl Stability {
             let pb = progress_bar(corpus.len() as u64);
 
             corpus.par_iter().for_each(|input| {
-                cfg.profile_simple(input, &profraw_pattern);
+                cfg.profile_simple(input, Some(&profraw_pattern));
                 pb.inc(1);
             });
             pb.finish();

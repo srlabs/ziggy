@@ -451,7 +451,7 @@ fn coverage_worker() {
         .arg("--coverage-interval=0")
         .arg("--corpus-sync-interval=0")
         .env("CARGO_TARGET_DIR", &target_dir)
-        .env("ZIGGY_OUTPUT", output_dir)
+        .env("ZIGGY_OUTPUT", &output_dir)
         .env("AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES", "1")
         .env("AFL_SKIP_CPUFREQ", "1")
         .current_dir(&fuzzer_directory)
@@ -460,4 +460,9 @@ fn coverage_worker() {
     thread::sleep(Duration::from_secs(30));
     assert!(matches!(fuzzer.try_wait(), Ok(None)));
     kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
+    assert!(
+        output_dir
+            .join("url-fuzz/coverage/worker.profdata")
+            .is_file()
+    );
 }

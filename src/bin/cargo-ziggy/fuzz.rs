@@ -6,16 +6,19 @@ use anyhow::{Context as _, Error, Result, anyhow, bail};
 use console::{Term, style};
 use glob::glob;
 use std::{
+    collections::HashSet,
     fmt,
     fs::{self, File},
     io::Write,
     path::{Path, PathBuf},
-    process::{self, Stdio},
+    process,
     sync::{Arc, Mutex},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use strip_ansi_escapes::strip_str;
+
+const WORKER_PROFDATA: &str = "worker.profdata";
 
 /// Main logic for managing fuzzers and the fuzzing process in ziggy.
 /// ## Initial minimization logic
@@ -161,28 +164,37 @@ impl Fuzz {
             bail!("cannot use --no-afl with --coverage-worker!");
         }
 
-        // We prepare builds for the coverage worker
-        if self.coverage_worker {
-            Cover::clean_old_cov(&cx)?;
-            Cover::build_runner(common)?;
-        }
-        let cov_start_time = Arc::new(Mutex::new(None));
         let cov_end_time = Arc::new(Mutex::new(Instant::now()));
         let coverage_now_running = Arc::new(Mutex::new(false));
         let main_corpus = &paths.corpus;
         let output_target = &paths.output_target;
         let mut stats = Stats::default();
+        let coverage_dir = PathBuf::from(output_target).join("coverage");
         let coverage_cfg = if self.coverage_worker {
             let profile_bin = cx
                 .target_dir
                 .join(format!("coverage/debug/{}", cx.bin_target));
-            let profile_base = cx
-                .target_dir
-                .join("coverage/debug/deps/coverage-worker.profraw");
-            Some(crate::coverage::Cfg::new(profile_bin, profile_base)?)
+            let coverage_target_dir = cx.target_dir.join(format!(
+                "coverage/debug/deps/coverage-worker-{}",
+                cx.bin_target
+            ));
+            // cleanup previous coverage profiles
+            if coverage_target_dir.is_dir() {
+                fs::remove_dir_all(&coverage_target_dir)
+                    .context("removing previous coverage profiles")?;
+            }
+            fs::create_dir_all(&coverage_dir).context("creating coverage output dir")?;
+            // build the coverage worker
+            Cover::build_runner(common)?;
+
+            Some(crate::coverage::Cfg::new(
+                profile_bin,
+                coverage_target_dir.join("cov-%p-%m.profraw"),
+            )?)
         } else {
             None
         };
+        let covered_seeds = Arc::new(Mutex::new(HashSet::<std::ffi::OsString>::default()));
 
         common.shutdown_deferred(); // handle termination signals gracefully
         loop {
@@ -220,63 +232,47 @@ impl Fuzz {
 
                 {
                     let main_corpus = main_corpus.clone();
-                    let target = cx.bin_target.clone();
-                    let output_target = output_target.clone();
-                    let cov_start_time = Arc::clone(&cov_start_time);
+                    let coverage_dir = coverage_dir.clone();
                     let cov_end_time = Arc::clone(&cov_end_time);
                     let coverage_now_running = Arc::clone(&coverage_now_running);
-                    let cx = cx.clone();
                     let cfg = coverage_cfg.clone().unwrap();
+                    let covered_seeds = Arc::clone(&covered_seeds);
                     let terminate = Arc::clone(&common.terminate);
                     thread::spawn(move || {
                         let mut seen_new_entry = false;
-                        let prev_start_time =
-                            cov_start_time.lock().unwrap().replace(SystemTime::now());
-
-                        let profile_bin = cx.target_dir.join(format!("coverage/debug/{target}"));
-                        let profile_base = cx
-                            .target_dir
-                            .join("coverage/debug/deps")
-                            .as_std_path()
-                            .to_path_buf();
                         let entries = std::fs::read_dir(&main_corpus).unwrap();
-                        for entry in entries.flatten().map(|e| e.path()) {
-                            // We only want to run new corpus entries since the last time we ran.
-                            let potentially_new = entry.metadata().is_ok_and(|meta| {
-                                meta.modified()
-                                    .ok()
-                                    .and_then(|mtime| {
-                                        prev_start_time
-                                            .map(|prev| prev < mtime || mtime.elapsed().is_err()) // guard against `SystemTime`-drift
-                                    })
-                                    .unwrap_or(true)
-                            });
-                            if potentially_new && let Some(hash) = entry.file_name() {
-                                let profile_file = {
-                                    let mut name = std::ffi::OsString::from("coverage-");
-                                    name.push(hash);
-                                    name.push(".profraw");
-                                    profile_base.join(name)
-                                };
-                                if !profile_file.exists() {
-                                    let _ = process::Command::new(&profile_bin)
-                                        .arg(entry)
-                                        .env("LLVM_PROFILE_FILE", &profile_file)
-                                        .stdout(Stdio::null())
-                                        .stderr(Stdio::null())
-                                        .status();
+                        {
+                            let mut covered_seeds = covered_seeds.lock().unwrap();
+
+                            for entry in entries.flatten().map(|e| e.path()) {
+                                // We only want to run new corpus entries since the last time we ran.
+                                if let Some(name) = entry.file_name()
+                                    && !covered_seeds.contains(name)
+                                {
+                                    cfg.profile_simple(&entry, None);
                                     seen_new_entry = true;
+                                    covered_seeds.insert(name.to_owned());
                                 }
                             }
                         }
                         let res = if seen_new_entry {
-                            let coverage_dir = output_target + "/coverage";
-                            let _ = fs::remove_dir_all(&coverage_dir);
-                            let merged = profile_base.join("worker.profdata");
+                            // clean old coverage
+                            if let Ok(entries) = fs::read_dir(&coverage_dir) {
+                                for entry in entries.flatten() {
+                                    if entry.file_name() != WORKER_PROFDATA {
+                                        let _ = if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                                            fs::remove_dir_all(entry.path())
+                                        } else {
+                                            fs::remove_file(entry.path())
+                                        };
+                                    }
+                                }
+                            }
+                            let merged = coverage_dir.join(WORKER_PROFDATA);
                             cfg.merge_profraw(merged.as_path(), Some(1)).and_then(|()| {
                                 cfg.report_coverage(
                                     merged.as_path(),
-                                    &PathBuf::from(coverage_dir),
+                                    &coverage_dir,
                                     crate::coverage::ReportType::Html,
                                     Some(1),
                                 )
