@@ -227,6 +227,7 @@ impl Fuzz {
                     let coverage_now_running = Arc::clone(&coverage_now_running);
                     let cx = cx.clone();
                     let cfg = coverage_cfg.clone().unwrap();
+                    let terminate = Arc::clone(&common.terminate);
                     thread::spawn(move || {
                         let mut seen_new_entry = false;
                         let prev_start_time =
@@ -285,8 +286,11 @@ impl Fuzz {
                         };
 
                         {
+                            // poison mutex on failure
                             let mut guard = coverage_now_running.lock().unwrap();
-                            res.unwrap();
+                            if !terminate.load(std::sync::atomic::Ordering::Acquire) {
+                                res.unwrap();
+                            }
                             *guard = false;
                         }
                         *cov_end_time.lock().unwrap() = Instant::now();
