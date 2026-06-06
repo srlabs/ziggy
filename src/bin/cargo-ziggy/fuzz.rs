@@ -802,6 +802,7 @@ impl Fuzz {
         let mut afl_timeouts = String::new();
         let mut afl_new_finds = String::new();
         let mut afl_faves = String::new();
+        let mut afl_stability = None;
 
         if !self.afl() {
             afl_status = format!("{yellow}disabled{reset} ");
@@ -831,6 +832,10 @@ impl Fuzz {
                         afl_speed = String::from(speed);
                     } else if let Some(coverage) = line.strip_prefix("Coverage reached : ") {
                         afl_coverage = String::from(coverage);
+                    } else if let Some(stability) = line.strip_prefix("Lowest stability : ") {
+                        afl_stability = stability
+                            .strip_suffix('%')
+                            .and_then(|s| s.parse::<f64>().ok());
                     } else if let Some(crashes) = line.strip_prefix("Crashes saved : ") {
                         afl_crashes = String::from(crashes);
                     } else if let Some(timeouts) = line.strip_prefix("Hangs saved : ") {
@@ -982,6 +987,14 @@ impl Fuzz {
             screen += &format!(
                 "│ {gray}top inputs todo :{reset} {afl_faves:17.17} │   {gray}no find for :{reset} {afl_new_finds:17.17}   │\n"
             );
+
+            if let Some(stability) = afl_stability {
+                let color = if stability > 85.00f64 { "" } else { red };
+                let stability = format!("{stability:0.2}%");
+                screen += &format!(
+                    "│{gray}lowest stability :{reset} {color}{stability:17.17}{reset} │                                     │\n"
+                );
+            }
         }
         screen += &format!(
             "├─ {blue}honggfuzz{reset} {hf_status:0}─────────────────────────────────────────────────┬────┘\n"
