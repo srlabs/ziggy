@@ -18,6 +18,8 @@
 - 🎯 easy coverage report generation
 - 😶‍🌫️ Arbitrary trait support
 
+> Note: Fuzzing features such as CMPLOG or ASAN require ziggy to be built with the Rust nightly toolchain.
+
 Features will also include:
 
 - 🐇 [LibAFL](https://github.com/aflplusplus/libafl) integration
