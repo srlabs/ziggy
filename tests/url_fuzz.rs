@@ -417,3 +417,47 @@ fn clean() {
         assert!(!hfuzz_build_path.exists(), "honggfuzz harness not cleaned");
     }
 }
+
+#[allow(clippy::zombie_processes)]
+#[test]
+fn coverage_worker() {
+    let _guard = exclusive_guard();
+    let temp_dir = tempfile::tempdir().unwrap();
+    let output_dir = temp_dir.path().join("output");
+    let target_dir = temp_dir.path().join("target");
+    let metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();
+    let workspace_root: PathBuf = metadata.workspace_root.into();
+    let cargo_ziggy = metadata.target_directory.join("debug/cargo-ziggy");
+    let fuzzer_directory = workspace_root.join("examples/url");
+
+    // cargo ziggy build
+    let build_status = process::Command::new(&cargo_ziggy)
+        .arg("ziggy")
+        .arg("build")
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .current_dir(&fuzzer_directory)
+        .status()
+        .expect("failed to run `cargo ziggy build`");
+    assert!(build_status.success(), "`cargo ziggy build` failed");
+
+    // cargo ziggy fuzz -j 2 -t 5 -o temp_dir
+    let mut fuzzer = process::Command::new(&cargo_ziggy)
+        .arg("ziggy")
+        .arg("fuzz")
+        .arg("-j2")
+        .arg("-t5")
+        .arg("-G100")
+        .arg("--coverage-worker")
+        .arg("--coverage-interval=0")
+        .arg("--corpus-sync-interval=0")
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .env("ZIGGY_OUTPUT", output_dir)
+        .env("AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES", "1")
+        .env("AFL_SKIP_CPUFREQ", "1")
+        .current_dir(&fuzzer_directory)
+        .spawn()
+        .expect("failed to run `cargo ziggy fuzz`");
+    thread::sleep(Duration::from_secs(30));
+    assert!(matches!(fuzzer.try_wait(), Ok(None)));
+    kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
+}
