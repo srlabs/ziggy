@@ -8,18 +8,23 @@ where
     F: FnMut(&[u8]),
 {
     use std::{env, fs::File, io::Read};
-    let file_name: String = env::args().nth(1).expect("pass in a file name as argument");
-    println!("Now running {file_name}");
-    let mut buffer: Vec<u8> = Vec::new();
-    let mut file = File::open(file_name).unwrap_or_else(|e| {
-        eprintln!("Could not open file: {e}");
-        std::process::exit(1);
-    });
-    file.read_to_end(&mut buffer).unwrap_or_else(|e| {
-        eprintln!("Could not read file: {e}");
-        std::process::exit(1);
-    });
-    closure(buffer.as_slice());
+    let file_names: Vec<String> = env::args().skip(1).collect();
+    if file_names.is_empty() {
+        panic!("pass in a file name as argument");
+    }
+    for file_name in file_names {
+        println!("Now running {file_name}");
+        let mut buffer: Vec<u8> = Vec::new();
+        let mut file = File::open(&file_name).unwrap_or_else(|e| {
+            eprintln!("Could not open file: {e}");
+            std::process::exit(1);
+        });
+        file.read_to_end(&mut buffer).unwrap_or_else(|e| {
+            eprintln!("Could not read file: {e}");
+            std::process::exit(1);
+        });
+        closure(buffer.as_slice());
+    }
 }
 
 /// Fuzz a closure-like block of code by passing a slice or an object of arbitrary type.
