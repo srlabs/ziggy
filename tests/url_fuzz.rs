@@ -415,6 +415,25 @@ fn clean() {
         assert!(clean_status.success(), "`cargo ziggy clean` failed");
         assert!(!afl_build_path.exists(), "afl harness not cleaned");
         assert!(!hfuzz_build_path.exists(), "honggfuzz harness not cleaned");
+
+        let build_status = process::Command::new(&cargo_ziggy)
+            .arg("ziggy")
+            .arg("build")
+            .env("CARGO_TARGET_DIR", temp_dir_path)
+            .current_dir(&fuzzer_directory)
+            .status()
+            .expect("failed to run `cargo ziggy build`");
+        assert!(build_status.success(), "`cargo ziggy build` failed");
+
+        let clean_status = process::Command::new(&cargo_ziggy)
+            .args(["ziggy", "clean"])
+            .env("CARGO_TARGET_DIR", temp_dir_path)
+            .current_dir(&fuzzer_directory)
+            .status()
+            .expect("failed to run `cargo ziggy clean`");
+        assert!(clean_status.success(), "`cargo ziggy clean` failed");
+        assert!(!temp_dir_path.join("afl").exists(), "afl not cleaned");
+        assert!(!temp_dir_path.join("honggfuzz").exists(), "afl not cleaned");
     }
 }
 

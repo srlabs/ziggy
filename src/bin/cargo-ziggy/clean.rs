@@ -7,20 +7,23 @@ impl Clean {
             return Ok(());
         };
         let clean = |target, target_triple: Option<&str>, try_release| -> Result<(), Error> {
-            let already_profile = self
-                .args
-                .iter()
-                .any(|arg| arg.as_encoded_bytes().starts_with(b"--profile") || arg == "--release");
-            let status = common
-                .cargo()
-                .arg("clean")
-                .arg("-q")
-                .args(&self.args)
-                .args(target_triple.map(|triple| format!("--target={triple}")))
-                .args((!already_profile && try_release).then_some("--release"))
-                .env("CARGO_TARGET_DIR", target_dir.join(target))
-                .status()
-                .expect("Error running cargo clean command");
+            let mut command = common.cargo();
+            command
+                .args(["clean", "-q"])
+                .env("CARGO_TARGET_DIR", target_dir.join(target));
+            if !self.args.is_empty() {
+                command.args(&self.args);
+                if let Some(triple) = target_triple {
+                    command.arg(format!("--target={triple}"));
+                }
+                let already_profile = self.args.iter().any(|arg| {
+                    arg.as_encoded_bytes().starts_with(b"--profile") || arg == "--release"
+                });
+                if try_release && !already_profile {
+                    command.arg("--release");
+                }
+            }
+            let status = command.status().expect("Error running cargo clean command");
             if !status.success() {
                 bail!("Error cleaning up: Exited with {:?}", status.code());
             }
