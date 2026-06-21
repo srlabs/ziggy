@@ -12,6 +12,14 @@ fn is_using_nightly_toolchain() -> bool {
     String::from_utf8_lossy(&out.stdout).contains("nightly")
 }
 
+fn afl_plugins_installed(common: &Common) -> bool {
+    common
+        .cargo()
+        .args(["afl", "--version"])
+        .output()
+        .is_ok_and(|out| String::from_utf8_lossy(&out.stdout).contains("with plugins"))
+}
+
 impl Build {
     /// Build the fuzzers
     pub fn build(&self, common: &Common) -> Result<(), anyhow::Error> {
@@ -26,7 +34,23 @@ impl Build {
             bail!("ASAN requires nightly toolchain");
         }
 
+        if !is_nightly {
+            eprintln!(
+                "    {} the Rust toolchain is not nightly; AFL++ CMPLOG and ASAN instrumentation are unavailable",
+                style("Warning:").yellow().bold()
+            );
+        }
+
         let cx = Context::new(common, self.target.clone())?;
+
+        let afl_plugins = is_nightly && !self.no_afl && afl_plugins_installed(common);
+
+        if is_nightly && !self.no_afl && !afl_plugins {
+            eprintln!(
+                "    {} the AFL++ LLVM plugins are not available; build them with `cargo afl config --update --build --plugins --force --verbose`",
+                style("Warning:").yellow().bold()
+            );
+        }
 
         if !self.no_afl {
             eprintln!("    {} afl", style("Building").red().bold());
