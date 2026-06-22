@@ -43,9 +43,7 @@ impl Build {
 
         let cx = Context::new(common, self.target.clone())?;
 
-        let afl_plugins = is_nightly && !self.no_afl && afl_plugins_installed(common);
-
-        if is_nightly && !self.no_afl && !afl_plugins {
+        if is_nightly && !self.no_afl && !afl_plugins_installed(common) {
             eprintln!(
                 "    {} the AFL++ LLVM plugins are not available; build them with `cargo afl config --update --build --plugins --force --verbose`",
                 style("Warning:").yellow().bold()
