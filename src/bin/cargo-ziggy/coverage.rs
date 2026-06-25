@@ -18,10 +18,10 @@ impl Cover {
         let cx = Context::new(common, self.target.clone())?;
 
         let base_dir = cx.target_dir.join("coverage/debug");
-        let coverage_target_dir = base_dir.join("deps");
+        let coverage_target_dir = base_dir.join(format!("deps/coverage-{}", &cx.bin_target));
         let cfg = Cfg::new(
             base_dir.join(&cx.bin_target),
-            coverage_target_dir.join("coverage-%p-%m.profraw"),
+            coverage_target_dir.join("cov-%p-%m.profraw"),
         )?;
 
         eprintln!("Generating coverage");
@@ -29,9 +29,14 @@ impl Cover {
         // build the runner
         Self::build_runner(common).context("instrumenting for coverage")?;
 
-        if !self.keep {
-            // We remove the previous coverage files
-            Self::clean_old_cov(&cx)?;
+        let mut cov_dir_exists = coverage_target_dir.is_dir();
+        if !self.keep && cov_dir_exists {
+            fs::remove_dir_all(&coverage_target_dir)
+                .with_context(|| format!("⚠️  couldn't remove {}", &coverage_target_dir))?;
+            cov_dir_exists = false;
+        }
+        if !cov_dir_exists {
+            fs::create_dir_all(&coverage_target_dir).context("output dir for profraws")?;
         }
 
         let input_path = PathBuf::from(
@@ -169,19 +174,6 @@ impl Cover {
             .with_context(|| format!("⚠️  error removing dir {profiles_dir}"))?;
         Ok(())
     }
-
-    pub fn clean_old_cov(cx: &Context) -> Result<(), anyhow::Error> {
-        if let Ok(dir) = fs::read_dir(&cx.target_dir) {
-            for entry in dir.flatten() {
-                let path = entry.path();
-                if path.extension().is_some_and(|ext| ext == "profraw") {
-                    fs::remove_file(&path)
-                        .with_context(|| format!("⚠️  couldn't remove {}", path.display()))?;
-                }
-            }
-        }
-        Ok(())
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -257,13 +249,16 @@ impl Cfg {
         self.runner.as_std_path()
     }
 
-    pub fn profile_simple(&self, seed: &Path, profraw_pattern: &Path) {
+    pub fn profile_simple(&self, seed: &Path, profraw_pattern_overwrite: Option<&Path>) {
         let _ = process::Command::new(&self.runner)
             .arg(seed)
             .stdin(process::Stdio::null())
             .stdout(process::Stdio::null())
             .stderr(process::Stdio::null())
-            .env("LLVM_PROFILE_FILE", profraw_pattern)
+            .env(
+                "LLVM_PROFILE_FILE",
+                profraw_pattern_overwrite.unwrap_or(self.prof_file_template.as_std_path()),
+            )
             .status();
     }
 

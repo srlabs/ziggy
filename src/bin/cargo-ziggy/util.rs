@@ -1,6 +1,11 @@
 use crate::Common;
 use anyhow::Result;
-use std::{fs::File, hash::Hasher, io, io::Read, path::Path};
+use std::{
+    fs::File,
+    hash::Hasher,
+    io::{self, Read},
+    path::Path,
+};
 
 pub use cargo_metadata::camino::Utf8PathBuf;
 use indicatif::{ProgressBar, ProgressStyle};
