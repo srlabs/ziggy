@@ -45,7 +45,7 @@ impl Build {
 
         if is_nightly && !self.no_afl && !afl_plugins_installed(common) {
             eprintln!(
-                "    {} the AFL++ LLVM plugins are not available; build them with `cargo afl config --update --build --plugins --force --verbose`",
+                "    {} the AFL++ LLVM plugins are not available; build them with `cargo afl config --update --plugins --verbose`",
                 style("Warning:").yellow().bold()
             );
         }
