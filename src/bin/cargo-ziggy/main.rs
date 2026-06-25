@@ -419,7 +419,6 @@ pub struct Common {
     terminate: Arc<AtomicBool>,
     sigs_done: Option<()>,
     pub cargo_path: PathBuf,
-    runtime: OnceLock<tokio::runtime::Runtime>,
     metadata: OnceLock<Option<cargo_metadata::Metadata>>,
 }
 
@@ -431,7 +430,6 @@ impl Common {
             cargo_path: std::env::var("CARGO")
                 .unwrap_or_else(|_| String::from("cargo"))
                 .into(),
-            runtime: OnceLock::new(),
             metadata: OnceLock::new(),
         }
     }
@@ -469,15 +467,6 @@ impl Common {
         let mut cmd = std::process::Command::new(&self.cargo_path);
         cmd.stdin(std::process::Stdio::null());
         cmd
-    }
-
-    fn async_runtime(&self) -> &tokio::runtime::Runtime {
-        self.runtime.get_or_init(|| {
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("Failed building tokio runtime")
-        })
     }
 
     /// Cached `cargo metadata`
