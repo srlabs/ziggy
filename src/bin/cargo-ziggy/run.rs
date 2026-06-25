@@ -252,7 +252,10 @@ mod tests {
         let runner = Runner::new(&runner_bin, Some(Duration::from_secs(30)));
         match runner.run(&seed) {
             Status::Ok(status) => assert!(status.success()),
-            other => panic!("expected Status::Ok(success), got Status::{}", label(&other)),
+            other => panic!(
+                "expected Status::Ok(success), got Status::{}",
+                label(&other)
+            ),
         }
     }
 
@@ -270,7 +273,10 @@ mod tests {
                 assert!(!status.success());
                 assert_eq!(status.code(), Some(3));
             }
-            other => panic!("expected Status::Ok(failure), got Status::{}", label(&other)),
+            other => panic!(
+                "expected Status::Ok(failure), got Status::{}",
+                label(&other)
+            ),
         }
     }
 
@@ -311,7 +317,10 @@ mod tests {
         let runner = Runner::new(&runner_bin, None);
         match runner.run(&seed) {
             Status::Ok(status) => assert!(status.success()),
-            other => panic!("expected Status::Ok(success), got Status::{}", label(&other)),
+            other => panic!(
+                "expected Status::Ok(success), got Status::{}",
+                label(&other)
+            ),
         }
     }
 
