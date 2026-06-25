@@ -7,6 +7,7 @@ use std::{
     os::unix::process::ExitStatusExt,
     path::{Path, PathBuf},
 };
+use wait_timeout::ChildExt;
 
 impl Run {
     // Run inputs
@@ -100,10 +101,9 @@ impl Run {
         };
 
         let runner = Runner::new(
-            common.async_runtime(),
             runner_path.as_std_path(),
             self.timeout
-                .map(|s| tokio::time::Duration::from_secs(u64::from(s))),
+                .map(|s| std::time::Duration::from_secs(u64::from(s))),
         );
 
         for file in input_files {
@@ -154,47 +154,43 @@ fn collect_dirs_recursively(
 }
 
 struct Runner<'a> {
-    rt: &'a tokio::runtime::Runtime,
     path: &'a Path,
-    timeout: Option<tokio::time::Duration>,
+    timeout: Option<std::time::Duration>,
 }
 
 impl<'a> Runner<'a> {
-    fn new(
-        rt: &'a tokio::runtime::Runtime,
-        path: &'a Path,
-        timeout: Option<tokio::time::Duration>,
-    ) -> Self {
-        Self { rt, path, timeout }
+    fn new(path: &'a Path, timeout: Option<std::time::Duration>) -> Self {
+        Self { path, timeout }
     }
 
     fn run(&self, seed: &Path) -> Status {
-        self.rt.block_on(async {
-            let mut child = match tokio::process::Command::new(self.path)
-                .arg(seed)
-                .env("RUST_BACKTRACE", "full")
-                .spawn()
-                .context("⚠️  couldn't spawn the runner process")
-            {
-                Ok(child) => child,
-                Err(e) => return e.into(),
-            };
-            let res = if let Some(duration) = self.timeout {
-                if let Ok(res) = tokio::time::timeout(duration, child.wait()).await {
-                    res
-                } else {
-                    let _ = child.start_kill();
+        let mut child = match std::process::Command::new(self.path)
+            .arg(seed)
+            .env("RUST_BACKTRACE", "full")
+            .spawn()
+            .context("⚠️  couldn't spawn the runner process")
+        {
+            Ok(child) => child,
+            Err(e) => return e.into(),
+        };
+        let res = if let Some(timeout) = self.timeout {
+            match child.wait_timeout(timeout) {
+                Ok(None) => {
+                    // timed out
+                    let _ = child.kill();
                     return Status::Timeout;
                 }
-            } else {
-                child.wait().await
+                Ok(Some(status)) => Ok(status),
+                Err(e) => Err(e),
             }
-            .context("⚠️  couldn't wait for the runner process");
-            match res {
-                Ok(status) => Status::Ok(status),
-                Err(e) => e.into(),
-            }
-        })
+        } else {
+            child.wait()
+        }
+        .context("⚠️  couldn't wait for the runner process");
+        match res {
+            Ok(status) => Status::Ok(status),
+            Err(e) => e.into(),
+        }
     }
 }
 

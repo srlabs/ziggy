@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
-[dependencies]
-ziggy = { path = "../../", default-features = false }
-
 [features]
 fuzzing = []
+
+[dependencies]
+ziggy = { path = "../../", default-features = false }
