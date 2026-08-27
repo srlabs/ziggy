@@ -22,17 +22,11 @@ impl Triage {
             .replace("{target_name}", &cx.bin_target);
         fs::remove_dir_all(&triage_dir).ok();
 
-        if !fs::metadata(&input_dir)
-            .map(|meta| meta.is_dir())
-            .unwrap_or(false)
-        {
+        if !fs::metadata(&input_dir).is_ok_and(|meta| meta.is_dir()) {
             bail!("This option requires that at least one AFL++ instance was run!");
         }
 
-        if fs::metadata(&triage_dir)
-            .map(|meta| meta.is_dir())
-            .unwrap_or(false)
-        {
+        if fs::metadata(&triage_dir).is_ok_and(|meta| meta.is_dir()) {
             bail!("Please remove {triage_dir:?} first");
         }
 

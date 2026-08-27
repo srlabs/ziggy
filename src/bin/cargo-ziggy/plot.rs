@@ -11,7 +11,7 @@ impl Plot {
             "{}/{}/afl/{}/",
             self.ziggy_output.display(),
             cx.bin_target,
-            &self.input
+            self.input
         );
 
         let plot_dir = self

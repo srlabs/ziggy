@@ -428,7 +428,7 @@ impl Common {
             terminate: Arc::new(AtomicBool::new(false)),
             sigs_done: Some(()),
             cargo_path: std::env::var("CARGO")
-                .unwrap_or_else(|_| String::from("cargo"))
+                .unwrap_or_else(|_| "cargo".to_owned())
                 .into(),
             metadata: OnceLock::new(),
         }
@@ -465,6 +465,14 @@ impl Common {
 
     fn cargo(&self) -> std::process::Command {
         let mut cmd = std::process::Command::new(&self.cargo_path);
+        cmd.stdin(std::process::Stdio::null());
+        cmd
+    }
+
+    fn rustc() -> std::process::Command {
+        let mut cmd = std::process::Command::new(
+            std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_owned()),
+        );
         cmd.stdin(std::process::Stdio::null());
         cmd
     }

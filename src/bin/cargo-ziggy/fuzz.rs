@@ -147,7 +147,7 @@ impl Fuzz {
         // We create an initial corpus file, so that AFL++ starts up properly if corpus is empty
         let is_empty = fs::read_dir(&paths.corpus)?.next().is_none(); // check if corpus has some seeds
         if is_empty {
-            let mut initial_corpus = File::create(format!("{}/init", &paths.corpus))?;
+            let mut initial_corpus = File::create(format!("{}/init", paths.corpus))?;
             writeln!(&mut initial_corpus, "00000000")?;
             drop(initial_corpus);
         }
@@ -296,7 +296,7 @@ impl Fuzz {
 
             if !afl_output_ok
                 && let Ok(afl_log) =
-                    fs::read_to_string(format!("{}/logs/afl.log", &paths.output_target))
+                    fs::read_to_string(format!("{}/logs/afl.log", paths.output_target))
             {
                 if afl_log.contains("ready to roll") {
                     afl_output_ok = true;
@@ -487,12 +487,12 @@ impl Fuzz {
                 };
                 // We only sync to the shared corpus if Honggfuzz is also running
                 let use_shared_corpus = match (self.no_honggfuzz, job_num) {
-                    (false, 0) => format!("-F{}", &paths.corpus),
+                    (false, 0) => format!("-F{}", paths.corpus),
                     _ => String::new(),
                 };
                 let use_initial_corpus_dir = match (&self.initial_corpus, job_num) {
                     (Some(initial_corpus), 0) => {
-                        format!("-F{}", &initial_corpus.display().to_string())
+                        format!("-F{}", initial_corpus.display())
                     }
                     _ => String::new(),
                 };
@@ -528,7 +528,7 @@ impl Fuzz {
                     None => String::new(),
                 };
                 let dictionary_option = match &self.dictionary {
-                    Some(d) => format!("-x{}", &d.display().to_string()),
+                    Some(d) => format!("-x{}", d.display()),
                     None => String::new(),
                 };
                 let mutation_option = match job_num / 5 {
@@ -553,21 +553,18 @@ impl Fuzz {
                     _ => "_DUMMY_VAR",
                 };
                 let target_path = self.binary.clone().unwrap_or_else(|| {
-                    if self.release {
-                        cx.target_dir()
-                            .join(format!("afl/release/{}", cx.bin_target()))
-                            .into_std_path_buf()
-                    } else if self.asan && job_num == 0 {
+                    let profile = if self.release { "release" } else { "debug" };
+                    if self.asan && job_num == 0 {
                         cx.target_dir()
                             .join(format!(
-                                "afl/{}/debug/{}",
+                                "afl/{}/{profile}/{}",
                                 target_triple::TARGET,
                                 cx.bin_target()
                             ))
                             .into_std_path_buf()
                     } else {
                         cx.target_dir()
-                            .join(format!("afl/debug/{}", cx.bin_target()))
+                            .join(format!("afl/{profile}/{}", cx.bin_target()))
                             .into_std_path_buf()
                     }
                 });
@@ -669,12 +666,12 @@ impl Fuzz {
                         &format!(
                             "{} hfuzz run {}",
                             cx.common().cargo_path.display(),
-                            &cx.bin_target()
+                            cx.bin_target()
                         ),
                         "/dev/null",
                     ])
-                    .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
                     .env("CARGO_TARGET_DIR", cx.target_dir().join("honggfuzz"))
+                    .envs(crate::build::honggfuzz_envs(self.asan))
                     .env(
                         "HFUZZ_WORKSPACE",
                         format!("{}/honggfuzz", paths.output_target),
@@ -723,7 +720,7 @@ impl Fuzz {
 
         term.write_line(&format!(
             "\n    {}",
-            &style("Running minimization").magenta().bold()
+            style("Running minimization").magenta().bold()
         ))?;
 
         let input_corpus = &paths.corpus_tmp;
@@ -1156,7 +1153,7 @@ impl OutputPaths {
                 s.to_str().unwrap_or_default(),
                 format!(
                     "{}/{}",
-                    &self.corpus_tmp,
+                    self.corpus_tmp,
                     s.file_name()
                         .unwrap_or_default()
                         .to_str()

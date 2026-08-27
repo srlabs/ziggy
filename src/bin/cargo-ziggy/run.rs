@@ -28,7 +28,6 @@ impl Run {
             args.push(&asan_target_str);
             args.extend(["-Z", "build-std"]);
             rust_flags.push_str(" -Zsanitizer=address ");
-            rust_flags.push_str(" -Copt-level=0 ");
             rust_doc_flags.push_str(" -Zsanitizer=address ");
         }
 

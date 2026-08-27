@@ -17,6 +17,8 @@ jobs:
         run: cargo fmt --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Check semver
+        uses: obi1kenobi/cargo-semver-checks-action@v2
   build_and_test:
     name: Rust project - latest
     runs-on: ubuntu-latest
