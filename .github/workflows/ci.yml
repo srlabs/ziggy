@@ -27,7 +27,7 @@ jobs:
         toolchain:
           - stable
           - beta
-          - nightly
+          - nightly-2026-08-01 # pin while afl.rs's AFL++ version is incompatible with llvm-23
     steps:
       - uses: actions/checkout@v6
       - run: sudo apt-get update
@@ -36,7 +36,7 @@ jobs:
       - run: rustup component add rust-src llvm-tools
       - run: cargo install cargo-afl honggfuzz
       - name: Install LLVM matching the nightly toolchain (for AFL++ cmplog plugins)
-        if: ${{ matrix.toolchain == 'nightly' }}
+        if: ${{ startsWith(matrix.toolchain, 'nightly') }}
         run: |
           # afl.rs builds the AFL++ LLVM pass plugins against rustc's embedded
           # LLVM, so we need a matching `llvm-config-<major>` on PATH.
@@ -47,8 +47,8 @@ jobs:
           sudo ./llvm.sh "${LLVM_VERSION}"
           sudo apt-get install -y "llvm-${LLVM_VERSION}-dev" "libclang-${LLVM_VERSION}-dev"
           llvm-config-"${LLVM_VERSION}" --version
-      - if: ${{ matrix.toolchain == 'nightly' }}
-        run: cargo afl config --plugins --build
+      - if: ${{ startsWith(matrix.toolchain, 'nightly') }}
+        run: cargo afl config --plugins --build --verbose
       - run: cargo install --path . --verbose
       - if: ${{ matrix.toolchain == 'stable' }}
         run: diff <(awk '/^```$/ && p{exit} p; /^\$ cargo ziggy/{p=1}' README.md) <(cargo ziggy 2>&1)
