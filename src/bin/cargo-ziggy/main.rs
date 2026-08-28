@@ -528,6 +528,25 @@ impl Common {
     fn resolve_bin(&self, target: Option<String>) -> Result<String> {
         target.ok_or(()).or_else(|()| self.guess_bin())
     }
+
+    fn compatible_fuzzers(&self) -> Option<Vec<String>> {
+        let meta = self.metadata()?;
+        if meta.workspace_default_members.is_missing() {
+            return None;
+        }
+
+        let compat: Vec<_> = meta
+            .workspace_default_packages()
+            .first()?
+            .metadata
+            .get("ziggy")?
+            .get("compat")?
+            .as_array()?
+            .iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect();
+        Some(compat)
+    }
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -535,7 +554,44 @@ fn main() -> Result<(), anyhow::Error> {
     common.shutdown_immediate();
     common.setup_signal_handling()?;
 
-    let Cargo::Ziggy(command) = Cargo::parse();
+    let Cargo::Ziggy(mut command) = Cargo::parse();
+
+    if let Some(compat) = common.compatible_fuzzers() {
+        let mut with_afl = false;
+        let mut with_honggfuzz = false;
+        for fuzzer in compat {
+            match fuzzer.to_lowercase().as_str() {
+                "afl" => {
+                    with_afl = true;
+                }
+                "honggfuzz" => {
+                    with_honggfuzz = true;
+                }
+                other => bail!("unknown fuzzer {other} in [package.metadata.ziggy]"),
+            }
+        }
+
+        match &mut command {
+            Ziggy::Build(build) => {
+                build.no_afl = !with_afl;
+                build.no_honggfuzz = !with_honggfuzz;
+            }
+            Ziggy::Fuzz(fuzz) => {
+                fuzz.no_afl = !with_afl;
+                fuzz.no_honggfuzz = !with_honggfuzz;
+            }
+            Ziggy::Minimize(minimize) => {
+                minimize.engine = match (with_afl, with_honggfuzz) {
+                    (true, true) => FuzzingEngines::All,
+                    (true, false) => FuzzingEngines::AFLPlusPlus,
+                    (false, true) => FuzzingEngines::Honggfuzz,
+                    _ => bail!("harness is not compatible with any fuzzer"),
+                }
+            }
+            _ => {}
+        }
+    }
+
     match command {
         Ziggy::Build(args) => args.build(&common).context("Failed to build the fuzzers"),
         Ziggy::Fuzz(mut args) => args.fuzz(&common).context("Failure running fuzzers"),
