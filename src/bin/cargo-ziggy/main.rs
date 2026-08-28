@@ -529,15 +529,16 @@ impl Common {
         target.ok_or(()).or_else(|()| self.guess_bin())
     }
 
-    fn compatible_fuzzers(&self) -> Option<Vec<String>> {
+    fn compatible_fuzzers(&self, bin_name: &str) -> Option<Vec<String>> {
         let meta = self.metadata()?;
         if meta.workspace_default_members.is_missing() {
             return None;
         }
 
-        let compat: Vec<_> = meta
+        let compat = meta
             .workspace_default_packages()
-            .first()?
+            .into_iter()
+            .find(|p| p.targets.iter().any(|t| t.is_bin() && t.name == bin_name))?
             .metadata
             .get("ziggy")?
             .get("compat")?
@@ -556,7 +557,17 @@ fn main() -> Result<(), anyhow::Error> {
 
     let Cargo::Ziggy(mut command) = Cargo::parse();
 
-    if let Some(compat) = common.compatible_fuzzers() {
+    let bin_target = match &command {
+        Ziggy::Build(build) => Some(build.target.clone()),
+        Ziggy::Fuzz(fuzz) => Some(fuzz.target.clone()),
+        Ziggy::Minimize(minimize) => Some(minimize.target.clone()),
+        _ => None,
+    };
+
+    if let Some(bin_target) = bin_target
+        && let Ok(harness) = common.resolve_bin(bin_target)
+        && let Some(compat) = common.compatible_fuzzers(&harness)
+    {
         let mut with_afl = false;
         let mut with_honggfuzz = false;
         for fuzzer in compat {
@@ -573,19 +584,28 @@ fn main() -> Result<(), anyhow::Error> {
 
         match &mut command {
             Ziggy::Build(build) => {
-                build.no_afl = !with_afl;
-                build.no_honggfuzz = !with_honggfuzz;
+                build.no_afl |= !with_afl;
+                build.no_honggfuzz |= !with_honggfuzz;
             }
             Ziggy::Fuzz(fuzz) => {
-                fuzz.no_afl = !with_afl;
-                fuzz.no_honggfuzz = !with_honggfuzz;
+                fuzz.no_afl |= !with_afl;
+                fuzz.no_honggfuzz |= !with_honggfuzz;
             }
             Ziggy::Minimize(minimize) => {
-                minimize.engine = match (with_afl, with_honggfuzz) {
+                let use_afl = matches!(
+                    minimize.engine,
+                    FuzzingEngines::AFLPlusPlus | FuzzingEngines::All
+                ) && with_afl;
+                let use_honggfuzz = matches!(
+                    minimize.engine,
+                    FuzzingEngines::Honggfuzz | FuzzingEngines::All
+                ) && with_honggfuzz;
+
+                minimize.engine = match (use_afl, use_honggfuzz) {
                     (true, true) => FuzzingEngines::All,
                     (true, false) => FuzzingEngines::AFLPlusPlus,
                     (false, true) => FuzzingEngines::Honggfuzz,
-                    _ => bail!("harness is not compatible with any fuzzer"),
+                    (false, false) => bail!("harness is not compatible with any requested fuzzer"),
                 }
             }
             _ => {}
