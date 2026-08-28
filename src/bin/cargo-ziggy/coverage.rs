@@ -18,7 +18,7 @@ impl Cover {
         let cx = Context::new(common, self.target.clone())?;
 
         let base_dir = cx.target_dir.join("coverage/debug");
-        let coverage_target_dir = base_dir.join(format!("deps/coverage-{}", &cx.bin_target));
+        let coverage_target_dir = base_dir.join(format!("deps/coverage-{}", cx.bin_target));
         let cfg = Cfg::new(
             base_dir.join(&cx.bin_target),
             coverage_target_dir.join("cov-%p-%m.profraw"),
@@ -32,7 +32,7 @@ impl Cover {
         let mut cov_dir_exists = coverage_target_dir.is_dir();
         if !self.keep && cov_dir_exists {
             fs::remove_dir_all(&coverage_target_dir)
-                .with_context(|| format!("⚠️  couldn't remove {}", &coverage_target_dir))?;
+                .with_context(|| format!("⚠️  couldn't remove {coverage_target_dir}"))?;
             cov_dir_exists = false;
         }
         if !cov_dir_exists {
@@ -80,7 +80,7 @@ impl Cover {
 
         eprintln!("    Generating raw profiles");
         let pb = progress_bar(coverage_corpus.len() as u64);
-        let log_dir = self.ziggy_output.join(format!("{}/logs", &cx.bin_target));
+        let log_dir = self.ziggy_output.join(format!("{}/logs", cx.bin_target));
         fs::create_dir_all(&log_dir).context("output dir for logs")?;
         let log_file = std::sync::Mutex::new(
             std::fs::File::create(log_dir.join("coverage.log")).context("logfile")?,

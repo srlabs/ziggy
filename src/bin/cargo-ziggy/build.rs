@@ -3,23 +3,6 @@ use anyhow::{Context as _, Result, bail};
 use console::style;
 use std::{env, process};
 
-fn is_using_nightly_toolchain() -> bool {
-    let out = process::Command::new("rustc")
-        .arg("--version")
-        .output()
-        .expect("failed to launch rustc");
-
-    String::from_utf8_lossy(&out.stdout).contains("nightly")
-}
-
-fn afl_plugins_installed(common: &Common) -> bool {
-    common
-        .cargo()
-        .args(["afl", "--version"])
-        .output()
-        .is_ok_and(|out| String::from_utf8_lossy(&out.stdout).contains("with plugins"))
-}
-
 impl Build {
     /// Build the fuzzers
     pub fn build(&self, common: &Common) -> Result<(), anyhow::Error> {
@@ -62,9 +45,7 @@ impl Build {
                 &cx.bin_target,
             ];
 
-            // Add the --release argument if self.release is true
             if self.release {
-                assert!(!self.asan, "cannot use --release for ASAN builds");
                 afl_args.push("--release");
             }
 
@@ -98,21 +79,15 @@ impl Build {
             // If ASAN is enabled, build both a sanitized binary and a non-sanitized binary.
             if self.asan {
                 eprintln!("    {} afl (ASan)", style("Building").red().bold());
-                if env::var("AFL_OPT_LEVEL").is_ok_and(|opt_level| opt_level != "0") {
-                    eprintln!("    Warning: ignoring AFL_OPT_LEVEL and setting it to 0");
-                }
                 afl_args.push(&asan_target_str);
                 afl_args.extend(["-Z", "build-std"]);
                 rust_flags.push_str(" -Zsanitizer=address ");
-                rust_flags.push_str("-Copt-level=0");
                 rust_doc_flags.push_str(" -Zsanitizer=address ");
 
                 let run = common
                     .cargo()
                     .args(afl_args)
                     .env("AFL_QUIET", "1")
-                    // need to specify for afl.rs so that we build with -Copt-level=0
-                    .env("AFL_OPT_LEVEL", "0")
                     .env("AFLRS_REQUIRE_PLUGINS", "1")
                     .env("AFL_LLVM_CMPLOG", "1") // for afl.rs feature "plugins"
                     .env("RUSTFLAGS", rust_flags)
@@ -130,10 +105,6 @@ impl Build {
         }
 
         if !self.no_honggfuzz {
-            assert!(
-                !self.asan,
-                "Cannot build honggfuzz with ASAN for the moment. use --no-honggfuzz"
-            );
             eprintln!("    {} honggfuzz", style("Building").red().bold());
 
             // Second fuzzer we build: Honggfuzz
@@ -141,8 +112,7 @@ impl Build {
                 .cargo()
                 .args(["hfuzz", "build", "--bin", &cx.bin_target])
                 .env("CARGO_TARGET_DIR", cx.target_dir.join("honggfuzz"))
-                .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
-                .env("RUSTFLAGS", env::var("RUSTFLAGS").unwrap_or_default())
+                .envs(honggfuzz_envs(self.asan))
                 .stdout(process::Stdio::piped())
                 .spawn()?
                 .wait()
@@ -158,11 +128,41 @@ impl Build {
             eprintln!("    {} honggfuzz", style("Finished").cyan().bold());
         }
 
-        assert!(
-            std::env::var("AFL_LLVM_CMPGLOG").is_err(),
-            "Even the mighty may fall, especially on 77b2c27a59bb858045c4db442989ce8f20c8ee11"
-        );
-
         Ok(())
     }
+}
+
+fn is_using_nightly_toolchain() -> bool {
+    Common::rustc()
+        .arg("--version")
+        .output()
+        .is_ok_and(|out| String::from_utf8_lossy(&out.stdout).contains("nightly"))
+}
+
+fn afl_plugins_installed(common: &Common) -> bool {
+    common
+        .cargo()
+        .args(["afl", "--version"])
+        .output()
+        .is_ok_and(|out| String::from_utf8_lossy(&out.stdout).contains("with plugins"))
+}
+
+pub fn honggfuzz_envs(use_asan: bool) -> impl Iterator<Item = (&'static str, String)> {
+    let mut rust_flags = String::new();
+    let mut hfuzz_build_args = "--features=ziggy/honggfuzz ".to_owned();
+
+    if use_asan {
+        hfuzz_build_args.push_str("-Zbuild-std ");
+        rust_flags.push_str("-Zsanitizer=address ");
+    }
+    let mut rust_doc_flags = rust_flags.clone();
+    rust_flags.extend(env::var("RUSTFLAGS"));
+    rust_doc_flags.extend(env::var("RUSTDOCFLAGS"));
+
+    [
+        ("RUSTFLAGS", rust_flags),
+        ("RUSTDOCFLAGS", rust_doc_flags),
+        ("HFUZZ_BUILD_ARGS", hfuzz_build_args),
+    ]
+    .into_iter()
 }

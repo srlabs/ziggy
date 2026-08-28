@@ -428,7 +428,7 @@ impl Common {
             terminate: Arc::new(AtomicBool::new(false)),
             sigs_done: Some(()),
             cargo_path: std::env::var("CARGO")
-                .unwrap_or_else(|_| String::from("cargo"))
+                .unwrap_or_else(|_| "cargo".to_owned())
                 .into(),
             metadata: OnceLock::new(),
         }
@@ -465,6 +465,14 @@ impl Common {
 
     fn cargo(&self) -> std::process::Command {
         let mut cmd = std::process::Command::new(&self.cargo_path);
+        cmd.stdin(std::process::Stdio::null());
+        cmd
+    }
+
+    fn rustc() -> std::process::Command {
+        let mut cmd = std::process::Command::new(
+            std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_owned()),
+        );
         cmd.stdin(std::process::Stdio::null());
         cmd
     }
@@ -520,6 +528,26 @@ impl Common {
     fn resolve_bin(&self, target: Option<String>) -> Result<String> {
         target.ok_or(()).or_else(|()| self.guess_bin())
     }
+
+    fn compatible_fuzzers(&self, bin_name: &str) -> Option<Vec<String>> {
+        let meta = self.metadata()?;
+        if meta.workspace_default_members.is_missing() {
+            return None;
+        }
+
+        let compat = meta
+            .workspace_default_packages()
+            .into_iter()
+            .find(|p| p.targets.iter().any(|t| t.is_bin() && t.name == bin_name))?
+            .metadata
+            .get("ziggy")?
+            .get("compat")?
+            .as_array()?
+            .iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect();
+        Some(compat)
+    }
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -527,7 +555,63 @@ fn main() -> Result<(), anyhow::Error> {
     common.shutdown_immediate();
     common.setup_signal_handling()?;
 
-    let Cargo::Ziggy(command) = Cargo::parse();
+    let Cargo::Ziggy(mut command) = Cargo::parse();
+
+    let bin_target = match &command {
+        Ziggy::Build(build) => Some(build.target.clone()),
+        Ziggy::Fuzz(fuzz) => Some(fuzz.target.clone()),
+        Ziggy::Minimize(minimize) => Some(minimize.target.clone()),
+        _ => None,
+    };
+
+    if let Some(bin_target) = bin_target
+        && let Ok(harness) = common.resolve_bin(bin_target)
+        && let Some(compat) = common.compatible_fuzzers(&harness)
+    {
+        let mut with_afl = false;
+        let mut with_honggfuzz = false;
+        for fuzzer in compat {
+            match fuzzer.to_lowercase().as_str() {
+                "afl" => {
+                    with_afl = true;
+                }
+                "honggfuzz" => {
+                    with_honggfuzz = true;
+                }
+                other => bail!("unknown fuzzer {other} in [package.metadata.ziggy]"),
+            }
+        }
+
+        match &mut command {
+            Ziggy::Build(build) => {
+                build.no_afl |= !with_afl;
+                build.no_honggfuzz |= !with_honggfuzz;
+            }
+            Ziggy::Fuzz(fuzz) => {
+                fuzz.no_afl |= !with_afl;
+                fuzz.no_honggfuzz |= !with_honggfuzz;
+            }
+            Ziggy::Minimize(minimize) => {
+                let use_afl = matches!(
+                    minimize.engine,
+                    FuzzingEngines::AFLPlusPlus | FuzzingEngines::All
+                ) && with_afl;
+                let use_honggfuzz = matches!(
+                    minimize.engine,
+                    FuzzingEngines::Honggfuzz | FuzzingEngines::All
+                ) && with_honggfuzz;
+
+                minimize.engine = match (use_afl, use_honggfuzz) {
+                    (true, true) => FuzzingEngines::All,
+                    (true, false) => FuzzingEngines::AFLPlusPlus,
+                    (false, true) => FuzzingEngines::Honggfuzz,
+                    (false, false) => bail!("harness is not compatible with any requested fuzzer"),
+                }
+            }
+            _ => {}
+        }
+    }
+
     match command {
         Ziggy::Build(args) => args.build(&common).context("Failed to build the fuzzers"),
         Ziggy::Fuzz(mut args) => args.fuzz(&common).context("Failure running fuzzers"),

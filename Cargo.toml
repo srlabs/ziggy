@@ -37,10 +37,12 @@ cli = [
     "tempfile",
     "thread_local",
     "time-humanize",
+    "tokio",
     "twox-hash",
     "wait-timeout",
 ]
 coverage = []
+tokio = []
 
 [dependencies]
 afl = { version = "0.18.2", default-features = false, optional = true }

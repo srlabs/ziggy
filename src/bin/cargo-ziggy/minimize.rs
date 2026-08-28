@@ -148,7 +148,7 @@ impl Minimize {
                 "HFUZZ_WORKSPACE",
                 format!(
                     "{}/{}/honggfuzz",
-                    &self.ziggy_output.display(),
+                    self.ziggy_output.display(),
                     cx.bin_target()
                 ),
             )
@@ -156,8 +156,8 @@ impl Minimize {
                 "HFUZZ_RUN_ARGS",
                 format!(
                     "-i{} -M -o{} -t{}",
-                    &self.input_corpus(cx.as_ref()),
-                    &self.output_corpus(cx.as_ref()),
+                    self.input_corpus(cx.as_ref()),
+                    self.output_corpus(cx.as_ref()),
                     self.timeout
                 ),
             )
