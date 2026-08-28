@@ -91,6 +91,16 @@ macro_rules! fuzz {
     };
 }
 
+#[cfg(feature = "honggfuzz")]
+#[doc(hidden)]
+pub use honggfuzz::fuzz as honggfuzz_fuzz;
+
+#[macro_export]
 #[cfg(all(feature = "honggfuzz", not(feature = "afl")))]
-#[doc(inline)]
-pub use honggfuzz::fuzz;
+macro_rules! fuzz {
+    ( $($x:tt)* ) => {
+        loop {
+            $crate::honggfuzz_fuzz!($($x)*);
+        }
+    };
+}
