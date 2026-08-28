@@ -89,6 +89,7 @@ impl Build {
                     .args(afl_args)
                     .env("AFL_QUIET", "1")
                     .env("AFLRS_REQUIRE_PLUGINS", "1")
+                    .env("AFL_LLVM_CMPLOG", "1") // for afl.rs feature "plugins"
                     .env("RUSTFLAGS", rust_flags)
                     .env("RUSTDOCFLAGS", rust_doc_flags)
                     .spawn()?
@@ -138,7 +139,7 @@ fn is_using_nightly_toolchain() -> bool {
         .is_ok_and(|out| String::from_utf8_lossy(&out.stdout).contains("nightly"))
 }
 
-pub fn afl_plugins_installed(common: &Common) -> bool {
+fn afl_plugins_installed(common: &Common) -> bool {
     common
         .cargo()
         .args(["afl", "--version"])

@@ -472,10 +472,6 @@ impl Fuzz {
         if afl_jobs > 0 {
             std::fs::create_dir_all(format!("{}/afl", paths.output_target))?;
 
-            // afl.rs needs plugins (for CMPLOG)
-            let maybe_cmplog =
-                self.binary.is_some() || crate::build::afl_plugins_installed(cx.common());
-
             // https://aflplus.plus/docs/fuzzing_in_depth/#c-using-multiple-cores
             let afl_modes = [
                 "explore", "fast", "coe", "lin", "quad", "exploit", "rare", "explore", "fast",
@@ -515,11 +511,11 @@ impl Fuzz {
                     _ => "",
                 };
                 // Only few instances do cmplog
-                let cmplog_options = match maybe_cmplog.then_some(job_num) {
-                    Some(1) => "-l2a",
-                    Some(3) => "-l1",
-                    Some(14) => "-l2a",
-                    Some(22) => "-l3at",
+                let cmplog_options = match job_num {
+                    1 => "-l2a",
+                    3 => "-l1",
+                    14 => "-l2a",
+                    22 => "-l3at",
                     _ => "-c-", // disable Cmplog, needs AFL++ 4.08a
                 };
                 // AFL timeout is in ms so we convert the value
