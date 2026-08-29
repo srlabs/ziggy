@@ -37,7 +37,7 @@ impl Triage {
                 "-o",
                 &triage_dir,
                 &format!("-j{}", self.jobs),
-                &format!("-t{}", self.timeout.unwrap_or(0)), // future: add option for crashes directory and use runner
+                &format!("-t{}", self.timeout), // future: add option for crashes directory and use runner
             ])
             .spawn()
             .context("Running casr failed, try `cargo install casr`")?

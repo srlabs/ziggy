@@ -84,3 +84,31 @@ impl AsRef<Context> for ContextView<'_> {
         self.cx
     }
 }
+
+pub struct TimeoutArg(Option<u32>);
+
+impl From<Option<u32>> for TimeoutArg {
+    fn from(value: Option<u32>) -> Self {
+        Self(value)
+    }
+}
+
+impl TimeoutArg {
+    pub fn afl_arg(&self) -> String {
+        if let Some(s) = self.0 {
+            // uses milli-secs
+            format!("-t{}", s.saturating_mul(1000))
+        } else {
+            "-t5000+".to_owned()
+        }
+    }
+
+    pub fn honggfuzz_arg(&self) -> String {
+        if let Some(s) = self.0 {
+            // uses secs
+            format!("-t{s}")
+        } else {
+            "-t5".to_owned()
+        }
+    }
+}

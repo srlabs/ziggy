@@ -270,11 +270,15 @@ pub struct Minimize {
     jobs: u32,
 
     /// Timeout for a single run
-    #[clap(short, long, value_name = "MILLI_SECS", default_value_t = 5000)]
-    timeout: u32,
+    #[clap(short, long, value_name = "SECS")]
+    timeout: Option<u32>,
 
     #[clap(short, long, value_enum, default_value_t = FuzzingEngines::All)]
     engine: FuzzingEngines,
+
+    /// Compile in release mode (--release)
+    #[clap(long = "release", action)]
+    release: bool,
 }
 
 #[derive(Args)]
@@ -352,8 +356,8 @@ pub struct Triage {
     ziggy_output: PathBuf,
 
     /// Terminate runner after x seconds
-    #[clap(short, long, value_name = "SECS")]
-    timeout: Option<u32>,
+    #[clap(short, long, value_name = "SECS", default_value_t = 0)]
+    timeout: u32,
     /* future feature, wait for casr
     /// Crash directory to be sourced from
     #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CRASHES_DIR)]
@@ -587,7 +591,7 @@ fn main() -> Result<(), anyhow::Error> {
                 build.no_afl |= !with_afl;
                 build.no_honggfuzz |= !with_honggfuzz;
             }
-            Ziggy::Fuzz(fuzz) => {
+            Ziggy::Fuzz(fuzz) if fuzz.binary.is_none() => {
                 fuzz.no_afl |= !with_afl;
                 fuzz.no_honggfuzz |= !with_honggfuzz;
             }

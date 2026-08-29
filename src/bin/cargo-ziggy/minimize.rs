@@ -1,6 +1,6 @@
 use crate::{
     Build, Common, FuzzingEngines, Minimize,
-    util::{Context, ContextView, hash_file},
+    util::{Context, ContextView, TimeoutArg, hash_file},
 };
 use anyhow::{Context as _, Result, bail};
 use std::{
@@ -17,7 +17,7 @@ impl Minimize {
         let build = Build {
             no_afl: self.engine == FuzzingEngines::Honggfuzz,
             no_honggfuzz: self.engine == FuzzingEngines::AFLPlusPlus,
-            release: false,
+            release: self.release,
             asan: false,
             target: Some(cx.bin_target.clone()),
         };
@@ -107,7 +107,11 @@ impl Minimize {
             0 | 1 => String::from("all"),
             t => format!("{t}"),
         };
-        let target_dir = cx.target_dir().join("afl/debug").join(cx.bin_target());
+        let target_bin = cx
+            .target_dir()
+            .join("afl")
+            .join(if self.release { "release" } else { "debug" })
+            .join(cx.bin_target());
 
         // AFL++ minimization
         let log_file = File::create(self.log_dir(cx.as_ref()).join("minimization_afl.log"))?;
@@ -123,9 +127,9 @@ impl Minimize {
                 "-T",
                 &jobs_option,
                 "-t",
-                &format!("{}", self.timeout),
+                &TimeoutArg::from(self.timeout).afl_arg(),
                 "--",
-                target_dir.as_str(),
+                target_bin.as_str(),
             ])
             .stderr(log_file.try_clone()?)
             .stdout(log_file)
@@ -143,7 +147,7 @@ impl Minimize {
             .cargo()
             .args(["hfuzz", "run", cx.bin_target()])
             .env("CARGO_TARGET_DIR", cx.target_dir().join("honggfuzz"))
-            .env("HFUZZ_BUILD_ARGS", "--features=ziggy/honggfuzz")
+            .envs(crate::build::honggfuzz_envs(false))
             .env(
                 "HFUZZ_WORKSPACE",
                 format!(
@@ -155,10 +159,10 @@ impl Minimize {
             .env(
                 "HFUZZ_RUN_ARGS",
                 format!(
-                    "-i{} -M -o{} -t{}",
+                    "-i{} -M -o{} {}",
                     self.input_corpus(cx.as_ref()),
                     self.output_corpus(cx.as_ref()),
-                    self.timeout
+                    TimeoutArg::from(self.timeout).honggfuzz_arg(),
                 ),
             )
             .stderr(log_file.try_clone()?)

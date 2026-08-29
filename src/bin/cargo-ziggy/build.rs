@@ -111,7 +111,14 @@ impl Build {
             let run = common
                 .cargo()
                 .args(["hfuzz", "build", "--bin", &cx.bin_target])
-                .env("CARGO_TARGET_DIR", cx.target_dir.join("honggfuzz"))
+                .env(
+                    "CARGO_TARGET_DIR",
+                    cx.target_dir.join(if self.asan {
+                        "honggfuzz-asan"
+                    } else {
+                        "honggfuzz"
+                    }),
+                )
                 .envs(honggfuzz_envs(self.asan))
                 .stdout(process::Stdio::piped())
                 .spawn()?
