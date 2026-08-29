@@ -29,6 +29,7 @@ impl Minimize {
                 self.output_corpus(&cx)
             );
         }
+        fs::create_dir_all(self.output_corpus(&cx))?;
 
         let log_dir = self.log_dir(&cx);
         fs::create_dir_all(&log_dir).with_context(|| {
