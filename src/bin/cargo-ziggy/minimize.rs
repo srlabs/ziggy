@@ -18,6 +18,7 @@ impl Minimize {
             no_afl: self.engine == FuzzingEngines::Honggfuzz,
             no_honggfuzz: self.engine == FuzzingEngines::AFLPlusPlus,
             release: self.release,
+            // deliberately do not use ASan build for minimization
             asan: false,
             target: Some(cx.bin_target.clone()),
         };
@@ -29,7 +30,6 @@ impl Minimize {
                 self.output_corpus(&cx)
             );
         }
-        fs::create_dir_all(self.output_corpus(&cx))?;
 
         let log_dir = self.log_dir(&cx);
         fs::create_dir_all(&log_dir).with_context(|| {
@@ -47,7 +47,7 @@ impl Minimize {
             FuzzingEngines::All => {
                 std::thread::scope(|s| -> Result<()> {
                     let handle_afl = { s.spawn(move || self.minimize_afl(cx_view)) };
-                    thread::sleep(Duration::from_millis(1000));
+                    thread::sleep(Duration::from_millis(2000));
                     let handle_honggfuzz = { s.spawn(move || self.minimize_honggfuzz(cx_view)) };
 
                     handle_afl
@@ -116,7 +116,8 @@ impl Minimize {
 
         // AFL++ minimization
         let log_file = File::create(self.log_dir(cx.as_ref()).join("minimization_afl.log"))?;
-        cx.common()
+        let status = cx
+            .common()
             .cargo()
             .args([
                 "afl",
@@ -127,8 +128,7 @@ impl Minimize {
                 &self.output_corpus(cx.as_ref()),
                 "-T",
                 &jobs_option,
-                "-t",
-                &TimeoutArg::from(self.timeout).afl_arg(),
+                &TimeoutArg::from(self.timeout).afl_cmin_arg(),
                 "--",
                 target_bin.as_str(),
             ])
@@ -136,7 +136,11 @@ impl Minimize {
             .stdout(log_file)
             .spawn()?
             .wait()?;
-        Ok(())
+        if status.success() {
+            Ok(())
+        } else {
+            bail!("afl cmin with {status}")
+        }
     }
 
     // HONGGFUZZ minimization
@@ -144,7 +148,8 @@ impl Minimize {
         println!("Minimizing with honggfuzz");
 
         let log_file = File::create(self.log_dir(cx.as_ref()).join("minimization_honggfuzz.log"))?;
-        cx.common()
+        let status = cx
+            .common()
             .cargo()
             .args(["hfuzz", "run", cx.bin_target()])
             .env("CARGO_TARGET_DIR", cx.target_dir().join("honggfuzz"))
@@ -170,6 +175,10 @@ impl Minimize {
             .stdout(log_file)
             .spawn()?
             .wait()?;
-        Ok(())
+        if status.success() {
+            Ok(())
+        } else {
+            bail!("honggfuzz minimization with {status}")
+        }
     }
 }

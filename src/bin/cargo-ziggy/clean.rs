@@ -35,6 +35,7 @@ impl Clean {
         clean("afl", Some(target_triple::TARGET), false)?;
         // honggfuzz uses --target=host
         clean("honggfuzz", Some(target_triple::TARGET), true)?;
+        clean("honggfuzz-asan", Some(target_triple::TARGET), true)?;
         // coverage (from ziggy cover)
         clean("coverage", None, false)?;
         // runner (from ziggy run)

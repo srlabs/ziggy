@@ -307,3 +307,98 @@ fn honggfuzz_builds_once() {
     kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
     assert!(hfuzz_dir.is_dir());
 }
+
+#[allow(clippy::zombie_processes)]
+#[test]
+fn compat_metadata() {
+    let _guard = exclusive_guard();
+    let temp_dir = tempfile::tempdir().unwrap();
+    let output_dir = temp_dir.path().join("output");
+    let target_dir = temp_dir.path().join("target");
+    let metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();
+    let workspace_root: PathBuf = metadata.workspace_root.into();
+    let cargo_ziggy = metadata.target_directory.join("debug/cargo-ziggy");
+    let fuzzer_directory = workspace_root.join("examples/asan");
+    let hfuzz_dir = output_dir.join("asan-fuzz/honggfuzz");
+
+    let restrict = |fuzzers| r#"{"ziggy":{"compat":[PATTERN]}}"#.replace("PATTERN", fuzzers);
+
+    // cargo ziggy build (restrict to afl)
+    let build_status = process::Command::new(&cargo_ziggy)
+        .arg("ziggy")
+        .arg("build")
+        .env("ZIGGY_TEST_METADATA_OVERRIDE", restrict("\"afl\""))
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .current_dir(&fuzzer_directory)
+        .status()
+        .expect("failed to run `cargo ziggy build`");
+    assert!(build_status.success(), "`cargo ziggy build` failed");
+    assert!(target_dir.join("afl/debug/asan-fuzz").is_file());
+    assert!(!target_dir.join("honggfuzz").is_dir());
+
+    let fuzzer = process::Command::new(&cargo_ziggy)
+        .arg("ziggy")
+        .arg("fuzz")
+        .arg("-j2")
+        .env("ZIGGY_TEST_METADATA_OVERRIDE", restrict("\"afl\", \"afl\""))
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .env("ZIGGY_OUTPUT", &output_dir)
+        .env("AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES", "1")
+        .env("AFL_SKIP_CPUFREQ", "1")
+        .current_dir(&fuzzer_directory)
+        .spawn()
+        .expect("failed to run `cargo ziggy fuzz`");
+    thread::sleep(Duration::from_secs(10));
+    kill_subprocesses_recursively(&format!("{}", fuzzer.id()));
+    thread::sleep(Duration::from_secs(2));
+    assert!(!hfuzz_dir.is_dir());
+
+    // restricted minimization
+    let minimize = process::Command::new(&cargo_ziggy)
+        .arg("ziggy")
+        .arg("minimize")
+        .arg("-ehonggfuzz")
+        .env("ZIGGY_TEST_METADATA_OVERRIDE", restrict("\"afl\""))
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .env("ZIGGY_OUTPUT", &output_dir)
+        .current_dir(&fuzzer_directory)
+        .output()
+        .expect("failed to run `cargo ziggy minimize`");
+    assert!(!minimize.status.success());
+    assert!(
+        std::str::from_utf8(&minimize.stderr)
+            .unwrap()
+            .contains(" incompatible ")
+    );
+
+    let minimize = process::Command::new(&cargo_ziggy)
+        .arg("ziggy")
+        .arg("minimize")
+        .arg("-eall")
+        .env("ZIGGY_TEST_METADATA_OVERRIDE", restrict("\"afl\""))
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .env("ZIGGY_OUTPUT", &output_dir)
+        .current_dir(&fuzzer_directory)
+        .output()
+        .expect("failed to run `cargo ziggy minimize`");
+    assert!(!minimize.status.success());
+    assert!(
+        std::str::from_utf8(&minimize.stderr)
+            .unwrap()
+            .contains(" incompatible ")
+    );
+
+    let minimize = process::Command::new(&cargo_ziggy)
+        .arg("ziggy")
+        .arg("minimize")
+        .arg("-eafl-plus-plus")
+        .env("ZIGGY_TEST_METADATA_OVERRIDE", restrict("\"afl\""))
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .env("ZIGGY_OUTPUT", &output_dir)
+        .env("AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES", "1")
+        .env("AFL_SKIP_CPUFREQ", "1")
+        .current_dir(&fuzzer_directory)
+        .status()
+        .expect("failed to run `cargo ziggy minimize`");
+    assert!(minimize.success());
+}

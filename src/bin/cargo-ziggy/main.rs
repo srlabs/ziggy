@@ -557,31 +557,32 @@ impl Common {
                 .into_iter()
                 .filter(|p| p.targets.iter().any(|t| t.is_bin() && t.name == bin_name))
                 .collect();
-            if candidates.len() == 1 {
-                candidates[0]
-            } else {
-                bail!("{bin_name} is included in multiple workspace default packages");
+            match candidates.len() {
+                0 => return Ok(None),
+                1 => candidates[0],
+                _ => bail!("{bin_name} is included in multiple workspace default packages"),
             }
         } else {
             self.guess_bin()?.1
         };
 
-        let meta: Option<Metadata> = serde_json::from_value(package.metadata.clone())?;
-        #[cfg(test)]
-        let meta = serde_json::from_str::<Option<Metadata>>(
+        let meta: Option<Metadata> = {
+            let meta = serde_json::from_value(package.metadata.clone())?;
+            #[cfg(debug_assertions)]
             match std::env::var("ZIGGY_TEST_METADATA_OVERRIDE") {
-                Ok(ref s) => s,
-                Err(std::env::VarError::NotPresent) => return Ok(None),
+                Ok(ref s) => serde_json::from_str::<Option<Metadata>>(s)?,
+                Err(std::env::VarError::NotPresent) => meta,
                 Err(e) => return Err(e.into()),
-            },
-        )?
-        .or(meta);
+            }
+            #[cfg(not(debug_assertions))]
+            meta
+        };
 
-        return Ok(meta.map(|m| m.ziggy.compat));
+        return Ok(meta.and_then(|m| m.ziggy.map(|z| z.compat)));
 
         #[derive(Debug, serde::Deserialize)]
         struct Metadata {
-            ziggy: InnerMeta,
+            ziggy: Option<InnerMeta>,
         }
 
         #[derive(Debug, serde::Deserialize)]
@@ -613,7 +614,7 @@ fn parse_args(common: &Common) -> Result<Ziggy, anyhow::Error> {
     };
 
     apply_restrictions(&mut command, common, default_engine)
-        .context("reading [package.metatdata.ziggy] in Cargo.toml")?;
+        .context("reading [package.metadata.ziggy] in Cargo.toml")?;
     Ok(command)
 }
 

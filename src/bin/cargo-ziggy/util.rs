@@ -85,6 +85,7 @@ impl AsRef<Context> for ContextView<'_> {
     }
 }
 
+/// Flag handling for per seed timeout (in secs)
 pub struct TimeoutArg(Option<u32>);
 
 impl From<Option<u32>> for TimeoutArg {
@@ -94,7 +95,8 @@ impl From<Option<u32>> for TimeoutArg {
 }
 
 impl TimeoutArg {
-    pub fn afl_arg(&self) -> String {
+    /// Complete afl-fuzz flag; the default appends `+` to enable timeout auto-scaling
+    pub fn afl_fuzz_arg(&self) -> String {
         if let Some(s) = self.0 {
             // uses milli-secs
             format!("-t{}", s.saturating_mul(1000))
@@ -103,6 +105,17 @@ impl TimeoutArg {
         }
     }
 
+    /// Complete afl-cmin flag; unlike afl-fuzz rejects the `+`-suffix
+    pub fn afl_cmin_arg(&self) -> String {
+        if let Some(s) = self.0 {
+            // uses milli-secs
+            format!("-t{}", s.saturating_mul(1000))
+        } else {
+            "-t5000".to_owned()
+        }
+    }
+
+    /// Complete honggfuzz flag with default
     pub fn honggfuzz_arg(&self) -> String {
         if let Some(s) = self.0 {
             // uses secs
