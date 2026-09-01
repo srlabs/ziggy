@@ -4,7 +4,7 @@ fn main() {
             return;
         }
         if data[0] == b'f' && data[1] == b'u' && data[2] == b'z' && data[3] == b'z' {
-            let xs = [0, 1, 2, 3];
+            let xs = std::hint::black_box([0, 1, 2, 3]);
             let _y = std::hint::black_box(unsafe { *xs.as_ptr().add(4) });
         }
     });

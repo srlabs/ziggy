@@ -82,8 +82,7 @@ pub use afl::fuzz as afl_fuzz;
 #[cfg(feature = "afl")]
 macro_rules! fuzz {
       ( $($x:tt)* ) => {
-        static USE_ARGS: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::args().len() > 1);
-        if *USE_ARGS {
+        if ::std::env::args().len() > 1 {
             $crate::inner_fuzz!($($x)*);
         } else {
             $crate::afl_fuzz!($($x)*);
@@ -99,8 +98,12 @@ pub use honggfuzz::fuzz as honggfuzz_fuzz;
 #[cfg(all(feature = "honggfuzz", not(feature = "afl")))]
 macro_rules! fuzz {
     ( $($x:tt)* ) => {
-        loop {
-            $crate::honggfuzz_fuzz!($($x)*);
+        if ::std::env::args().len() > 1 {
+            $crate::inner_fuzz!($($x)*);
+        } else {
+            loop {
+                $crate::honggfuzz_fuzz!($($x)*);
+            }
         }
     };
 }

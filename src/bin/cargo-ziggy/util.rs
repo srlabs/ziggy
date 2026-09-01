@@ -84,3 +84,34 @@ impl AsRef<Context> for ContextView<'_> {
         self.cx
     }
 }
+
+/// Flag handling for per seed timeout (in secs)
+pub struct TimeoutArg(Option<u32>);
+
+impl From<Option<u32>> for TimeoutArg {
+    fn from(value: Option<u32>) -> Self {
+        Self(value)
+    }
+}
+
+impl TimeoutArg {
+    /// Complete afl flag with default 5s
+    pub fn afl_arg(&self) -> String {
+        if let Some(s) = self.0 {
+            // uses milli-secs
+            format!("-t{}", s.saturating_mul(1000))
+        } else {
+            "-t5000".to_owned()
+        }
+    }
+
+    /// Complete honggfuzz flag with default 5s
+    pub fn honggfuzz_arg(&self) -> String {
+        if let Some(s) = self.0 {
+            // uses secs
+            format!("-t{s}")
+        } else {
+            "-t5".to_owned()
+        }
+    }
+}

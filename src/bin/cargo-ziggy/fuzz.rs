@@ -1,6 +1,6 @@
 use crate::{
     Build, Common, Cover, Fuzz, FuzzingEngines, Minimize,
-    util::{Context, ContextView},
+    util::{Context, ContextView, TimeoutArg},
 };
 use anyhow::{Context as _, Error, Result, anyhow, bail};
 use console::{Term, style};
@@ -99,6 +99,12 @@ impl Fuzz {
             Context::new(common, self.target.clone())?
         };
         let cx_view = cx.view(common);
+
+        if self.asan && self.memory_limit.is_some() {
+            bail!(
+                "--memory-limit and --asan are incompatible, because ASan reserves a large shadow mapping"
+            );
+        }
 
         if self.binary.is_none() {
             let build = Build {
@@ -518,11 +524,6 @@ impl Fuzz {
                     22 => "-l3at",
                     _ => "-c-", // disable Cmplog, needs AFL++ 4.08a
                 };
-                // AFL timeout is in ms so we convert the value
-                let timeout_option_afl = match self.timeout {
-                    Some(t) => format!("-t{}", t * 1000),
-                    None => String::new(),
-                };
                 let memory_option_afl = match &self.memory_limit {
                     Some(m) => format!("-m{m}"),
                     None => String::new(),
@@ -589,6 +590,7 @@ impl Fuzz {
                                 &format!("-o{}/afl", paths.output_target),
                                 &format!("-g{}", self.min_length),
                                 &format!("-G{}", self.max_length),
+                                &TimeoutArg::from(self.timeout).afl_arg(),
                                 &use_shared_corpus,
                                 &use_initial_corpus_dir,
                                 old_queue_cycling,
@@ -596,7 +598,6 @@ impl Fuzz {
                                 mopt_mutator,
                                 mutation_option,
                                 input_format_option,
-                                &timeout_option_afl,
                                 &memory_option_afl,
                                 &dictionary_option,
                             ]
@@ -641,8 +642,9 @@ impl Fuzz {
                 run_args.push_str(&format!(" -F{}", self.max_length));
                 run_args.push_str(&format!(" --dynamic_input={}/queue", paths.output_target));
                 run_args.push_str(" --tmout_sigvtalrm");
-                if let Some(t) = self.timeout {
-                    run_args.push_str(&format!(" -t{t}"));
+                {
+                    run_args.push(' ');
+                    run_args.push_str(&TimeoutArg::from(self.timeout).honggfuzz_arg());
                 }
                 if let Some(d) = &self.dictionary {
                     run_args.push_str(&format!(" -w{}", d.display()));
@@ -652,6 +654,11 @@ impl Fuzz {
                 }
 
                 run_args
+            };
+            let hfuzz_target = if self.asan {
+                "honggfuzz-asan"
+            } else {
+                "honggfuzz"
             };
 
             let log = File::create(format!("{}/logs/honggfuzz.log", paths.output_target))?;
@@ -670,7 +677,7 @@ impl Fuzz {
                         ),
                         "/dev/null",
                     ])
-                    .env("CARGO_TARGET_DIR", cx.target_dir().join("honggfuzz"))
+                    .env("CARGO_TARGET_DIR", cx.target_dir().join(hfuzz_target))
                     .envs(crate::build::honggfuzz_envs(self.asan))
                     .env(
                         "HFUZZ_WORKSPACE",
@@ -745,8 +752,9 @@ impl Fuzz {
             output_corpus: PathBuf::from(minimized_corpus),
             ziggy_output: self.ziggy_output.clone(),
             jobs: self.jobs,
-            timeout: self.timeout.unwrap_or(5000),
+            timeout: self.timeout,
             engine,
+            release: self.release,
         };
         match minimization_args.minimize(common) {
             Ok(()) => {
@@ -769,8 +777,8 @@ impl Fuzz {
                     new_corpus_size
                 ))?;
             }
-            Err(_) => {
-                bail!("Please check the logs, this might be an oom error");
+            Err(e) => {
+                return Err(e).context("Please check the logs, this might be an oom error");
             }
         }
         Ok(())

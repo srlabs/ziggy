@@ -1145,6 +1145,8 @@ dependencies = [
  "libc",
  "rayon",
  "semver",
+ "serde",
+ "serde_json",
  "signal-hook",
  "strip-ansi-escapes",
  "target-triple",

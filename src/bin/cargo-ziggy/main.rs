@@ -12,7 +12,9 @@ mod util;
 
 use crate::fuzz::FuzzingConfig;
 use anyhow::{Context, Result, anyhow, bail};
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{
+    Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum, parser::ValueSource,
+};
 use std::{
     path::PathBuf,
     sync::OnceLock,
@@ -270,11 +272,15 @@ pub struct Minimize {
     jobs: u32,
 
     /// Timeout for a single run
-    #[clap(short, long, value_name = "MILLI_SECS", default_value_t = 5000)]
-    timeout: u32,
+    #[clap(short, long, value_name = "SECS")]
+    timeout: Option<u32>,
 
     #[clap(short, long, value_enum, default_value_t = FuzzingEngines::All)]
     engine: FuzzingEngines,
+
+    /// Compile in release mode (--release)
+    #[clap(long = "release", action)]
+    release: bool,
 }
 
 #[derive(Args)]
@@ -352,8 +358,8 @@ pub struct Triage {
     ziggy_output: PathBuf,
 
     /// Terminate runner after x seconds
-    #[clap(short, long, value_name = "SECS")]
-    timeout: Option<u32>,
+    #[clap(short, long, value_name = "SECS", default_value_t = 0)]
+    timeout: u32,
     /* future feature, wait for casr
     /// Crash directory to be sourced from
     #[clap(short, long, value_parser, value_name = "DIR", default_value = DEFAULT_CRASHES_DIR)]
@@ -490,7 +496,7 @@ impl Common {
             .ok_or_else(|| anyhow!("not in a Cargo workspace"))
     }
 
-    fn guess_bin(&self) -> Result<String> {
+    fn guess_bin(&self) -> Result<(String, &cargo_metadata::Package)> {
         let meta = self
             .metadata()
             .ok_or_else(|| anyhow!("failed running cargo metadata"))?;
@@ -498,27 +504,33 @@ impl Common {
         if meta.workspace_default_members.is_missing() {
             bail!("please specify a target")
         }
-        let bins: Vec<(&str, &str)> = meta
+        let bins: Vec<_> = meta
             .workspace_default_packages()
             .into_iter()
-            .flat_map(|p| p.targets.iter().filter(|t| t.is_bin()))
-            .map(|t| (t.name.as_str(), t.src_path.as_str()))
+            .flat_map(|p| {
+                p.targets
+                    .iter()
+                    .filter_map(move |t| t.is_bin().then_some((t, p)))
+            })
+            .map(|(t, p)| (t.name.as_str(), t.src_path.as_str(), p))
             .collect();
         // if there is only one bin, we use it
-        if let [(name, _)] = bins.as_slice() {
-            return Ok((*name).to_owned());
+        if let [(name, _, p)] = bins.as_slice() {
+            return Ok(((*name).to_owned(), p));
         }
         // otherwise fallback to `main.rs`
-        let main_bins: Vec<&str> = bins
+        let main_bins: Vec<_> = bins
             .iter()
-            .filter_map(|(name, path)| path.ends_with("main.rs").then_some(*name))
+            .filter_map(|(name, path, package)| {
+                path.ends_with("main.rs").then_some((*name, package))
+            })
             .collect();
-        if let [name] = main_bins.as_slice() {
-            return Ok((*name).to_owned());
+        if let [(name, package)] = main_bins.as_slice() {
+            return Ok(((*name).to_owned(), package));
         }
         // otherwise we ask the user to choose
         let mut targets = String::new();
-        for (name, _) in bins {
+        for (name, _, _) in bins {
             targets.push_str("\n\t");
             targets.push_str(name);
         }
@@ -526,28 +538,164 @@ impl Common {
     }
 
     fn resolve_bin(&self, target: Option<String>) -> Result<String> {
-        target.ok_or(()).or_else(|()| self.guess_bin())
+        target
+            .ok_or(())
+            .or_else(|()| self.guess_bin().map(|(bin_name, _)| bin_name))
     }
 
-    fn compatible_fuzzers(&self, bin_name: &str) -> Option<Vec<String>> {
-        let meta = self.metadata()?;
-        if meta.workspace_default_members.is_missing() {
-            return None;
+    fn compatible_fuzzers(&self, target: Option<String>) -> Result<Option<Vec<String>>> {
+        let package = if let Some(bin_name) = target {
+            // resolve in workspace
+            let Some(meta) = self.metadata() else {
+                return Ok(None);
+            };
+            if meta.workspace_default_members.is_missing() {
+                return Ok(None);
+            }
+            let candidates: Vec<_> = meta
+                .workspace_default_packages()
+                .into_iter()
+                .filter(|p| p.targets.iter().any(|t| t.is_bin() && t.name == bin_name))
+                .collect();
+            match candidates.len() {
+                0 => return Ok(None),
+                1 => candidates[0],
+                _ => bail!("{bin_name} is included in multiple workspace default packages"),
+            }
+        } else {
+            self.guess_bin()?.1
+        };
+
+        let meta: Option<Metadata> = {
+            let meta = serde_json::from_value(package.metadata.clone())?;
+            #[cfg(debug_assertions)]
+            match std::env::var("ZIGGY_TEST_METADATA_OVERRIDE") {
+                Ok(ref s) => serde_json::from_str::<Option<Metadata>>(s)?,
+                Err(std::env::VarError::NotPresent) => meta,
+                Err(e) => return Err(e.into()),
+            }
+            #[cfg(not(debug_assertions))]
+            meta
+        };
+
+        return Ok(meta.and_then(|m| m.ziggy.map(|z| z.compat)));
+
+        #[derive(Debug, serde::Deserialize)]
+        struct Metadata {
+            ziggy: Option<InnerMeta>,
         }
 
-        let compat = meta
-            .workspace_default_packages()
-            .into_iter()
-            .find(|p| p.targets.iter().any(|t| t.is_bin() && t.name == bin_name))?
-            .metadata
-            .get("ziggy")?
-            .get("compat")?
-            .as_array()?
-            .iter()
-            .filter_map(|v| v.as_str().map(String::from))
-            .collect();
-        Some(compat)
+        #[derive(Debug, serde::Deserialize)]
+        struct InnerMeta {
+            compat: Vec<String>,
+        }
     }
+}
+
+fn parse_args(common: &Common) -> Result<Ziggy, anyhow::Error> {
+    let matches = Cargo::command().get_matches();
+    let mut default_engine = false;
+    if let Some(("ziggy", ziggy)) = matches.subcommand()
+        && let Some(subcmd) = ziggy.subcommand()
+    {
+        #[expect(clippy::single_match)]
+        match subcmd {
+            ("minimize", fuzz) => {
+                default_engine =
+                    matches!(fuzz.value_source("engine"), Some(ValueSource::DefaultValue));
+            }
+            _ => {}
+        }
+    }
+
+    let Cargo::Ziggy(mut command) = match Cargo::from_arg_matches(&matches) {
+        Ok(cmd) => cmd,
+        Err(e) => e.exit(),
+    };
+
+    apply_restrictions(&mut command, common, default_engine)
+        .context("reading [package.metadata.ziggy] in Cargo.toml")?;
+    Ok(command)
+}
+
+/// apply package metadata for ziggy
+fn apply_restrictions(
+    command: &mut Ziggy,
+    common: &Common,
+    default_engine: bool,
+) -> Result<(), anyhow::Error> {
+    // skip for binary target fuzzing
+    if matches!(
+        command,
+        Ziggy::Fuzz(Fuzz {
+            binary: Some(_),
+            ..
+        })
+    ) {
+        return Ok(());
+    }
+
+    let bin_target = match command {
+        Ziggy::Build(Build { target, .. })
+        | Ziggy::Fuzz(Fuzz { target, .. })
+        | Ziggy::Minimize(Minimize { target, .. }) => target.clone(),
+        _ => {
+            // no need to restrict anything
+            return Ok(());
+        }
+    };
+
+    let Some(compatible_fuzzers) = common.compatible_fuzzers(bin_target)? else {
+        return Ok(());
+    };
+
+    let mut afl_compatible = false;
+    let mut honggfuzz_compatible = false;
+    for fuzzer in compatible_fuzzers {
+        match fuzzer.to_lowercase().as_str() {
+            "afl" => {
+                afl_compatible = true;
+            }
+            "honggfuzz" => {
+                honggfuzz_compatible = true;
+            }
+            other => bail!("unknown fuzzer {other}"),
+        }
+    }
+
+    match command {
+        Ziggy::Build(build) => {
+            build.no_afl |= !afl_compatible;
+            build.no_honggfuzz |= !honggfuzz_compatible;
+        }
+        Ziggy::Fuzz(fuzz) => {
+            fuzz.no_afl |= !afl_compatible;
+            fuzz.no_honggfuzz |= !honggfuzz_compatible;
+        }
+        Ziggy::Minimize(minimize) => {
+            let cli_afl = matches!(
+                minimize.engine,
+                FuzzingEngines::AFLPlusPlus | FuzzingEngines::All
+            );
+            let cli_honggfuzz = matches!(
+                minimize.engine,
+                FuzzingEngines::Honggfuzz | FuzzingEngines::All
+            );
+            let res_afl = cli_afl && afl_compatible;
+            let res_honggfuzz = cli_honggfuzz && honggfuzz_compatible;
+            if !default_engine && (cli_afl, cli_honggfuzz) != (res_afl, res_honggfuzz) {
+                bail!("requested fuzzer is incompatible with harness");
+            }
+            minimize.engine = match (res_afl, res_honggfuzz) {
+                (true, true) => FuzzingEngines::All,
+                (true, false) => FuzzingEngines::AFLPlusPlus,
+                (false, true) => FuzzingEngines::Honggfuzz,
+                (false, false) => bail!("harness is not compatible with any requested fuzzer"),
+            }
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -555,65 +703,8 @@ fn main() -> Result<(), anyhow::Error> {
     common.shutdown_immediate();
     common.setup_signal_handling()?;
 
-    let Cargo::Ziggy(mut command) = Cargo::parse();
-
-    let bin_target = match &command {
-        Ziggy::Build(build) => Some(build.target.clone()),
-        Ziggy::Fuzz(fuzz) => Some(fuzz.target.clone()),
-        Ziggy::Minimize(minimize) => Some(minimize.target.clone()),
-        _ => None,
-    };
-
-    if let Some(bin_target) = bin_target
-        && let Ok(harness) = common.resolve_bin(bin_target)
-        && let Some(compat) = common.compatible_fuzzers(&harness)
-    {
-        let mut with_afl = false;
-        let mut with_honggfuzz = false;
-        for fuzzer in compat {
-            match fuzzer.to_lowercase().as_str() {
-                "afl" => {
-                    with_afl = true;
-                }
-                "honggfuzz" => {
-                    with_honggfuzz = true;
-                }
-                other => bail!("unknown fuzzer {other} in [package.metadata.ziggy]"),
-            }
-        }
-
-        match &mut command {
-            Ziggy::Build(build) => {
-                build.no_afl |= !with_afl;
-                build.no_honggfuzz |= !with_honggfuzz;
-            }
-            Ziggy::Fuzz(fuzz) => {
-                fuzz.no_afl |= !with_afl;
-                fuzz.no_honggfuzz |= !with_honggfuzz;
-            }
-            Ziggy::Minimize(minimize) => {
-                let use_afl = matches!(
-                    minimize.engine,
-                    FuzzingEngines::AFLPlusPlus | FuzzingEngines::All
-                ) && with_afl;
-                let use_honggfuzz = matches!(
-                    minimize.engine,
-                    FuzzingEngines::Honggfuzz | FuzzingEngines::All
-                ) && with_honggfuzz;
-
-                minimize.engine = match (use_afl, use_honggfuzz) {
-                    (true, true) => FuzzingEngines::All,
-                    (true, false) => FuzzingEngines::AFLPlusPlus,
-                    (false, true) => FuzzingEngines::Honggfuzz,
-                    (false, false) => bail!("harness is not compatible with any requested fuzzer"),
-                }
-            }
-            _ => {}
-        }
-    }
-
-    match command {
-        Ziggy::Build(args) => args.build(&common).context("Failed to build the fuzzers"),
+    match parse_args(&common)? {
+        Ziggy::Build(args) => args.build(&common).context("Failure building the fuzzers"),
         Ziggy::Fuzz(mut args) => args.fuzz(&common).context("Failure running fuzzers"),
         Ziggy::Run(mut args) => args.run(&common).context("Failure running inputs"),
         Ziggy::Minimize(args) => args
