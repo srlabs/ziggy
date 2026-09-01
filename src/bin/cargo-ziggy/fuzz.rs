@@ -590,7 +590,7 @@ impl Fuzz {
                                 &format!("-o{}/afl", paths.output_target),
                                 &format!("-g{}", self.min_length),
                                 &format!("-G{}", self.max_length),
-                                &TimeoutArg::from(self.timeout).afl_fuzz_arg(),
+                                &TimeoutArg::from(self.timeout).afl_arg(),
                                 &use_shared_corpus,
                                 &use_initial_corpus_dir,
                                 old_queue_cycling,

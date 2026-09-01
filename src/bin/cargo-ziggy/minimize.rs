@@ -128,7 +128,7 @@ impl Minimize {
                 &self.output_corpus(cx.as_ref()),
                 "-T",
                 &jobs_option,
-                &TimeoutArg::from(self.timeout).afl_cmin_arg(),
+                &TimeoutArg::from(self.timeout).afl_arg(),
                 "--",
                 target_bin.as_str(),
             ])

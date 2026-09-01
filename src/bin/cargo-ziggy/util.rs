@@ -95,18 +95,8 @@ impl From<Option<u32>> for TimeoutArg {
 }
 
 impl TimeoutArg {
-    /// Complete afl-fuzz flag; the default appends `+` to enable timeout auto-scaling
-    pub fn afl_fuzz_arg(&self) -> String {
-        if let Some(s) = self.0 {
-            // uses milli-secs
-            format!("-t{}", s.saturating_mul(1000))
-        } else {
-            "-t5000+".to_owned()
-        }
-    }
-
-    /// Complete afl-cmin flag; unlike afl-fuzz rejects the `+`-suffix
-    pub fn afl_cmin_arg(&self) -> String {
+    /// Complete afl flag with default 5s
+    pub fn afl_arg(&self) -> String {
         if let Some(s) = self.0 {
             // uses milli-secs
             format!("-t{}", s.saturating_mul(1000))
@@ -115,7 +105,7 @@ impl TimeoutArg {
         }
     }
 
-    /// Complete honggfuzz flag with default
+    /// Complete honggfuzz flag with default 5s
     pub fn honggfuzz_arg(&self) -> String {
         if let Some(s) = self.0 {
             // uses secs
